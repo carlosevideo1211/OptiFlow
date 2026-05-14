@@ -1,16 +1,18 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Plus, Search, Edit2, Eye, Phone } from 'lucide-react';
+import { Plus, Search, Edit2, Phone } from 'lucide-react';
 import type { Customer } from '../types/index';
 import toast from 'react-hot-toast';
 
-const emptyForm = (): Omit<Customer,'id'|'tenant_id'|'created_at'> => ({
-  name:'', cpf:'', phone:'', whatsapp:'', email:'', birth_date:'', address:'', city:'', state:'', notes:'', active:true
+const emptyForm = () => ({
+  name:'', cpf:'', phone:'', whatsapp:'', email:'', birth_date:'',
+  address:'', city:'', state:'', notes:'', active:true
 });
 
 export default function ClientesPage() {
-  const { tenantId } = useAuth();
+  const { user } = useAuth();
+  const tenantId = user?.tenant_id;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -23,35 +25,69 @@ export default function ClientesPage() {
 
   const loadCustomers = async () => {
     setLoading(true);
-    const { data } = await supabase.from('customers').select('*').eq('tenant_id', tenantId).order('name');
-    setCustomers(data as Customer[] ?? []);
+    const { data, error } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('name');
+    if (error) console.error('Load error:', error);
+    setCustomers((data as Customer[]) ?? []);
     setLoading(false);
   };
 
   const filtered = useMemo(() => {
     if (!search.trim()) return customers;
     const s = search.toLowerCase();
-    return customers.filter(c => c.name.toLowerCase().includes(s) || c.cpf?.includes(s) || c.phone?.includes(s));
+    return customers.filter(c =>
+      c.name.toLowerCase().includes(s) ||
+      c.cpf?.includes(s) ||
+      c.phone?.includes(s)
+    );
   }, [customers, search]);
 
   const openNew = () => { setEditing(null); setForm(emptyForm()); setShowModal(true); };
-  const openEdit = (c: Customer) => { setEditing(c); setForm({ name:c.name, cpf:c.cpf||'', phone:c.phone||'', whatsapp:c.whatsapp||'', email:c.email||'', birth_date:c.birth_date||'', address:c.address||'', city:c.city||'', state:c.state||'', notes:c.notes||'', active:c.active }); setShowModal(true); };
+  const openEdit = (c: Customer) => {
+    setEditing(c);
+    setForm({ name:c.name, cpf:c.cpf||'', phone:c.phone||'', whatsapp:c.whatsapp||'', email:c.email||'', birth_date:c.birth_date||'', address:c.address||'', city:c.city||'', state:c.state||'', notes:c.notes||'', active:c.active });
+    setShowModal(true);
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return;
+    if (!tenantId) { toast.error('Sessão expirada. Faça login novamente.'); return; }
     setSaving(true);
     try {
       if (editing) {
-        await supabase.from('customers').update(form).eq('id', editing.id);
+        const { error } = await supabase.from('customers').update(form).eq('id', editing.id);
+        if (error) throw error;
         toast.success('Cliente atualizado!');
       } else {
-        await supabase.from('customers').insert([{ ...form, tenant_id: tenantId }]);
+        const payload = {
+          ...form,
+          tenant_id: tenantId,
+          birth_date: form.birth_date || null,
+          email: form.email || null,
+          cpf: form.cpf || null,
+          phone: form.phone || null,
+          whatsapp: form.whatsapp || null,
+          address: form.address || null,
+          city: form.city || null,
+          state: form.state || null,
+          notes: form.notes || null,
+        };
+        const { error } = await supabase.from('customers').insert([payload]);
+        if (error) throw error;
         toast.success('Cliente cadastrado!');
       }
       setShowModal(false);
       loadCustomers();
-    } catch { toast.error('Erro ao salvar'); } finally { setSaving(false); }
+    } catch (err: any) {
+      console.error('Save error:', err);
+      toast.error(err.message ?? 'Erro ao salvar');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
@@ -70,7 +106,11 @@ export default function ClientesPage() {
 
       {loading ? <div className="empty-state"><p>Carregando...</p></div> :
        filtered.length === 0 ? (
-        <div className="empty-state"><div className="empty-icon">👥</div><h3>Nenhum cliente encontrado</h3><p>Cadastre o primeiro cliente clicando em "Novo Cliente"</p></div>
+        <div className="empty-state">
+          <div className="empty-icon">👥</div>
+          <h3>Nenhum cliente encontrado</h3>
+          <p>Cadastre o primeiro cliente clicando em "Novo Cliente"</p>
+        </div>
        ) : (
         <div className="card">
           <div className="table-wrap">
