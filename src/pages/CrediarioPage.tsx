@@ -99,7 +99,7 @@ export default function CrediarioPage() {
     // Verificar se todas pagas → fechar crediário
     const { data: allParc } = await supabase.from('crediario_parcelas')
       .select('status').eq('crediario_id', parcela.crediario_id);
-    const todasPagas = (allParc||[]).every(p => p.status === 'pago' || p.id === parcela.id);
+    const todasPagas = (allParc||[]).every((p: { status: string; id?: string }) => p.status === 'pago' || p.id === parcela.id);
     if (todasPagas) {
       await supabase.from('crediario').update({ status: 'quitado' }).eq('id', parcela.crediario_id);
       toast.success('Parcela paga! Crediário QUITADO! 🎉');
