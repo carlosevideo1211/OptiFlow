@@ -19,13 +19,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadProfile = async (uid: string) => {
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('id', uid)
-      .single();
-    if (data) setUser(data as UserProfile);
-    setLoading(false);
+    try {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', uid)
+        .single();
+      if (data) setUser(data as UserProfile);
+    } catch {
+      // Usuário sem perfil (ex: admin) — não bloquear
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
