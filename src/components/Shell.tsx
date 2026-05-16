@@ -55,7 +55,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   // Carregar badges e trial
   useEffect(() => {
-    if (!tenantId) return;
+    if (!tenantId || !user) return;
     const loadData = async () => {
       // OS prontas para entrega
       const { count: osCount } = await supabase
