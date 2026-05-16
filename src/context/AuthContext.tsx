@@ -14,7 +14,7 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx | null>(null);
 export const useAuth = () => { const c = useContext(Ctx); if (!c) throw new Error('useAuth'); return c; };
 
-const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
+const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || 'carlosevideo28@gmail.com';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<UserProfile | null>(null);
