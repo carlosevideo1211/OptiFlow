@@ -21,8 +21,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadProfile = async (uid: string, email?: string) => {
-    // Admin não tem perfil — não tentar buscar
+    console.log('[Auth] loadProfile chamado para:', email);
     if (email && email === ADMIN_EMAIL) {
+      console.log('[Auth] Admin detectado, pulando perfil');
       setLoading(false);
       return;
     }
@@ -31,21 +32,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('user_profiles')
         .select('*')
         .eq('id', uid)
-        .single();
-      if (data && !error) setUser(data as UserProfile);
-    } catch {
-      // Sem perfil — não bloquear
+        .maybeSingle();
+      console.log('[Auth] Perfil carregado:', data?.full_name, 'erro:', error?.message);
+      if (data && !error) {
+        setUser(data as UserProfile);
+      }
+    } catch(e) {
+      console.log('[Auth] Erro ao carregar perfil:', e);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('[Auth] useEffect iniciado');
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[Auth] getSession:', session?.user?.email);
       if (session?.user) loadProfile(session.user.id, session.user.email);
       else setLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Auth] onAuthStateChange:', event, session?.user?.email);
       if (session?.user) loadProfile(session.user.id, session.user.email);
       else { setUser(null); setLoading(false); }
     });
@@ -53,8 +60,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    console.log('[Auth] signIn chamado para:', email);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    console.log('[Auth] signIn sucesso');
   };
 
   const signUp = async (email: string, password: string, name: string) => {

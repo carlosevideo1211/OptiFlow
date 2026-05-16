@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Shell from './components/Shell';
@@ -22,6 +22,18 @@ import TrialExpiredPage from './pages/TrialExpiredPage';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // Rotas admin não precisam de AuthContext
+  if (location.pathname.startsWith('/admin')) {
+    return (
+      <Routes>
+        <Route path="/admin-login" element={<AdminLoginPage />} />
+        <Route path="/admin"       element={<AdminPanelPage />} />
+        <Route path="/admin/*"     element={<AdminPanelPage />} />
+      </Routes>
+    );
+  }
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
@@ -40,8 +52,11 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/login"          element={!user ? <LoginPage />    : <Navigate to="/dashboard" />} />
-      <Route path="/registro"       element={!user ? <RegisterPage /> : <Navigate to="/dashboard" />} />
+      <Route path="/admin-login" element={<AdminLoginPage />} />
+      <Route path="/admin"       element={<AdminPanelPage />} />
+      <Route path="/admin/*"     element={<AdminPanelPage />} />
+      <Route path="/login"       element={!user ? <LoginPage />    : <Navigate to="/dashboard" />} />
+      <Route path="/registro"    element={!user ? <RegisterPage /> : <Navigate to="/dashboard" />} />
       <Route path="/trial-expirado" element={<TrialExpiredPage />} />
       <Route path="/*" element={
         !user ? <Navigate to="/login" /> :
@@ -67,41 +82,16 @@ function AppRoutes() {
   );
 }
 
-// Rotas Admin — completamente separadas do AuthProvider
-function AdminRoutes() {
-  return (
-    <Routes>
-      <Route path="/admin-login" element={<AdminLoginPage />} />
-      <Route path="/admin/*"     element={<AdminPanelPage />} />
-    </Routes>
-  );
-}
-
-function RootRouter() {
-  return (
-    <Routes>
-      {/* Rotas admin — sem AuthProvider */}
-      <Route path="/admin-login" element={<AdminLoginPage />} />
-      <Route path="/admin"       element={<AdminPanelPage />} />
-      <Route path="/admin/*"     element={<AdminPanelPage />} />
-      {/* Rotas do sistema — com AuthProvider */}
-      <Route path="/*" element={
-        <AuthProvider>
-          <AppRoutes />
-        </AuthProvider>
-      } />
-    </Routes>
-  );
-}
-
 export default function App() {
   return (
     <BrowserRouter>
-      <RootRouter />
-      <Toaster position="top-right" toastOptions={{
-        style: { background:'#1A2235', color:'#E8EDF5',
-          border:'1px solid rgba(255,255,255,0.08)', fontSize:13 }
-      }} />
+      <AuthProvider>
+        <AppRoutes />
+        <Toaster position="top-right" toastOptions={{
+          style: { background:'#1A2235', color:'#E8EDF5',
+            border:'1px solid rgba(255,255,255,0.08)', fontSize:13 }
+        }} />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

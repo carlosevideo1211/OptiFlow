@@ -1,23 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
-  const { signIn } = useAuth();
+  const { signIn, user } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Redirecionar quando user for setado pelo AuthContext
+  useEffect(() => {
+    if (user) navigate('/dashboard');
+  }, [user]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       await signIn(email, password);
-      navigate('/dashboard');
+      // useEffect acima vai redirecionar quando user for carregado
     } catch {
       toast.error('Email ou senha incorretos');
     } finally {
@@ -30,15 +35,23 @@ export default function LoginPage() {
       {/* Left */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'48px', maxWidth:460 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:48 }}>
-          <div style={{ width:40, height:40, borderRadius:12, background:'linear-gradient(135deg, var(--primary), var(--accent))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>👁️</div>
-          <span style={{ fontSize:22, fontWeight:800, color:'var(--text)' }}>Opti<span style={{ color:'var(--accent)' }}>Flow</span></span>
+          <svg width="40" height="40" viewBox="0 0 32 32" fill="none">
+            <rect width="32" height="32" rx="10" fill="url(#lg_login)"/>
+            <ellipse cx="16" cy="16" rx="10" ry="6" stroke="white" strokeWidth="1.8" fill="none"/>
+            <circle cx="16" cy="16" r="3.5" fill="white"/>
+            <circle cx="16" cy="16" r="1.5" fill="url(#lg_login)"/>
+            <defs><linearGradient id="lg_login" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#6366f1"/><stop offset="1" stopColor="#06b6d4"/>
+            </linearGradient></defs>
+          </svg>
+          <span style={{ fontSize:22, fontWeight:800, color:'var(--text)' }}>Opti<span style={{ color:'#06b6d4' }}>Flow</span></span>
         </div>
         <h1 style={{ fontSize:30, fontWeight:800, color:'var(--text)', letterSpacing:'-0.5px', marginBottom:8 }}>Bem-vindo de volta</h1>
         <p style={{ color:'var(--text2)', marginBottom:36, fontSize:14 }}>Entre para acessar o sistema</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label">E-mail</label>
-            <input className="form-input" type="email" placeholder="seu@email.com" value={email} onChange={e => setEmail(e.target.value)} required />
+            <input className="form-input" type="email" placeholder="seu@email.com" value={email} onChange={e => setEmail(e.target.value)} required autoFocus/>
           </div>
           <div className="form-group">
             <label className="form-label">Senha</label>
@@ -54,9 +67,9 @@ export default function LoginPage() {
           </button>
         </form>
         <p style={{ textAlign:'center', marginTop:24, fontSize:13, color:'var(--text2)' }}>
-          Não tem conta? <Link to="/registro" style={{ color:'var(--accent)', fontWeight:600 }}>Criar agora →</Link>
+          Não tem conta? <Link to="/registro" style={{ color:'#06b6d4', fontWeight:600 }}>Criar agora →</Link>
         </p>
-        <p style={{ textAlign:'center', marginTop:8, fontSize:13, color:'var(--text3)' }}>
+        <p style={{ textAlign:'center', marginTop:8, fontSize:13 }}>
           <Link to="/admin-login" style={{ color:'var(--text3)' }}>Acesso administrativo</Link>
         </p>
       </div>
@@ -65,7 +78,7 @@ export default function LoginPage() {
         <div style={{ maxWidth:360, textAlign:'center' }}>
           <div style={{ fontSize:64, marginBottom:24 }}>👁️</div>
           <h2 style={{ fontSize:26, fontWeight:800, color:'var(--text)', marginBottom:16, letterSpacing:'-0.5px' }}>
-            Sistema completo para <span style={{ color:'var(--accent)' }}>óticas</span>
+            Sistema completo para <span style={{ color:'#06b6d4' }}>óticas</span>
           </h2>
           <p style={{ color:'var(--text2)', lineHeight:1.8, fontSize:14 }}>
             Consulta, OS, PDV, Crediário e muito mais — tudo integrado e simples de usar.
