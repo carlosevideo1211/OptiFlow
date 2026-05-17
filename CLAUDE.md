@@ -97,7 +97,7 @@ CREATE TRIGGER on_auth_user_created
 
 ---
 
-## 🏢 VISIONPROERP — PROVISIONAMENTO DE TENANTS (CRÍTICO)
+## 🏢 VISIONPROERP — PROBLEMAS E SOLUÇÕES
 
 ### PROBLEMA 6: Inquilino cadastrado mas login/comandos não funcionam
 **Causa raiz:** Ordem errada de criação — `user_profiles` criado ANTES do `tenant`.
@@ -158,6 +158,7 @@ GRANT EXECUTE ON FUNCTION provision_new_tenant TO authenticated;
 **Solução:** Remover o bloco antigo — manter apenas a chamada `provision_new_tenant`.
 
 ### PROBLEMA 8: Usuários órfãos no Auth após excluir tenant
+**Sintoma:** "User already registered" ao tentar recadastrar.
 **Diagnóstico:**
 ```sql
 SELECT au.id, au.email FROM auth.users au
@@ -168,6 +169,46 @@ WHERE up.id IS NULL AND au.email != 'carlosevideo28@gmail.com';
 ```sql
 DELETE FROM auth.users WHERE id IN ('id1', 'id2', ...);
 ```
+
+### PROBLEMA 9: Botão Sair não aparece para alguns inquilinos
+**Causa:** Sidebar muito longo — footer cortado pela altura da tela.
+**Solução aplicada:** Mover botão Sair para o TOPO do sidebar (ao lado do logo) — sempre visível independente da altura:
+```tsx
+// Em Sidebar.tsx — dentro do sidebar-logo div
+<button onClick={logout} style={{ display: 'flex', alignItems: 'center', gap: 4, ... }}>
+  <LogOut size={14} />
+  <span>Sair</span>
+</button>
+```
+**⚠️ LIÇÃO:** Quando CSS não resolve após 3 tentativas, mudar a abordagem — mover o elemento para posição sempre visível.
+
+### PROBLEMA 10: Contagem de produtos incorreta (máx 1000)
+**Causa:** Supabase retorna máximo 1000 registros por padrão. Com 1948 produtos, stats ficavam errados.
+**Solução:** Usar queries separadas com `count: 'exact'` e `head: true` para contar sem buscar dados:
+```typescript
+const { count: totalCount } = await supabase
+  .from('products')
+  .select('*', { count: 'exact', head: true })
+  .eq('tenant_id', user.tenantId)
+  .eq('active', true);
+```
+
+### PROBLEMA 11: Estoque crítico sempre zero
+**Causa:** Não é possível comparar duas colunas diretamente no Supabase client (`stock <= min_stock`).
+**Solução:** Criar função RPC no Supabase:
+```sql
+CREATE OR REPLACE FUNCTION count_critical_products(p_tenant_id uuid)
+RETURNS bigint LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT COUNT(*)::bigint FROM products
+  WHERE tenant_id = p_tenant_id
+  AND active = true
+  AND min_stock > 0
+  AND stock <= min_stock;
+$$;
+GRANT EXECUTE ON FUNCTION count_critical_products TO authenticated;
+GRANT EXECUTE ON FUNCTION count_critical_products TO anon;
+```
+E chamar via `supabase.rpc('count_critical_products', { p_tenant_id: user.tenantId })`.
 
 ---
 
@@ -183,13 +224,11 @@ $$;
 
 ### Políticas RLS
 ```sql
--- Todas as tabelas de tenant
 CREATE POLICY "tenant_isolation" ON [tabela]
   FOR ALL TO authenticated
   USING (tenant_id = get_tenant_id())
   WITH CHECK (tenant_id = get_tenant_id());
 
--- Tabela tenants (admin lê tudo)
 CREATE POLICY "admin_read_all" ON tenants
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 ```
@@ -197,17 +236,8 @@ CREATE POLICY "admin_read_all" ON tenants
 ### Índices de Performance
 ```sql
 CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_consultations_tenant ON consultations(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_service_orders_tenant ON service_orders(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_sales_tenant ON sales(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_sale_items_tenant ON sale_items(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_crediario_tenant ON crediario(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_crediario_parcelas_tenant ON crediario_parcelas(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_financial_tenant ON financial_transactions(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_suppliers_tenant ON suppliers(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_store_settings_tenant ON store_settings(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_user_profiles_tenant ON user_profiles(tenant_id);
+-- (repetir para todas as tabelas com tenant_id)
 ```
 
 ---
@@ -233,11 +263,12 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_tenant ON user_profiles(tenant_id);
 - [ ] Políticas `tenant_isolation` aplicadas
 - [ ] Índices de performance criados
 - [ ] `VITE_ADMIN_EMAIL` no Vercel correto
-- [ ] Registro/provisionamento testado e funcionando
+- [ ] Registro/provisionamento testado
 - [ ] Login do inquilino funcionando
 - [ ] Login do admin funcionando
 - [ ] Console sem erros 406/500
 - [ ] Usuários órfãos no Auth limpos
+- [ ] Botão Sair visível em todos os tenants
 
 ---
 
@@ -280,3 +311,14 @@ npx tsc --noEmit 2>&1 | Select-Object -First 20
 # Forçar redeploy
 git commit --allow-empty -m "chore: force redeploy" && git push
 ```
+
+---
+
+## 💡 PRINCÍPIOS DE DESENVOLVIMENTO
+
+1. **Da base para o topo** — nunca pular etapas
+2. **Quando CSS não resolve em 3 tentativas** — mudar abordagem (ex: mover elemento)
+3. **Ordem de criação no banco** — tenant → branch → store → user_profile → employee
+4. **Nunca usar trigger no VisionProERP** — usa provision_new_tenant
+5. **Queries com mais de 1000 registros** — usar `count: 'exact', head: true`
+6. **Comparar colunas no Supabase** — usar função RPC, não client-side filter
