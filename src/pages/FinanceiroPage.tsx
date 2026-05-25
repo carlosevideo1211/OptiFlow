@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 import {
   TrendingUp, TrendingDown, DollarSign, Plus,
   Search, X, Save, Eye, Download, AlertTriangle,
-  CheckCircle, Clock, BarChart3
+  CheckCircle, Clock, BarChart3, ArrowDownCircle,
+  ArrowUpCircle, Wallet, Calendar, Filter
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
@@ -17,7 +18,7 @@ interface Transaction {
   id: string; tenant_id: string; type: string; description: string;
   category: string; amount: number; due_date: string;
   paid_at?: string; status: string; payment_method?: string; notes?: string;
-  created_at: string;
+  created_at: string; sale_id?: string; sale_number?: number; origin?: string;
 }
 
 function emptyForm(type: string) {
@@ -32,7 +33,7 @@ export default function FinanceiroPage() {
   const { tenantId } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading]     = useState(true);
-  const [tab, setTab]             = useState<'lancamentos'|'resumo'>('lancamentos');
+  const [tab, setTab]             = useState<'lancamentos'|'receber'|'pagar'|'fluxo'|'resumo'>('lancamentos');
   const [typeFilter, setTypeFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch]       = useState('');
@@ -62,7 +63,8 @@ export default function FinanceiroPage() {
   const receitasMes  = transactions.filter(t => t.type==='receita' && t.status==='pago' && t.paid_at?.startsWith(mesAtual)).reduce((s,t)=>s+t.amount,0);
   const despesasMes  = transactions.filter(t => t.type==='despesa' && t.status==='pago' && t.paid_at?.startsWith(mesAtual)).reduce((s,t)=>s+t.amount,0);
   const saldoMes     = receitasMes - despesasMes;
-  const aVencer      = transactions.filter(t => t.status==='pendente' && t.due_date >= hoje).reduce((s,t)=>s+t.amount,0);
+  const totalReceber = transactions.filter(t => t.type==='receita' && t.status==='pendente').reduce((s,t)=>s+t.amount,0);
+  const totalPagar   = transactions.filter(t => t.type==='despesa' && t.status==='pendente').reduce((s,t)=>s+t.amount,0);
   const vencidas     = transactions.filter(t => t.status==='pendente' && t.due_date < hoje).length;
 
   const filtered = useMemo(() => {
@@ -77,6 +79,42 @@ export default function FinanceiroPage() {
     if (dateTo)   list = list.filter(t => t.due_date <= dateTo);
     return list;
   }, [transactions, typeFilter, statusFilter, search, dateFrom, dateTo]);
+
+  // Contas a receber
+  const contasReceber = useMemo(() =>
+    transactions.filter(t => t.type==='receita' && t.status==='pendente')
+      .sort((a,b) => a.due_date.localeCompare(b.due_date)),
+    [transactions]);
+
+  // Contas a pagar
+  const contasPagar = useMemo(() =>
+    transactions.filter(t => t.type==='despesa' && t.status==='pendente')
+      .sort((a,b) => a.due_date.localeCompare(b.due_date)),
+    [transactions]);
+
+  // Fluxo de caixa — agrupa por dia
+  const fluxoCaixa = useMemo(() => {
+    const dias: Record<string, { receitas: number; despesas: number; saldo: number; items: Transaction[] }> = {};
+    transactions.filter(t => t.status==='pago' && t.paid_at).forEach(t => {
+      const dia = t.paid_at!.slice(0,10);
+      if (!dias[dia]) dias[dia] = { receitas:0, despesas:0, saldo:0, items:[] };
+      if (t.type==='receita') dias[dia].receitas += t.amount;
+      else dias[dia].despesas += t.amount;
+      dias[dia].items.push(t);
+    });
+    Object.values(dias).forEach(d => d.saldo = d.receitas - d.despesas);
+    return Object.entries(dias).sort((a,b) => b[0].localeCompare(a[0]));
+  }, [transactions]);
+
+  // Resumo por categoria
+  const resumoCats = useMemo(() => {
+    const cats: Record<string, { receita: number; despesa: number }> = {};
+    transactions.filter(t=>t.status==='pago'&&t.paid_at?.startsWith(mesAtual)).forEach(t => {
+      if (!cats[t.category]) cats[t.category] = { receita:0, despesa:0 };
+      cats[t.category][t.type==='receita'?'receita':'despesa'] += t.amount;
+    });
+    return Object.entries(cats).sort((a,b)=>(b[1].receita+b[1].despesa)-(a[1].receita+a[1].despesa));
+  }, [transactions, mesAtual]);
 
   const openNew = (type: 'receita'|'despesa') => {
     setEditing(null); setEditType(type); setForm(emptyForm(type)); setShowModal(true);
@@ -128,9 +166,9 @@ export default function FinanceiroPage() {
   };
 
   const exportCSV = () => {
-    const header = 'Tipo,Descrição,Categoria,Valor,Vencimento,Status,Pagamento';
+    const header = 'Tipo,Descrição,Categoria,Valor,Vencimento,Status,Pagamento,Origem';
     const rows = filtered.map(t =>
-      [t.type,t.description,t.category,t.amount,t.due_date,t.status,t.payment_method]
+      [t.type,t.description,t.category,t.amount,t.due_date,t.status,t.payment_method,t.origin??'manual']
         .map(v=>'"'+(v??'')+'"').join(','));
     const blob = new Blob([header+'\n'+rows.join('\n')],{type:'text/csv'});
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
@@ -138,16 +176,6 @@ export default function FinanceiroPage() {
   };
 
   const set = (k: string, v: any) => setForm(p => ({...p,[k]:v}));
-
-  // Resumo por categoria
-  const resumoCats = useMemo(() => {
-    const cats: Record<string, { receita: number; despesa: number }> = {};
-    transactions.filter(t=>t.status==='pago'&&t.paid_at?.startsWith(mesAtual)).forEach(t => {
-      if (!cats[t.category]) cats[t.category] = { receita:0, despesa:0 };
-      cats[t.category][t.type==='receita'?'receita':'despesa'] += t.amount;
-    });
-    return Object.entries(cats).sort((a,b)=>(b[1].receita+b[1].despesa)-(a[1].receita+a[1].despesa));
-  }, [transactions, mesAtual]);
 
   const IconBtn = ({ onClick, title, color, children }: any) => (
     <button onClick={onClick} title={title}
@@ -158,6 +186,64 @@ export default function FinanceiroPage() {
     </button>
   );
 
+  const StatusBadge = ({ t }: { t: Transaction }) => {
+    const isPago    = t.status==='pago';
+    const isVencida = !isPago && t.due_date < hoje;
+    return (
+      <button onClick={()=>toggleStatus(t)}
+        style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12,
+          fontWeight:600, padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer',
+          background: isPago?'rgba(34,197,94,.15)':isVencida?'rgba(248,113,113,.15)':'rgba(245,158,11,.15)',
+          color: isPago?'#22c55e':isVencida?'#f87171':'#f59e0b' }}>
+        {isPago ? <CheckCircle size={12}/> : isVencida ? <AlertTriangle size={12}/> : <Clock size={12}/>}
+        {isPago ? 'Pago' : isVencida ? 'Vencida' : 'Pendente'}
+      </button>
+    );
+  };
+
+  const TRow = ({ t }: { t: Transaction }) => {
+    const isReceita = t.type==='receita';
+    const isVencida = t.status!=='pago' && t.due_date < hoje;
+    return (
+      <tr key={t.id}>
+        <td>
+          <span style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12,
+            fontWeight:600, padding:'3px 10px', borderRadius:20,
+            background: isReceita?'rgba(34,197,94,.12)':'rgba(248,113,113,.12)',
+            color: isReceita?'#22c55e':'#f87171' }}>
+            {isReceita ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
+            {isReceita ? 'Receita' : 'Despesa'}
+          </span>
+        </td>
+        <td style={{ fontWeight:500 }}>
+          {t.description}
+          {t.origin && t.origin !== 'manual' && (
+            <span style={{ fontSize:10, marginLeft:6, padding:'2px 6px', borderRadius:8,
+              background:'rgba(99,102,241,.15)', color:'#6366f1' }}>
+              {t.origin}
+            </span>
+          )}
+        </td>
+        <td><span style={{ fontSize:12, padding:'2px 8px', borderRadius:12,
+          background:'rgba(99,102,241,.12)', color:'#6366f1' }}>{t.category}</span></td>
+        <td style={{ fontWeight:700, color: isReceita?'#22c55e':'#f87171' }}>
+          {isReceita?'+':'-'}{formatBRL(t.amount)}
+        </td>
+        <td style={{ fontSize:13, color: isVencida?'#f87171':'var(--text)' }}>
+          {isVencida && '⚠️ '}
+          {new Date(t.due_date+'T00:00:00').toLocaleDateString('pt-BR')}
+        </td>
+        <td><StatusBadge t={t} /></td>
+        <td>
+          <div style={{ display:'flex', gap:5 }}>
+            <IconBtn onClick={()=>openEdit(t)} title="Editar" color="#6366f1"><Eye size={14}/></IconBtn>
+            <IconBtn onClick={()=>deleteTransaction(t)} title="Excluir" color="#f87171"><X size={14}/></IconBtn>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -165,7 +251,7 @@ export default function FinanceiroPage() {
           <h1 className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}>
             <TrendingUp size={22}/> Financeiro
           </h1>
-          <p className="page-sub">Controle de receitas e despesas</p>
+          <p className="page-sub">Controle completo de receitas e despesas</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button className="btn btn-secondary" onClick={exportCSV}><Download size={15}/> Exportar</button>
@@ -182,28 +268,35 @@ export default function FinanceiroPage() {
       {/* Stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:14, marginBottom:24 }}>
         {[
-          { icon:<TrendingUp size={20}/>,   val:formatBRL(receitasMes), label:'Receitas do Mês',  color:'#22c55e' },
-          { icon:<TrendingDown size={20}/>, val:formatBRL(despesasMes), label:'Despesas do Mês',  color:'#f87171' },
-          { icon:<DollarSign size={20}/>,   val:formatBRL(saldoMes),    label:'Saldo do Mês',     color: saldoMes>=0?'#6366f1':'#f87171' },
-          { icon:<Clock size={20}/>,        val:formatBRL(aVencer),     label:'A Receber/Pagar',  color:'#f59e0b' },
-          { icon:<AlertTriangle size={20}/>,val:vencidas,               label:'Lançamentos Venc.',color:'#f87171' },
+          { icon:<TrendingUp size={20}/>,    val:formatBRL(receitasMes),  label:'Receitas do Mês',   color:'#22c55e' },
+          { icon:<TrendingDown size={20}/>,  val:formatBRL(despesasMes),  label:'Despesas do Mês',   color:'#f87171' },
+          { icon:<DollarSign size={20}/>,    val:formatBRL(saldoMes),     label:'Saldo do Mês',      color:saldoMes>=0?'#6366f1':'#f87171' },
+          { icon:<ArrowDownCircle size={20}/>,val:formatBRL(totalReceber),label:'A Receber',         color:'#22c55e' },
+          { icon:<ArrowUpCircle size={20}/>, val:formatBRL(totalPagar),   label:'A Pagar',           color:'#f59e0b' },
         ].map((s,i) => (
           <div key={i} className="card" style={{ padding:18, borderTop:'3px solid '+s.color }}>
             <div style={{ color:s.color, marginBottom:6 }}>{s.icon}</div>
-            <div style={{ fontSize:typeof s.val==='number'?24:15, fontWeight:700, color:s.color }}>{s.val}</div>
+            <div style={{ fontSize:15, fontWeight:700, color:s.color }}>{s.val}</div>
             <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border)' }}>
-        {[{k:'lancamentos',l:'📋 Lançamentos'},{k:'resumo',l:'📊 Resumo por Categoria'}].map(t => (
+      <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border)', flexWrap:'wrap' }}>
+        {[
+          {k:'lancamentos', l:'📋 Lançamentos'},
+          {k:'receber',     l:'📥 Contas a Receber'},
+          {k:'pagar',       l:'📤 Contas a Pagar'},
+          {k:'fluxo',       l:'💰 Fluxo de Caixa'},
+          {k:'resumo',      l:'📊 Resumo'},
+        ].map(t => (
           <button key={t.k} onClick={() => setTab(t.k as any)}
-            style={{ padding:'10px 20px', background:'none', border:'none', cursor:'pointer',
-              fontSize:14, fontWeight:600,
+            style={{ padding:'10px 18px', background:'none', border:'none', cursor:'pointer',
+              fontSize:13, fontWeight:600,
               color: tab===t.k ? '#6366f1' : 'var(--text-muted)',
-              borderBottom: tab===t.k ? '2px solid #6366f1' : '2px solid transparent' }}>
+              borderBottom: tab===t.k ? '2px solid #6366f1' : '2px solid transparent',
+              whiteSpace:'nowrap' }}>
             {t.l}
           </button>
         ))}
@@ -247,66 +340,12 @@ export default function FinanceiroPage() {
                 <thead>
                   <tr><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Ações</th></tr>
                 </thead>
-                <tbody>
-                  {filtered.map(t => {
-                    const isReceita = t.type === 'receita';
-                    const isPago    = t.status === 'pago';
-                    const isVencida = !isPago && t.due_date < hoje;
-                    return (
-                      <tr key={t.id}>
-                        <td>
-                          <span style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12,
-                            fontWeight:600, padding:'3px 10px', borderRadius:20,
-                            background: isReceita?'rgba(34,197,94,.12)':'rgba(248,113,113,.12)',
-                            color: isReceita?'#22c55e':'#f87171' }}>
-                            {isReceita ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
-                            {isReceita ? 'Receita' : 'Despesa'}
-                          </span>
-                        </td>
-                        <td style={{ fontWeight:500 }}>{t.description}</td>
-                        <td>
-                          <span style={{ fontSize:12, padding:'2px 8px', borderRadius:12,
-                            background:'rgba(99,102,241,.12)', color:'#6366f1' }}>
-                            {t.category}
-                          </span>
-                        </td>
-                        <td style={{ fontWeight:700,
-                          color: isReceita?'#22c55e':'#f87171' }}>
-                          {isReceita?'+':'-'}{formatBRL(t.amount)}
-                        </td>
-                        <td style={{ fontSize:13, color: isVencida?'#f87171':'var(--text)' }}>
-                          {isVencida && '⚠️ '}
-                          {new Date(t.due_date+'T00:00:00').toLocaleDateString('pt-BR')}
-                        </td>
-                        <td>
-                          <button onClick={()=>toggleStatus(t)}
-                            style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12,
-                              fontWeight:600, padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer',
-                              background: isPago?'rgba(34,197,94,.15)':'rgba(245,158,11,.15)',
-                              color: isPago?'#22c55e':'#f59e0b' }}>
-                            {isPago ? <CheckCircle size={12}/> : <Clock size={12}/>}
-                            {isPago ? 'Pago' : 'Pendente'}
-                          </button>
-                        </td>
-                        <td>
-                          <div style={{ display:'flex', gap:5 }}>
-                            <IconBtn onClick={()=>openEdit(t)} title="Editar" color="#6366f1">
-                              <Eye size={14}/>
-                            </IconBtn>
-                            <IconBtn onClick={()=>deleteTransaction(t)} title="Excluir" color="#f87171">
-                              <X size={14}/>
-                            </IconBtn>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
+                <tbody>{filtered.map(t => <TRow key={t.id} t={t}/>)}</tbody>
               </table>
             </div>
             <div style={{ padding:'10px 16px', fontSize:13, color:'var(--text-muted)', borderTop:'1px solid var(--border)',
               display:'flex', justifyContent:'space-between' }}>
-              <span>{filtered.length} lançamento(s)</span>
+              <span>{filtered.length} lançamento(s) · {vencidas > 0 && <span style={{color:'#f87171'}}>⚠️ {vencidas} vencido(s)</span>}</span>
               <span>
                 Receitas: <strong style={{ color:'#22c55e' }}>{formatBRL(filtered.filter(t=>t.type==='receita').reduce((s,t)=>s+t.amount,0))}</strong>
                 {' · '}
@@ -317,15 +356,207 @@ export default function FinanceiroPage() {
          )}
       </>)}
 
+      {/* ── CONTAS A RECEBER ── */}
+      {tab === 'receber' && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <div style={{ fontSize:14, color:'var(--text-muted)' }}>
+              {contasReceber.length} conta(s) pendente(s) · Total: <strong style={{color:'#22c55e'}}>{formatBRL(totalReceber)}</strong>
+            </div>
+            <button className="btn btn-primary" onClick={()=>openNew('receita')}><Plus size={15}/> Nova Receita</button>
+          </div>
+          {contasReceber.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon"><ArrowDownCircle size={40}/></div>
+              <h3>Nenhuma conta a receber.</h3>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Vencimento</th><th>Origem</th><th>Ações</th></tr>
+                  </thead>
+                  <tbody>
+                    {contasReceber.map(t => {
+                      const isVencida = t.due_date < hoje;
+                      return (
+                        <tr key={t.id}>
+                          <td style={{ fontWeight:500 }}>{t.description}</td>
+                          <td><span style={{ fontSize:12, padding:'2px 8px', borderRadius:12, background:'rgba(34,197,94,.12)', color:'#22c55e' }}>{t.category}</span></td>
+                          <td style={{ fontWeight:700, color:'#22c55e' }}>+{formatBRL(t.amount)}</td>
+                          <td style={{ fontSize:13, color:isVencida?'#f87171':'var(--text)' }}>
+                            {isVencida && '⚠️ '}{new Date(t.due_date+'T00:00:00').toLocaleDateString('pt-BR')}
+                          </td>
+                          <td>
+                            {t.origin && t.origin !== 'manual' ? (
+                              <span style={{ fontSize:11, padding:'2px 8px', borderRadius:8, background:'rgba(99,102,241,.15)', color:'#6366f1' }}>{t.origin}</span>
+                            ) : <span style={{ fontSize:11, color:'var(--text-muted)' }}>Manual</span>}
+                          </td>
+                          <td>
+                            <div style={{ display:'flex', gap:5 }}>
+                              <button onClick={()=>toggleStatus(t)}
+                                style={{ fontSize:12, padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer',
+                                  background:'rgba(34,197,94,.15)', color:'#22c55e', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
+                                <CheckCircle size={12}/> Recebido
+                              </button>
+                              <IconBtn onClick={()=>deleteTransaction(t)} title="Excluir" color="#f87171"><X size={14}/></IconBtn>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── CONTAS A PAGAR ── */}
+      {tab === 'pagar' && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <div style={{ fontSize:14, color:'var(--text-muted)' }}>
+              {contasPagar.length} conta(s) pendente(s) · Total: <strong style={{color:'#f87171'}}>{formatBRL(totalPagar)}</strong>
+            </div>
+            <button className="btn btn-secondary" style={{ color:'#f87171', borderColor:'rgba(248,113,113,.3)' }}
+              onClick={()=>openNew('despesa')}><Plus size={15}/> Nova Despesa</button>
+          </div>
+          {contasPagar.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon"><ArrowUpCircle size={40}/></div>
+              <h3>Nenhuma conta a pagar.</h3>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Vencimento</th><th>Origem</th><th>Ações</th></tr>
+                  </thead>
+                  <tbody>
+                    {contasPagar.map(t => {
+                      const isVencida = t.due_date < hoje;
+                      return (
+                        <tr key={t.id}>
+                          <td style={{ fontWeight:500 }}>{t.description}</td>
+                          <td><span style={{ fontSize:12, padding:'2px 8px', borderRadius:12, background:'rgba(248,113,113,.12)', color:'#f87171' }}>{t.category}</span></td>
+                          <td style={{ fontWeight:700, color:'#f87171' }}>-{formatBRL(t.amount)}</td>
+                          <td style={{ fontSize:13, color:isVencida?'#f87171':'var(--text)' }}>
+                            {isVencida && '⚠️ '}{new Date(t.due_date+'T00:00:00').toLocaleDateString('pt-BR')}
+                          </td>
+                          <td>
+                            {t.origin && t.origin !== 'manual' ? (
+                              <span style={{ fontSize:11, padding:'2px 8px', borderRadius:8, background:'rgba(99,102,241,.15)', color:'#6366f1' }}>{t.origin}</span>
+                            ) : <span style={{ fontSize:11, color:'var(--text-muted)' }}>Manual</span>}
+                          </td>
+                          <td>
+                            <div style={{ display:'flex', gap:5 }}>
+                              <button onClick={()=>toggleStatus(t)}
+                                style={{ fontSize:12, padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer',
+                                  background:'rgba(34,197,94,.15)', color:'#22c55e', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
+                                <CheckCircle size={12}/> Pago
+                              </button>
+                              <IconBtn onClick={()=>openEdit(t)} title="Editar" color="#6366f1"><Eye size={14}/></IconBtn>
+                              <IconBtn onClick={()=>deleteTransaction(t)} title="Excluir" color="#f87171"><X size={14}/></IconBtn>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── FLUXO DE CAIXA ── */}
+      {tab === 'fluxo' && (
+        <div>
+          {fluxoCaixa.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon"><Wallet size={40}/></div>
+              <h3>Nenhum lançamento pago ainda.</h3>
+              <p style={{ color:'var(--text-muted)', fontSize:14 }}>Os lançamentos marcados como pagos aparecerão aqui.</p>
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              {/* Saldo acumulado */}
+              {(() => {
+                const totalR = fluxoCaixa.reduce((s,[,d])=>s+d.receitas,0);
+                const totalD = fluxoCaixa.reduce((s,[,d])=>s+d.despesas,0);
+                const saldoTotal = totalR - totalD;
+                return (
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14, marginBottom:8 }}>
+                    {[
+                      { label:'Total Entradas', val:totalR, color:'#22c55e' },
+                      { label:'Total Saídas', val:totalD, color:'#f87171' },
+                      { label:'Saldo Acumulado', val:saldoTotal, color:saldoTotal>=0?'#6366f1':'#f87171' },
+                    ].map(s => (
+                      <div key={s.label} className="card" style={{ padding:16, borderTop:'3px solid '+s.color }}>
+                        <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:4 }}>{s.label}</div>
+                        <div style={{ fontSize:18, fontWeight:700, color:s.color }}>{formatBRL(s.val)}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {fluxoCaixa.map(([dia, dados]) => (
+                <div key={dia} className="card" style={{ overflow:'hidden' }}>
+                  <div style={{ padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center',
+                    borderBottom:'1px solid var(--border)', background:'rgba(255,255,255,.03)' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <Calendar size={16} style={{ color:'#6366f1' }}/>
+                      <strong style={{ fontSize:14 }}>
+                        {new Date(dia+'T00:00:00').toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' })}
+                      </strong>
+                    </div>
+                    <div style={{ display:'flex', gap:16, fontSize:13 }}>
+                      {dados.receitas > 0 && <span style={{ color:'#22c55e', fontWeight:600 }}>+{formatBRL(dados.receitas)}</span>}
+                      {dados.despesas > 0 && <span style={{ color:'#f87171', fontWeight:600 }}>-{formatBRL(dados.despesas)}</span>}
+                      <span style={{ color:dados.saldo>=0?'#6366f1':'#f87171', fontWeight:700 }}>
+                        Saldo: {dados.saldo>=0?'+':''}{formatBRL(dados.saldo)}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ padding:'8px 0' }}>
+                    {dados.items.map(t => (
+                      <div key={t.id} style={{ padding:'8px 16px', display:'flex', justifyContent:'space-between',
+                        alignItems:'center', borderBottom:'1px solid rgba(255,255,255,.04)', fontSize:13 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          {t.type==='receita'
+                            ? <TrendingUp size={14} style={{ color:'#22c55e' }}/>
+                            : <TrendingDown size={14} style={{ color:'#f87171' }}/>}
+                          <span>{t.description}</span>
+                          <span style={{ fontSize:11, padding:'1px 7px', borderRadius:8,
+                            background:'rgba(99,102,241,.12)', color:'#6366f1' }}>{t.category}</span>
+                        </div>
+                        <span style={{ fontWeight:700, color:t.type==='receita'?'#22c55e':'#f87171' }}>
+                          {t.type==='receita'?'+':'-'}{formatBRL(t.amount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── RESUMO ── */}
       {tab === 'resumo' && (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-          {/* Fluxo do mês */}
           <div className="card" style={{ padding:24 }}>
             <h3 style={{ fontSize:15, fontWeight:700, marginBottom:20 }}>📊 Fluxo do Mês</h3>
             {[
               { label:'Total Receitas', val:receitasMes, color:'#22c55e', pct:100 },
-              { label:'Total Despesas', val:despesasMes, color:'#f87171', pct: receitasMes>0?(despesasMes/receitasMes*100):0 },
+              { label:'Total Despesas', val:despesasMes, color:'#f87171', pct:receitasMes>0?(despesasMes/receitasMes*100):0 },
             ].map(item => (
               <div key={item.label} style={{ marginBottom:16 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:14 }}>
@@ -339,7 +570,7 @@ export default function FinanceiroPage() {
               </div>
             ))}
             <div style={{ marginTop:20, padding:'14px 16px', borderRadius:10,
-              background: saldoMes>=0?'rgba(34,197,94,.1)':'rgba(248,113,113,.1)',
+              background:saldoMes>=0?'rgba(34,197,94,.1)':'rgba(248,113,113,.1)',
               display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <span style={{ fontSize:14, fontWeight:600 }}>Saldo do Mês</span>
               <span style={{ fontSize:22, fontWeight:800, color:saldoMes>=0?'#22c55e':'#f87171' }}>
@@ -348,14 +579,13 @@ export default function FinanceiroPage() {
             </div>
           </div>
 
-          {/* Por categoria */}
           <div className="card" style={{ padding:24 }}>
             <h3 style={{ fontSize:15, fontWeight:700, marginBottom:20 }}>📂 Por Categoria</h3>
             {resumoCats.length === 0 ? (
               <div style={{ textAlign:'center', padding:'32px 0', color:'var(--text-muted)', fontSize:14 }}>
                 Nenhum lançamento pago no mês
               </div>
-            ) : resumoCats.slice(0,8).map(([cat, vals]) => (
+            ) : resumoCats.slice(0,10).map(([cat, vals]) => (
               <div key={cat} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
                 padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
                 <span style={{ fontSize:13, fontWeight:500 }}>{cat}</span>
@@ -374,7 +604,7 @@ export default function FinanceiroPage() {
         <div className="modal-overlay" onClick={()=>setShowModal(false)}>
           <div className="modal" style={{ maxWidth:500, width:'95%' }} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
-              <h2 className="modal-title" style={{ color: editType==='receita'?'#22c55e':'#f87171' }}>
+              <h2 className="modal-title" style={{ color:editType==='receita'?'#22c55e':'#f87171' }}>
                 {editType==='receita'?'📈':'📉'} {editing?'Editar':'Novo'} {editType==='receita'?'Receita':'Despesa'}
               </h2>
               <button onClick={()=>setShowModal(false)}><X size={18}/></button>
@@ -423,7 +653,7 @@ export default function FinanceiroPage() {
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={()=>setShowModal(false)}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}
-                  style={{ background: editType==='receita'?'linear-gradient(135deg,#22c55e,#16a34a)':'linear-gradient(135deg,#f87171,#dc2626)' }}>
+                  style={{ background:editType==='receita'?'linear-gradient(135deg,#22c55e,#16a34a)':'linear-gradient(135deg,#f87171,#dc2626)' }}>
                   <Save size={15}/> {saving?'Salvando...':'Salvar'}
                 </button>
               </div>

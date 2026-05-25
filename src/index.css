@@ -309,7 +309,7 @@ tbody tr:last-child { border-bottom: none; }
 .tab.active { background: var(--bg2); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
 
 /* ── Search bar ──────────────────────────────────────────── */
-.search-bar { position: relative; }
+.search-bar { position: relative; flex: 1; width: 100%; }
 .search-bar input { padding-left: 36px; }
 .search-bar svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text2); }
 

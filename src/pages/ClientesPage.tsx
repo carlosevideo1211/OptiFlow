@@ -2,17 +2,18 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
-  Plus, Search, Edit2, Phone, Download, Upload,
+  Plus, Search, Edit2, Phone, Download, Upload, Camera,
   Trash2, Users, Gift, DollarSign, Wifi, X, Save,
-  Eye, MessageCircle, Clock
+  Eye, MessageCircle
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import type { Customer } from '../types/index';
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
 function emptyForm() {
-  return { name:'', cpf:'', phone:'', whatsapp:'', email:'', birth_date:'', address:'', city:'', state:'', notes:'', active:true };
+  return { name:'', cpf:'', phone:'', whatsapp:'', email:'', birth_date:'', address:'', city:'', state:'', notes:'', active:true, photo_url:'' };
 }
 
 export default function ClientesPage() {
@@ -40,18 +41,13 @@ export default function ClientesPage() {
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
 
-  const hoje          = new Date();
-  const semanaFim     = new Date(hoje); semanaFim.setDate(hoje.getDate() + 7);
-  const totalAtivos   = customers.filter(c => c.active).length;
-  const aniversSemana = customers.filter(c => {
+  const totalAtivos = customers.filter(c => c.active).length;
+  const aniversariantes = customers.filter(c => {
     if (!c.birth_date) return false;
-    const d = new Date(c.birth_date + 'T00:00:00');
-    const aniv = new Date(hoje.getFullYear(), d.getMonth(), d.getDate());
-    return aniv >= hoje && aniv <= semanaFim;
-  }).length;
-  const aniversMes = customers.filter(c => {
-    if (!c.birth_date) return false;
-    return new Date(c.birth_date + 'T00:00:00').getMonth() === hoje.getMonth();
+    const hoje = new Date();
+    const nasc = new Date(c.birth_date + 'T00:00:00');
+    const diff = Math.ceil((new Date(hoje.getFullYear(), nasc.getMonth(), nasc.getDate()).getTime() - hoje.getTime()) / (1000*60*60*24));
+    return diff >= 0 && diff <= 7;
   }).length;
 
   const filtered = useMemo(() => {
@@ -76,7 +72,8 @@ export default function ClientesPage() {
     setViewing(null); setEditing(c);
     setForm({ name:c.name, cpf:c.cpf||'', phone:c.phone||'', whatsapp:c.whatsapp||'',
               email:c.email||'', birth_date:c.birth_date||'', address:c.address||'',
-              city:c.city||'', state:c.state||'', notes:c.notes||'', active:c.active });
+              city:c.city||'', state:c.state||'', notes:c.notes||'', active:c.active,
+              photo_url:(c as any).photo_url||'' });
     setShowModal(true);
   };
   const openView = (c: Customer) => { setEditing(null); setViewing(c); setShowModal(true); };
@@ -97,75 +94,82 @@ export default function ClientesPage() {
         toast.success('Cliente cadastrado!');
       }
       setShowModal(false); load();
-    } catch (err: any) { toast.error(err.message || 'Erro ao salvar'); }
+    } catch (err: any) { toast.error(err.message||'Erro ao salvar'); }
     finally { setSaving(false); }
   };
 
   const toggleActive = async (c: Customer) => {
     await supabase.from('customers').update({ active: !c.active }).eq('id', c.id);
-    toast.success(c.active ? 'Cliente inativado' : 'Cliente reativado');
-    load();
+    toast.success(c.active ? 'Cliente inativado' : 'Cliente reativado'); load();
   };
 
   const openWhatsApp = (c: Customer) => {
-    const num = (c.whatsapp || c.phone || '').replace(/\D/g, '');
-    if (!num) { toast.error('Nenhum número cadastrado'); return; }
-    window.open('https://wa.me/55' + num, '_blank');
+    const num = (c.whatsapp||c.phone||'').replace(/\D/g,'');
+    if (!num) { toast.error('Sem número cadastrado'); return; }
+    window.open('https://wa.me/55'+num, '_blank');
   };
 
-  const exportCSV = () => {
-    const header = 'Nome,CPF,Telefone,WhatsApp,Email,Nascimento,Endereço,Cidade,Estado';
-    const rows = filtered.map(c =>
-      [c.name,c.cpf,c.phone,c.whatsapp,c.email,c.birth_date,c.address,c.city,c.state]
-        .map(v => '"'+(v||'')+'"').join(','));
-    const blob = new Blob([header+'\n'+rows.join('\n')], { type:'text/csv' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = 'clientes.csv'; a.click(); toast.success('Exportado!');
+  const exportXLSX = () => {
+    const wb = XLSX.utils.book_new();
+    const dados = [
+      ['Nome','CPF','Telefone','WhatsApp','Email','Nascimento','Endereço','Cidade','Estado'],
+      ...filtered.map(c => [c.name,c.cpf||'',c.phone||'',c.whatsapp||'',c.email||'',c.birth_date||'',c.address||'',c.city||'',c.state||''])
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(dados);
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+    XLSX.writeFile(wb, 'clientes.xlsx');
+    toast.success('Exportado!');
   };
 
   const downloadModelo = () => {
-    const csv = 'Nome,CPF,Telefone,WhatsApp,Email,Nascimento (AAAA-MM-DD),Endereço,Cidade,Estado\nJoão Silva,123.456.789-00,(92) 99999-0000,(92) 99999-0000,joao@email.com,1985-03-15,Rua das Flores 123,Manaus,AM';
-    const blob = new Blob([csv], { type:'text/csv' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = 'modelo-clientes.csv'; a.click();
+    const wb = XLSX.utils.book_new();
+    const dados = [
+      ['Nome','CPF','Telefone','WhatsApp','Email','Nascimento','Endereço','Cidade','Estado'],
+      ['Maria da Silva','000.000.000-00','(92) 99999-0000','(92) 99999-0000','maria@email.com','1990-01-15','Rua A, 123','Manaus','AM'],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(dados);
+    XLSX.utils.book_append_sheet(wb, ws, 'Modelo');
+    XLSX.writeFile(wb, 'modelo_clientes.xlsx');
+    toast.success('Modelo baixado!');
   };
 
-  const importCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const importXLSX = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = async (ev) => {
-      const lines = (ev.target?.result as string).split('\n').slice(1).filter(l => l.trim());
+      const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
       let ok = 0, fail = 0;
-      for (const line of lines) {
-        const cols = line.split(',').map(c => c.replace(/^"|"$/g,'').trim());
-        if (!cols[0]) continue;
+      for (const row of rows.slice(1)) {
+        if (!row[0]) continue;
         const { error } = await supabase.from('customers').insert([{
-          tenant_id: tenantId, name:cols[0], cpf:cols[1]||null, phone:cols[2]||null,
-          whatsapp:cols[3]||null, email:cols[4]||null, birth_date:cols[5]||null,
-          address:cols[6]||null, city:cols[7]||null, state:cols[8]||null, active:true
+          tenant_id: tenantId, name: row[0], cpf: row[1]||null, phone: row[2]||null,
+          whatsapp: row[3]||null, email: row[4]||null, birth_date: row[5]||null,
+          address: row[6]||null, city: row[7]||null, state: row[8]||null, active: true
         }]);
         error ? fail++ : ok++;
       }
       toast.success('Importados: '+ok+' | Erros: '+fail); load();
     };
-    reader.readAsText(file); e.target.value = '';
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
   };
 
   const zerarClientes = async () => {
-    if (!confirm('Inativar TODOS os clientes?')) return;
-    await supabase.from('customers').update({ active: false }).eq('tenant_id', tenantId);
-    toast.success('Todos inativados'); load();
+    if (!confirm('Zerar TODOS os clientes?')) return;
+    await supabase.from('customers').delete().eq('tenant_id', tenantId);
+    toast.success('Clientes zerados!'); load();
   };
 
-  const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
+  const set = (k: string, v: any) => setForm(p => ({...p,[k]:v}));
 
   const IconBtn = ({ onClick, title, color, children }: any) => (
     <button onClick={onClick} title={title}
       style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)',
         borderRadius:7, padding:'5px 8px', cursor:'pointer', color: color||'var(--text-muted)',
-        display:'flex', alignItems:'center', transition:'all .15s' }}
-      onMouseEnter={e => (e.currentTarget.style.background='rgba(255,255,255,.12)')}
-      onMouseLeave={e => (e.currentTarget.style.background='rgba(255,255,255,.06)')}>
+        display:'flex', alignItems:'center' }}>
       {children}
     </button>
   );
@@ -180,11 +184,11 @@ export default function ClientesPage() {
           <p className="page-sub">Base de dados sincronizada com o Supabase Cloud</p>
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <button className="btn btn-secondary" onClick={exportCSV}><Download size={15}/> Exportar</button>
+          <button className="btn btn-secondary" onClick={exportXLSX}><Download size={15}/> Exportar</button>
           <button className="btn btn-secondary" onClick={downloadModelo}><Download size={15}/> Modelo</button>
           <label className="btn btn-secondary" style={{ cursor:'pointer' }}>
             <Upload size={15}/> Importar
-            <input type="file" accept=".csv" style={{ display:'none' }} onChange={importCSV}/>
+            <input type="file" accept=".xlsx,.csv" style={{ display:'none' }} onChange={importXLSX}/>
           </label>
           <button className="btn btn-secondary" onClick={zerarClientes} style={{ color:'#f87171' }}>
             <Trash2 size={15}/> Zerar
@@ -194,37 +198,36 @@ export default function ClientesPage() {
       </div>
 
       {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
         {[
-          { icon:<Users size={22}/>, val: totalAtivos, label:'Total de Clientes', sub:'cadastrados', color:'#6366f1' },
-          { icon:<Gift size={22}/>, val: aniversSemana, label:'Aniversariantes', sub:'próximos 7 dias', color:'#ec4899' },
-          { icon:<DollarSign size={22}/>, val:'R$ 0,00', label:'Crédito em Aberto', sub:'em crediário ativo', color:'#f59e0b' },
-          { icon:<Wifi size={22}/>, val:'Ativo', label:'Status do Cloud', sub:'Supabase conectado', color:'#22c55e' },
+          { icon:<Users size={20}/>,      val: totalAtivos,     label:'Total de Clientes',     color:'#6366f1' },
+          { icon:<Gift size={20}/>,       val: aniversariantes, label:'Aniversariantes 7 dias', color:'#f59e0b' },
+          { icon:<DollarSign size={20}/>, val: 'R$ 0,00',       label:'Crédito em Aberto',      color:'#22c55e' },
+          { icon:<Wifi size={20}/>,       val: 'Ativo',         label:'Status do Cloud',        color:'#06b6d4' },
         ].map((s,i) => (
-          <div key={i} className="card" style={{ padding:20, borderTop:'3px solid '+s.color }}>
+          <div key={i} className="card" style={{ padding:18, borderTop:'3px solid '+s.color }}>
             <div style={{ color:s.color, marginBottom:6 }}>{s.icon}</div>
-            <div style={{ fontSize: typeof s.val==='number'?28:20, fontWeight:700, color:s.color }}>{s.val}</div>
-            <div style={{ fontSize:12, color:'var(--text-muted)' }}>{s.label}</div>
-            <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{s.sub}</div>
+            <div style={{ fontSize:typeof s.val==='number'?24:16, fontWeight:700, color:s.color }}>{s.val}</div>
+            <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* Filtros */}
-      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
+      <div style={{ display:'flex', gap:10, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>
         <div className="search-bar" style={{ flex:1, minWidth:220 }}>
           <Search size={15}/>
-          <input className="form-input" placeholder="Pesquisar por nome, CPF ou telefone..." value={search} onChange={e => setSearch(e.target.value)}/>
+          <input className="form-input" placeholder="Pesquisar por nome, CPF ou telefone..." value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
-        <input className="form-input" style={{ width:160 }} placeholder="Filtrar cidade..." value={cityFilter} onChange={e => setCityFilter(e.target.value)}/>
-        <input className="form-input" type="date" style={{ width:150 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)}/>
-        <input className="form-input" type="date" style={{ width:150 }} value={dateTo} onChange={e => setDateTo(e.target.value)}/>
-      </div>
-      <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-        <button className={'btn '+(showBirthMonth?'btn-primary':'btn-secondary')} style={{ fontSize:12, padding:'6px 14px' }} onClick={() => setShowBirthMonth(v=>!v)}>
-          <Gift size={13}/> Aniversariantes do mês ({aniversMes})
+        <input className="form-input" style={{ width:140 }} placeholder="Filtrar cidade..." value={cityFilter} onChange={e=>setCityFilter(e.target.value)}/>
+        <input className="form-input" type="date" style={{ width:145 }} value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/>
+        <input className="form-input" type="date" style={{ width:145 }} value={dateTo} onChange={e=>setDateTo(e.target.value)}/>
+        <button className="btn btn-secondary" onClick={() => setShowBirthMonth(v=>!v)}
+          style={{ background: showBirthMonth?'rgba(245,158,11,.15)':'', color: showBirthMonth?'#f59e0b':'' }}>
+          <Gift size={15}/> Aniversariantes do mês ({customers.filter(c=>c.birth_date&&new Date(c.birth_date+'T00:00:00').getMonth()===new Date().getMonth()).length})
         </button>
-        <button className={'btn '+(showInactive?'btn-primary':'btn-secondary')} style={{ fontSize:12, padding:'6px 14px' }} onClick={() => setShowInactive(v=>!v)}>
+        <button className="btn btn-secondary" onClick={() => setShowInactive(v=>!v)}
+          style={{ background: showInactive?'rgba(99,102,241,.15)':'', color: showInactive?'#6366f1':'' }}>
           Incluir inativos
         </button>
       </div>
@@ -246,37 +249,36 @@ export default function ClientesPage() {
               </thead>
               <tbody>
                 {filtered.map(c => (
-                  <tr key={c.id}>
+                  <tr key={c.id} onClick={() => openView(c)} style={{ cursor:'pointer' }}>
                     <td>
                       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                        <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#06b6d4)',
-                          display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                          {c.name.slice(0,2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight:500 }}>{c.name}</div>
-                          {c.email && <div style={{ fontSize:12, color:'var(--text-muted)' }}>{c.email}</div>}
-                        </div>
+                        {(c as any).photo_url ? (
+                          <img src={(c as any).photo_url} alt="foto" style={{ width:36, height:36, borderRadius:'50%', objectFit:'cover', flexShrink:0 }}/>
+                        ) : (
+                          <div style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#06b6d4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                            {c.name.slice(0,2).toUpperCase()}
+                          </div>
+                        )}
+                        <span style={{ fontWeight:500 }}>{c.name}</span>
                       </div>
                     </td>
                     <td style={{ fontSize:13 }}>
-                      {c.phone ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><Phone size={13}/>{c.phone}</span> : '—'}
+                      {c.phone && <div style={{ display:'flex', alignItems:'center', gap:4 }}><Phone size={12}/> {c.phone}</div>}
                     </td>
                     <td style={{ fontSize:13, color:'var(--text-muted)' }}>{c.cpf||'—'}</td>
-                    <td style={{ fontSize:13 }}>{c.city ? c.city+'/'+c.state : '—'}</td>
+                    <td style={{ fontSize:13, color:'var(--text-muted)' }}>{c.city ? c.city+(c.state?'/'+c.state:'') : '—'}</td>
                     <td>
-                      <span style={{ padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:600,
+                      <span style={{ fontSize:12, fontWeight:600, padding:'3px 10px', borderRadius:20,
                         background: c.active?'rgba(34,197,94,.15)':'rgba(248,113,113,.15)',
                         color: c.active?'#22c55e':'#f87171' }}>
-                        {c.active?'Ativo':'Inativo'}
+                        {c.active ? 'Ativo' : 'Inativo'}
                       </span>
                     </td>
-                    <td>
+                    <td onClick={e => e.stopPropagation()}>
                       <div style={{ display:'flex', gap:5 }}>
-                        <IconBtn onClick={() => openView(c)} title="Ver detalhes" color="#94a3b8"><Eye size={14}/></IconBtn>
-                        <IconBtn onClick={() => openEdit(c)} title="Editar" color="#6366f1"><Edit2 size={14}/></IconBtn>
+                        <IconBtn onClick={() => openView(c)} title="Ver detalhes" color="#6366f1"><Eye size={14}/></IconBtn>
+                        <IconBtn onClick={() => openEdit(c)} title="Editar" color="#06b6d4"><Edit2 size={14}/></IconBtn>
                         <IconBtn onClick={() => openWhatsApp(c)} title="WhatsApp" color="#22c55e"><MessageCircle size={14}/></IconBtn>
-                        <IconBtn onClick={() => openView(c)} title="Histórico" color="#f59e0b"><Clock size={14}/></IconBtn>
                         <IconBtn onClick={() => toggleActive(c)} title={c.active?'Inativar':'Reativar'} color="#f87171"><Trash2 size={14}/></IconBtn>
                       </div>
                     </td>
@@ -294,7 +296,7 @@ export default function ClientesPage() {
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" style={{ maxWidth:620, width:'95%' }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth:860, width:'95%' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
                 {viewing ? 'Detalhes — '+viewing.name : editing ? 'Editar Cliente' : 'Novo Cliente'}
@@ -303,72 +305,112 @@ export default function ClientesPage() {
             </div>
 
             {viewing ? (
-              <div className="modal-body">
-                <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:20 }}>
-                  <div style={{ width:56, height:56, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#06b6d4)',
-                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, fontWeight:700, color:'#fff' }}>
-                    {viewing.name.slice(0,2).toUpperCase()}
+              <div className="modal-body" style={{ display:'flex', gap:24, alignItems:'flex-start' }}>
+                {/* Dados lado esquerdo */}
+                <div style={{ flex:1 }}>
+                  <div style={{ marginBottom:16 }}>
+                    <div style={{ fontSize:20, fontWeight:700 }}>{viewing.name}</div>
+                    <div style={{ fontSize:13, color:'var(--text-muted)', marginTop:4 }}>{viewing.email||'Sem e-mail'}</div>
                   </div>
-                  <div>
-                    <div style={{ fontSize:18, fontWeight:700 }}>{viewing.name}</div>
-                    <div style={{ fontSize:13, color:'var(--text-muted)' }}>{viewing.email||'Sem e-mail'}</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+                    {[
+                      ['CPF', viewing.cpf],
+                      ['Telefone', viewing.phone],
+                      ['WhatsApp', viewing.whatsapp],
+                      ['Nascimento', viewing.birth_date ? new Date(viewing.birth_date+'T00:00:00').toLocaleDateString('pt-BR') : null],
+                      ['Endereço', viewing.address],
+                      ['Cidade/Estado', viewing.city ? viewing.city+(viewing.state?'/'+viewing.state:'') : null],
+                      ['Observações', viewing.notes],
+                    ].map(([label, val]) => val ? (
+                      <div key={label as string} style={{ padding:'10px 14px', background:'var(--bg-card)', borderRadius:8 }}>
+                        <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:3 }}>{label}</div>
+                        <div style={{ fontSize:14, fontWeight:500 }}>{val}</div>
+                      </div>
+                    ) : null)}
+                  </div>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Fechar</button>
+                    <button className="btn btn-secondary" onClick={() => openWhatsApp(viewing)} style={{ color:'#22c55e' }}>
+                      <MessageCircle size={15}/> WhatsApp
+                    </button>
+                    <button className="btn btn-primary" onClick={() => openEdit(viewing)}><Edit2 size={15}/> Editar</button>
                   </div>
                 </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                  {[
-                    ['CPF', viewing.cpf],
-                    ['Telefone', viewing.phone],
-                    ['WhatsApp', viewing.whatsapp],
-                    ['Nascimento', viewing.birth_date ? new Date(viewing.birth_date+'T00:00:00').toLocaleDateString('pt-BR') : null],
-                    ['Endereço', viewing.address],
-                    ['Cidade/Estado', viewing.city ? viewing.city+'/'+viewing.state : null],
-                    ['Observações', viewing.notes],
-                  ].map(([label, val]) => val ? (
-                    <div key={label as string} style={{ padding:'10px 14px', background:'var(--bg-card)', borderRadius:8 }}>
-                      <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:3 }}>{label}</div>
-                      <div style={{ fontSize:14, fontWeight:500 }}>{val}</div>
+                {/* Foto grande lado direito */}
+                <div style={{ flexShrink:0, display:'flex', flexDirection:'column', gap:10, alignItems:'center' }}>
+                  {(viewing as any).photo_url ? (
+                    <img src={(viewing as any).photo_url} alt="foto"
+                      style={{ width:220, height:280, borderRadius:12, objectFit:'cover',
+                        border:'3px solid #6366f1', boxShadow:'0 4px 24px rgba(99,102,241,.3)' }}/>
+                  ) : (
+                    <div style={{ width:220, height:280, borderRadius:12,
+                      background:'linear-gradient(135deg,#6366f1,#06b6d4)',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontSize:64, fontWeight:700, color:'#fff',
+                      boxShadow:'0 4px 24px rgba(99,102,241,.3)' }}>
+                      {viewing.name.slice(0,2).toUpperCase()}
                     </div>
-                  ) : null)}
-                </div>
-                <div className="modal-footer" style={{ marginTop:16 }}>
-                  <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Fechar</button>
-                  <button className="btn btn-secondary" onClick={() => openWhatsApp(viewing)} style={{ color:'#22c55e' }}>
-                    <MessageCircle size={15}/> WhatsApp
-                  </button>
-                  <button className="btn btn-primary" onClick={() => openEdit(viewing)}><Edit2 size={15}/> Editar</button>
+                  )}
+                  <div style={{ fontSize:12, color:'var(--text-muted)', textAlign:'center' }}>Foto do cliente</div>
                 </div>
               </div>
             ) : (
               <form onSubmit={handleSave}>
                 <div className="modal-body">
+                  {/* Foto no form */}
+                  <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:16 }}>
+                    <div style={{ width:72, height:72, borderRadius:'50%', overflow:'hidden', flexShrink:0,
+                      background:'linear-gradient(135deg,#6366f1,#06b6d4)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      {form.photo_url ? (
+                        <img src={form.photo_url} alt="foto" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                      ) : (
+                        <span style={{ fontSize:22, fontWeight:700, color:'#fff' }}>
+                          {form.name ? form.name.slice(0,2).toUpperCase() : '?'}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <label style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, background:'rgba(99,102,241,.15)', color:'#6366f1', fontSize:13, fontWeight:600, cursor:'pointer', border:'1px solid rgba(99,102,241,.3)' }}>
+                        <Camera size={15}/> Câmera
+                        <input type="file" accept="image/*" capture="user" style={{ display:'none' }} onChange={e => { const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>set('photo_url',ev.target?.result as string); r.readAsDataURL(f); }}/>
+                      </label>
+                      <label style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, background:'rgba(255,255,255,.06)', color:'var(--text-muted)', fontSize:13, fontWeight:600, cursor:'pointer', border:'1px solid rgba(255,255,255,.1)' }}>
+                        <Upload size={15}/> Importar
+                        <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => { const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>set('photo_url',ev.target?.result as string); r.readAsDataURL(f); }}/>
+                      </label>
+                      {form.photo_url && <button type="button" onClick={() => set('photo_url','')} style={{ padding:'7px 10px', borderRadius:8, background:'rgba(248,113,113,.1)', color:'#f87171', border:'1px solid rgba(248,113,113,.3)', cursor:'pointer' }}><X size={14}/></button>}
+                    </div>
+                  </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
                     <div style={{ gridColumn:'1/-1' }}>
                       <label className="form-label">Nome completo *</label>
-                      <input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} required/>
+                      <input className="form-input" value={form.name} onChange={e=>set('name',e.target.value)} required/>
                     </div>
-                    <div><label className="form-label">CPF</label><input className="form-input" value={form.cpf} onChange={e => set('cpf', e.target.value)} placeholder="000.000.000-00"/></div>
-                    <div><label className="form-label">Data de nascimento</label><input className="form-input" type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)}/></div>
-                    <div><label className="form-label">Telefone</label><input className="form-input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(92) 99999-0000"/></div>
-                    <div><label className="form-label">WhatsApp</label><input className="form-input" value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="(92) 99999-0000"/></div>
-                    <div style={{ gridColumn:'1/-1' }}><label className="form-label">E-mail</label><input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)}/></div>
-                    <div style={{ gridColumn:'1/-1' }}><label className="form-label">Endereço</label><input className="form-input" value={form.address} onChange={e => set('address', e.target.value)}/></div>
-                    <div><label className="form-label">Cidade</label><input className="form-input" value={form.city} onChange={e => set('city', e.target.value)}/></div>
+                    <div><label className="form-label">CPF</label><input className="form-input" value={form.cpf} onChange={e=>set('cpf',e.target.value)} placeholder="000.000.000-00"/></div>
+                    <div><label className="form-label">Data de nascimento</label><input className="form-input" type="date" value={form.birth_date} onChange={e=>set('birth_date',e.target.value)}/></div>
+                    <div><label className="form-label">Telefone</label><input className="form-input" value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="(92) 99999-0000"/></div>
+                    <div><label className="form-label">WhatsApp</label><input className="form-input" value={form.whatsapp} onChange={e=>set('whatsapp',e.target.value)} placeholder="(92) 99999-0000"/></div>
+                    <div style={{ gridColumn:'1/-1' }}><label className="form-label">E-mail</label><input className="form-input" type="email" value={form.email} onChange={e=>set('email',e.target.value)}/></div>
+                    <div style={{ gridColumn:'1/-1' }}><label className="form-label">Endereço</label><input className="form-input" value={form.address} onChange={e=>set('address',e.target.value)}/></div>
+                    <div><label className="form-label">Cidade</label><input className="form-input" value={form.city} onChange={e=>set('city',e.target.value)}/></div>
                     <div><label className="form-label">Estado</label>
-                      <select className="form-input" value={form.state} onChange={e => set('state', e.target.value)}>
+                      <select className="form-input" value={form.state} onChange={e=>set('state',e.target.value)}>
                         <option value="">Selecione...</option>
-                        {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+                        {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
                       </select>
                     </div>
-                    <div style={{ gridColumn:'1/-1' }}><label className="form-label">Observações</label><textarea className="form-input" rows={3} value={form.notes} onChange={e => set('notes', e.target.value)}/></div>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <input type="checkbox" id="active" checked={form.active} onChange={e => set('active', e.target.checked)}/>
+                    <div style={{ gridColumn:'1/-1' }}><label className="form-label">Observações</label><textarea className="form-input" rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)}/></div>
+                    <div style={{ gridColumn:'1/-1', display:'flex', alignItems:'center', gap:8 }}>
+                      <input type="checkbox" id="active" checked={form.active} onChange={e=>set('active',e.target.checked)}/>
                       <label htmlFor="active" style={{ fontSize:14 }}>Cliente ativo</label>
                     </div>
                   </div>
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-                  <button type="submit" className="btn btn-primary" disabled={saving}><Save size={15}/> {saving?'Salvando...':'Salvar'}</button>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    <Save size={15}/> {saving ? 'Salvando...' : 'Salvar'}
+                  </button>
                 </div>
               </form>
             )}

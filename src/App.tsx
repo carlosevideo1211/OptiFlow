@@ -7,6 +7,10 @@ import RegisterPage from './pages/auth/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import ClientesPage from './pages/ClientesPage';
 import ConsultaPage from './pages/consulta/ConsultaPage';
+import AtendimentoPage from './pages/consulta/AtendimentoPage';
+import AgendaPage from './pages/AgendaPage';
+import HistoricoPage from './pages/consulta/HistoricoPage';
+import ProntuarioPage from './pages/consulta/ProntuarioPage';
 import OrdemServicoPage from './pages/OrdemServicoPage';
 import VendasPage from './pages/VendasPage';
 import ProdutosPage from './pages/ProdutosPage';
@@ -16,15 +20,15 @@ import FinanceiroPage from './pages/FinanceiroPage';
 import RelatoriosPage from './pages/RelatoriosPage';
 import CadastrosPage from './pages/CadastrosPage';
 import ConfiguracaoPage from './pages/ConfiguracaoPage';
+
+import NfePage from './pages/NfePage';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import AdminPanelPage from './pages/admin/AdminPanelPage';
 import TrialExpiredPage from './pages/TrialExpiredPage';
-
 function AppRoutes() {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // Rotas admin não precisam de AuthContext
   if (location.pathname.startsWith('/admin')) {
     return (
       <Routes>
@@ -65,6 +69,11 @@ function AppRoutes() {
             <Route path="/dashboard"    element={<DashboardPage />} />
             <Route path="/clientes"     element={<ClientesPage />} />
             <Route path="/consulta"     element={<ConsultaPage />} />
+            <Route path="/consulta/atendimento/novo" element={<AtendimentoPage />} />
+            <Route path="/consulta/atendimento/:id"  element={<AtendimentoPage />} />
+            <Route path="/consulta/historico/:customerId" element={<HistoricoPage />} />
+            <Route path="/consulta/prontuario/:customerId" element={<ProntuarioPage />} />
+            <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/os"           element={<OrdemServicoPage />} />
             <Route path="/vendas"       element={<VendasPage />} />
             <Route path="/produtos"     element={<ProdutosPage />} />
@@ -74,6 +83,7 @@ function AppRoutes() {
             <Route path="/relatorios"   element={<RelatoriosPage />} />
             <Route path="/cadastros"    element={<CadastrosPage />} />
             <Route path="/configuracao" element={<ConfiguracaoPage />} />
+            <Route path="/nfe"          element={<NfePage />} />
             <Route path="*"             element={<Navigate to="/dashboard" />} />
           </Routes>
         </Shell>
@@ -81,7 +91,6 @@ function AppRoutes() {
     </Routes>
   );
 }
-
 export default function App() {
   return (
     <BrowserRouter>
@@ -95,3 +104,9 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
+
+
+
+
+

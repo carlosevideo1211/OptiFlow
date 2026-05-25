@@ -5,6 +5,7 @@ import {
   Plus, Search, Edit2, Package, AlertTriangle,
   Download, Upload, Trash2, Layers, DollarSign, X, Save, CheckCircle
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
 
@@ -43,7 +44,8 @@ export default function ProdutosPage() {
 
   const ativos    = products.filter(p => p.active);
   const totalVal  = ativos.reduce((s,p) => s + p.sale_price * p.stock, 0);
-  const criticos  = ativos.filter(p => p.stock <= p.min_stock).length;
+  const criticos  = ativos.filter(p => p.stock > 0 && p.stock <= p.min_stock).length;
+  const zerados   = ativos.filter(p => p.stock === 0).length;
   const categorias = [...new Set(products.map(p => p.category))].length;
 
   const filtered = useMemo(() => {
@@ -90,46 +92,59 @@ export default function ProdutosPage() {
   };
 
   const exportCSV = () => {
-    const header = 'Nome,Código,Categoria,Marca,Preço Custo,Preço Venda,Estoque,Estoque Mínimo';
-    const rows = filtered.map(p =>
-      [p.name,p.code,p.category,p.brand,p.cost_price,p.sale_price,p.stock,p.min_stock]
-        .map(v => '"'+(v??'')+'"').join(','));
-    const blob = new Blob([header+'\n'+rows.join('\n')], { type:'text/csv' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = 'produtos.csv'; a.click(); toast.success('Exportado!');
+    const wb = XLSX.utils.book_new();
+    const dados = [
+      ['Nome','Codigo','Categoria','Marca','Preco Custo','Preco Venda','Estoque','Estoque Minimo'],
+      ...filtered.map(p => [p.name||'',p.code||'',p.category||'',p.brand||'',p.cost_price,p.sale_price,p.stock,p.min_stock])
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(dados);
+    ws['!cols'] = [{wch:35},{wch:14},{wch:20},{wch:18},{wch:14},{wch:14},{wch:12},{wch:16}];
+    XLSX.utils.book_append_sheet(wb, ws, 'Produtos');
+    XLSX.writeFile(wb, 'produtos.xlsx');
+    toast.success('Exportado!');
   };
 
   const downloadModelo = () => {
-    const csv = 'Nome,Código,Categoria,Marca,Preço Custo,Preço Venda,Estoque,Estoque Mínimo\nArmação Ray-Ban,RB-001,Armação,Ray-Ban,150,450,10,3';
-    const blob = new Blob([csv], { type:'text/csv' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = 'modelo-produtos.csv'; a.click();
+    const wb = XLSX.utils.book_new();
+    const dados = [
+      ['Nome','Codigo','Categoria','Marca','Preco Custo','Preco Venda','Estoque','Estoque Minimo'],
+      ['Exemplo Armacao Ray-Ban','RB-001','Armacao','Ray-Ban','150','450','10','3'],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(dados);
+    ws['!cols'] = [{wch:35},{wch:14},{wch:20},{wch:18},{wch:14},{wch:14},{wch:12},{wch:16}];
+    XLSX.utils.book_append_sheet(wb, ws, 'Modelo');
+    XLSX.writeFile(wb, 'modelo_produtos.xlsx');
+    toast.success('Modelo baixado!');
   };
 
-  const importCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const importCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = async (ev) => {
-      const lines = (ev.target?.result as string).split('\n').slice(1).filter(l => l.trim());
+      const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
       let ok = 0, fail = 0;
-      for (const line of lines) {
-        const c = line.split(',').map(v => v.replace(/^"|"$/g,'').trim());
-        if (!c[0]) continue;
+      for (const row of rows.slice(1)) {
+        if (!row[0]) continue;
         const { error } = await supabase.from('products').insert([{
-          tenant_id: tenantId, name:c[0], code:c[1]||null, category:c[2]||'Outro',
-          brand:c[3]||null, cost_price:parseFloat(c[4])||0, sale_price:parseFloat(c[5])||0,
-          stock:parseInt(c[6])||0, min_stock:parseInt(c[7])||5, active:true
+          tenant_id: tenantId, name: row[0], code: row[1]||null,
+          category: row[2]||'Outro', brand: row[3]||null,
+          cost_price: parseFloat(row[4])||0, sale_price: parseFloat(row[5])||0,
+          stock: parseInt(row[6])||0, min_stock: parseInt(row[7])||5, active: true
         }]);
         error ? fail++ : ok++;
       }
       toast.success('Importados: '+ok+' | Erros: '+fail); load();
     };
-    reader.readAsText(file); e.target.value = '';
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
   };
 
   const zerarEstoque = async () => {
     if (!confirm('Zerar o estoque de TODOS os produtos?')) return;
-    await supabase.from('products').update({ stock:0 }).eq('tenant_id', tenantId);
+    await supabase.from('products').update({ stock: 0 }).eq('tenant_id', tenantId);
     toast.success('Estoque zerado!'); load();
   };
 
@@ -161,7 +176,7 @@ export default function ProdutosPage() {
           <button className="btn btn-secondary" onClick={downloadModelo}><Download size={15}/> Modelo</button>
           <label className="btn btn-secondary" style={{ cursor:'pointer' }}>
             <Upload size={15}/> Importar
-            <input type="file" accept=".csv" style={{ display:'none' }} onChange={importCSV}/>
+            <input type="file" accept=".csv,.xlsx" style={{ display:'none' }} onChange={importCSV}/>
           </label>
           <button className="btn btn-secondary" onClick={zerarEstoque} style={{ color:'#f87171' }}>
             <Trash2 size={15}/> Zerar
@@ -171,18 +186,17 @@ export default function ProdutosPage() {
       </div>
 
       {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
         {[
-          { icon:<Package size={22}/>, val: ativos.length, label:'Total de Produtos', sub:'', color:'#6366f1' },
-          { icon:<DollarSign size={22}/>, val: formatBRL(totalVal), label:'Valor em Estoque', sub:'', color:'#22c55e' },
-          { icon:<AlertTriangle size={22}/>, val: criticos+' produto'+(criticos!==1?'s':''), label:'Estoque Crítico', sub:'abaixo do mínimo', color:'#f59e0b' },
-          { icon:<Layers size={22}/>, val: categorias, label:'Categorias', sub:'', color:'#06b6d4' },
+          { icon:<Package size={20}/>,      val: ativos.length,       label:'Total de Produtos', color:'#6366f1' },
+          { icon:<DollarSign size={20}/>,   val: formatBRL(totalVal), label:'Valor em Estoque',  color:'#22c55e' },
+          { icon:<AlertTriangle size={20}/>,val: criticos,            label:'Estoque Crítico',   color:'#f59e0b' },
+          { icon:<Layers size={20}/>,       val: categorias,          label:'Categorias',        color:'#06b6d4' },
         ].map((s,i) => (
-          <div key={i} className="card" style={{ padding:20, borderTop:'3px solid '+s.color }}>
+          <div key={i} className="card" style={{ padding:18, borderTop:'3px solid '+s.color }}>
             <div style={{ color:s.color, marginBottom:6 }}>{s.icon}</div>
-            <div style={{ fontSize:typeof s.val==='number'?28:20, fontWeight:700, color:s.color }}>{s.val}</div>
-            <div style={{ fontSize:12, color:'var(--text-muted)' }}>{s.label}</div>
-            {s.sub && <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{s.sub}</div>}
+            <div style={{ fontSize:typeof s.val==='number'?24:16, fontWeight:700, color:s.color }}>{s.val}</div>
+            <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -191,9 +205,9 @@ export default function ProdutosPage() {
       <div style={{ display:'flex', gap:10, marginBottom:20, flexWrap:'wrap' }}>
         <div className="search-bar" style={{ flex:1, minWidth:220 }}>
           <Search size={15}/>
-          <input className="form-input" placeholder="Pesquisar por nome, código ou marca..." value={search} onChange={e => setSearch(e.target.value)}/>
+          <input className="form-input" placeholder="Pesquisar por nome, código ou código de barras..." value={search} onChange={e => setSearch(e.target.value)}/>
         </div>
-        <select className="form-input" style={{ width:200 }} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+        <select className="form-input" style={{ width:180 }} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
           <option value="">Todas as Categorias</option>
           {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -216,7 +230,8 @@ export default function ProdutosPage() {
               </thead>
               <tbody>
                 {filtered.map(p => {
-                  const critico = p.stock <= p.min_stock;
+                  const zerado  = p.stock === 0;
+                  const critico = !zerado && p.stock <= p.min_stock;
                   const mg = p.cost_price > 0 ? (((p.sale_price - p.cost_price)/p.cost_price)*100).toFixed(0) : null;
                   return (
                     <tr key={p.id}>
@@ -237,18 +252,23 @@ export default function ProdutosPage() {
                       <td style={{ fontWeight:600 }}>{formatBRL(p.sale_price)}</td>
                       <td>
                         <div style={{ fontSize:13 }}>
-                          <span style={{ fontWeight:700, color: critico?'#f87171':'var(--text)' }}>{p.stock} un</span>
+                          <span style={{ fontWeight:700, color: zerado?'#f87171':critico?'#f59e0b':'var(--text)' }}>{p.stock} un</span>
                           <div style={{ fontSize:11, color:'var(--text-muted)' }}>Min {p.min_stock}</div>
                         </div>
                       </td>
                       <td>
-                        {critico ? (
-                          <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, fontWeight:600,
+                        {zerado ? (
+                          <span style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12, fontWeight:600,
+                            padding:'3px 10px', borderRadius:20, background:'rgba(248,113,113,.15)', color:'#f87171' }}>
+                            <X size={12}/> Zerado
+                          </span>
+                        ) : critico ? (
+                          <span style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12, fontWeight:600,
                             padding:'3px 10px', borderRadius:20, background:'rgba(245,158,11,.15)', color:'#f59e0b' }}>
                             <AlertTriangle size={12}/> Crítico
                           </span>
                         ) : (
-                          <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, fontWeight:600,
+                          <span style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12, fontWeight:600,
                             padding:'3px 10px', borderRadius:20, background:'rgba(34,197,94,.15)', color:'#22c55e' }}>
                             <CheckCircle size={12}/> Normal
                           </span>
@@ -266,8 +286,9 @@ export default function ProdutosPage() {
               </tbody>
             </table>
           </div>
-          <div style={{ padding:'10px 16px', fontSize:13, color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
-            {filtered.length} produto(s) | Total em estoque: {formatBRL(totalVal)}
+          <div style={{ padding:'10px 16px', fontSize:13, color:'var(--text-muted)', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between' }}>
+            <span>{filtered.length} produto(s)</span>
+            <span>Valor total: <strong style={{color:'#22c55e'}}>{formatBRL(totalVal)}</strong></span>
           </div>
         </div>
        )}
@@ -275,37 +296,73 @@ export default function ProdutosPage() {
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" style={{ maxWidth:580, width:'95%' }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth:560, width:'95%' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2 className="modal-title">{editing?'Editar Produto':'Novo Produto'}</h2>
+              <h2 className="modal-title">{editing ? 'Editar Produto' : 'Novo Produto'}</h2>
               <button onClick={() => setShowModal(false)}><X size={18}/></button>
             </div>
             <form onSubmit={handleSave}>
               <div className="modal-body">
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-                  <div style={{ gridColumn:'1/-1' }}><label className="form-label">Nome *</label><input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} required/></div>
-                  <div><label className="form-label">Código / SKU</label><input className="form-input" value={form.code} onChange={e => set('code', e.target.value)}/></div>
-                  <div><label className="form-label">Categoria</label>
+                  <div style={{ gridColumn:'1/-1' }}>
+                    <label className="form-label">Nome *</label>
+                    <input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} required/>
+                  </div>
+                  <div>
+                    <label className="form-label">Código / Referência</label>
+                    <input className="form-input" value={form.code} onChange={e => set('code', e.target.value)} placeholder="Ex: RB-001"/>
+                  </div>
+                  <div>
+                    <label className="form-label">Categoria</label>
                     <select className="form-input" value={form.category} onChange={e => set('category', e.target.value)}>
                       {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
-                  <div><label className="form-label">Marca</label><input className="form-input" value={form.brand} onChange={e => set('brand', e.target.value)}/></div>
-                  <div><label className="form-label">Descrição</label><input className="form-input" value={form.description} onChange={e => set('description', e.target.value)}/></div>
-                  <div><label className="form-label">Preço de Custo</label><input className="form-input" type="number" step="0.01" min="0" value={form.cost_price} onChange={e => set('cost_price', parseFloat(e.target.value)||0)}/></div>
-                  <div><label className="form-label">Preço de Venda</label><input className="form-input" type="number" step="0.01" min="0" value={form.sale_price} onChange={e => set('sale_price', parseFloat(e.target.value)||0)}/></div>
-                  <div><label className="form-label">Estoque inicial</label><input className="form-input" type="number" min="0" value={form.stock} onChange={e => set('stock', parseInt(e.target.value)||0)}/></div>
-                  <div><label className="form-label">Estoque mínimo</label><input className="form-input" type="number" min="0" value={form.min_stock} onChange={e => set('min_stock', parseInt(e.target.value)||0)}/></div>
+                  <div>
+                    <label className="form-label">Marca</label>
+                    <input className="form-input" value={form.brand} onChange={e => set('brand', e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="form-label">Preço de Custo (R$)</label>
+                    <input className="form-input" type="number" step="0.01" min="0"
+                      value={form.cost_price||''} onChange={e => set('cost_price', parseFloat(e.target.value)||0)}/>
+                  </div>
+                  <div>
+                    <label className="form-label">Preço de Venda (R$) *</label>
+                    <input className="form-input" type="number" step="0.01" min="0"
+                      value={form.sale_price||''} onChange={e => set('sale_price', parseFloat(e.target.value)||0)} required/>
+                  </div>
                   {form.cost_price > 0 && form.sale_price > 0 && (
-                    <div style={{ gridColumn:'1/-1', padding:'10px 14px', borderRadius:8, background:'rgba(99,102,241,.1)', fontSize:14 }}>
-                      Margem: <strong style={{ color:'#6366f1' }}>{margem}%</strong>
+                    <div style={{ gridColumn:'1/-1', padding:'8px 12px', borderRadius:8,
+                      background:'rgba(99,102,241,.08)', fontSize:13, color:'#6366f1' }}>
+                      Margem de lucro: <strong>{margem}%</strong>
                     </div>
                   )}
+                  <div>
+                    <label className="form-label">Estoque Inicial</label>
+                    <input className="form-input" type="number" min="0"
+                      value={form.stock||''} onChange={e => set('stock', parseInt(e.target.value)||0)}/>
+                  </div>
+                  <div>
+                    <label className="form-label">Estoque Mínimo</label>
+                    <input className="form-input" type="number" min="0"
+                      value={form.min_stock||''} onChange={e => set('min_stock', parseInt(e.target.value)||0)}/>
+                  </div>
+                  <div style={{ gridColumn:'1/-1' }}>
+                    <label className="form-label">Descrição</label>
+                    <textarea className="form-input" rows={2} value={form.description} onChange={e => set('description', e.target.value)}/>
+                  </div>
+                  <div style={{ gridColumn:'1/-1', display:'flex', alignItems:'center', gap:8 }}>
+                    <input type="checkbox" id="active" checked={form.active} onChange={e => set('active', e.target.checked)}/>
+                    <label htmlFor="active" style={{ fontSize:14 }}>Produto ativo</label>
+                  </div>
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}><Save size={15}/> {saving?'Salvando...':'Salvar'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  <Save size={15}/> {saving ? 'Salvando...' : 'Salvar'}
+                </button>
               </div>
             </form>
           </div>
