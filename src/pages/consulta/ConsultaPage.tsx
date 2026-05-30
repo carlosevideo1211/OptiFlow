@@ -126,7 +126,7 @@ export default function ConsultaPage() {
             { icon:<ClipboardList size={22}/>, val:total,       label:'Total de Consultas', color:'#6366f1' },
             { icon:<CheckCircle size={22}/>,   val:realizadas,  label:'Realizadas',          color:'#22c55e' },
             { icon:<Clock size={22}/>,         val:hoje_count,  label:'Hoje',                color:'#f59e0b' },
-            { icon:<Eye size={22}/>,           val:com_os,      label:'Com OS Gerada',       color:'#06b6d4' },
+            { icon:<Eye size={22}/>,           val:com_os,      label:'Com Receituário',       color:'#06b6d4' },
           ].map((s,i) => (
             <div key={i} className="card" style={{ padding:18, borderTop:'3px solid '+s.color }}>
               <div style={{ color:s.color, marginBottom:6 }}>{s.icon}</div>
@@ -163,13 +163,27 @@ export default function ConsultaPage() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Data</th><th>Cliente</th><th>Profissional</th><th>Receituário</th><th>Status</th><th>OS</th><th>Ações</th></tr>
+                  <tr><th>Data</th><th>Cliente</th><th>Profissional</th><th>Receituário</th><th>Status</th><th>Ações</th></tr>
                 </thead>
                 <tbody>
                   {filtered.map(c => {
                     const st = STATUS_MAP[c.status] || STATUS_MAP.agendada;
-                    const rxOD = c.od_esf ? `${c.od_esf}/${c.od_cil||''}/${c.od_eixo||''}` : '—';
-                    const rxOE = c.oe_esf ? `${c.oe_esf}/${c.oe_cil||''}/${c.oe_eixo||''}` : '—';
+                    const fmtN = (v: any) => {
+                      if (v == null || v === '') return null;
+                      const n = parseFloat(v);
+                      if (isNaN(n)) return null;
+                      return (n >= 0 ? '+' : '') + n.toFixed(2).replace('.', ',');
+                    };
+                    const fmtRx = (esf: any, cil: any, eixo: any) => {
+                      const e = fmtN(esf);
+                      if (!e) return '—';
+                      const c2 = fmtN(cil);
+                      const ax = eixo ? `x${parseInt(eixo)}` : '';
+                      return c2 ? `${e} ${c2} ${ax}`.trim() : e;
+                    };
+                    const rxOD = fmtRx(c.rx_re_esf, c.rx_re_cil, c.rx_re_eixo);
+                    const rxOE = fmtRx(c.rx_le_esf, c.rx_le_cil, c.rx_le_eixo);
+                    const rxAd = c.rx_adicao ? ` | Ad +${parseFloat(c.rx_adicao).toFixed(2).replace('.',',')}` : '';
                     return (
                       <tr key={c.id} onClick={() => openEdit(c)} style={{ cursor:'pointer' }}>
                         <td style={{ fontSize:13 }}>{formatDate ? formatDate(c.date) : c.date}</td>
@@ -186,7 +200,7 @@ export default function ConsultaPage() {
                         </td>
                         <td style={{ fontSize:13, color:'var(--text-muted)' }}>{c.professional_name||'—'}</td>
                         <td style={{ fontSize:13 }}>
-                          <span style={{ fontFamily:'monospace' }}>OD: {rxOD} / OE: {rxOE}</span>
+                          <span style={{ fontFamily:'monospace', fontSize:12 }}>OD: {rxOD} / OE: {rxOE}{rxAd}</span>
                         </td>
                         <td>
                           <span style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12,
@@ -195,7 +209,8 @@ export default function ConsultaPage() {
                             {st.icon} {st.label}
                           </span>
                         </td>
-                        <td>
+                        {/* coluna OS removida */}
+                        <td style={{display:'none'}}>
                           {c.generated_os ? (
                             <span style={{ fontSize:12, fontWeight:600, color:'#22c55e', display:'flex', alignItems:'center', gap:4 }}>
                               <CheckCircle size={13}/> Sim
