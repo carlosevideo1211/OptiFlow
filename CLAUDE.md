@@ -1,324 +1,347 @@
-# CLAUDE.md — OptiFlow & VisionProERP
-## Guia de Referência para Desenvolvimento e Solução de Problemas
-## Última atualização: Sessão 6 — 16/05/2026
+# VisionPro ERP — Melhorias Implementadas
+
+## Contexto
+Sistema ERP para óticas (SaaS multi-inquilino) construído em React + TypeScript + Supabase.
+Repositório: `C:/VisionProERP/VisionProErp_Oficial`
+Deploy: Vercel (visionproerp.com.br)
+Banco: Supabase (PostgreSQL)
 
 ---
 
-## 🏗️ ARQUITETURA DOS SISTEMAS
+## 1. Login de Funcionários (Multi-inquilino)
 
-### OptiFlow
-- **Produção:** https://opti-flow-teal.vercel.app
-- **Repositório:** https://github.com/carlosevideo1211/OptiFlow
-- **Supabase:** https://supabase.com/dashboard/project/fkwamdnstrbvgheosalz
-- **Pasta local:** C:\OptiFlow\optiflow
-- **Admin:** carlosevideo28@gmail.com
-- **Tenant teste:** carlosevideo@hotmail.com / carlos123
+**Problema:** Só o dono (Supabase Auth) conseguia logar. Funcionários não tinham acesso.
 
-### VisionProERP
-- **Produção:** https://www.visionproerp.com.br
-- **Repositório:** https://github.com/carlosevideo1211/VisionProERP_Oficial
-- **Supabase:** https://supabase.com/dashboard/project/vicxhfxvapwuxjsfnpzv
-- **Pasta local:** C:\VisionProERP\VisionProErp_Oficial
-- **Admin:** carlosevideo28@gmail.com
+**Solução:** Login alternativo via tabela `employees` quando Supabase Auth falha.
+
+**Arquivo:** `src/modules/auth/LoginPage.tsx`
+
+**Lógica:**
+```
+1. Tenta signInWithPassword (Supabase Auth) — dono da loja
+2. Se falhar, busca na tabela employees por email
+3. Valida access_password
+4. Salva sessão no localStorage como employee_session
+5. Redireciona para dashboard da loja correta
+```
+
+**Tabela employees necessária:**
+- `name` — nome real do funcionário (não email!)
+- `email` — email para login
+- `access_password` — senha de acesso
+- `active` — boolean
+- `tenant_id` — vincula ao inquilino
+- `role` — cargo
+
+**RLS necessário:**
+```sql
+CREATE POLICY "employees_login" ON employees FOR SELECT USING (true);
+CREATE POLICY "store_settings_public_read" ON store_settings FOR SELECT USING (true);
+```
+
+**useAuth.tsx:** Lê `employee_session` do localStorage e monta o estado de autenticação.
 
 ---
 
-## 🔐 AUTENTICAÇÃO — PROBLEMAS E SOLUÇÕES
+## 2. Pagamento Parcial no Crediário
 
-### PROBLEMA 1: Inquilino tratado como Admin (CRÍTICO)
-**Sintoma:** Login não redireciona. Console: `[Auth] Admin detectado, pulando perfil`
-**Causa:** `VITE_ADMIN_EMAIL` no Vercel vazio ou errado.
-**Solução:**
-1. Vercel → Environment Variables → `VITE_ADMIN_EMAIL=carlosevideo28@gmail.com` → Redeploy
-2. No código adicionar fallback:
+**Problema:** Sistema só aceitava pagamento total da parcela.
+
+**Solução:** Checkbox "Pagamento Parcial" no modal de baixa que:
+1. Aceita valor menor que o total
+2. Registra parcela original como "paga" com valor parcial
+3. Cria nova parcela com saldo restante e data escolhida pelo atendente
+
+**Arquivo:** `src/modules/crediario/CrediarioPage.tsx`
+
+**PayForm interface:**
 ```typescript
-const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || 'carlosevideo28@gmail.com';
+interface PayForm {
+    paid_amount: string;
+    paid_date: string;
+    operator_name: string;
+    operator_pass: string;
+    is_partial: boolean;
+    partial_due_date: string;
+}
 ```
 
-### PROBLEMA 2: Login não redireciona após signIn
-**Causa:** `setLoading(false)` chamado ANTES de `setUser()`.
-**Solução:**
+**Lógica handlePay:**
+```
+1. Valida operador na tabela employees (nome + access_password)
+2. Se parcial: cria nova installment com saldo = amount - paid
+3. Registra em installment_logs para auditoria
+4. Atualiza balance do customer
+5. Registra em financial_transactions
+```
+
+**Nova parcela criada com:**
+```javascript
+{
+    customer_id, customer_name, tenant_id,
+    amount: saldo,
+    status: 'aberta',
+    due_date: partial_due_date,
+    installment_number: numero_original,
+    installment_count: total_original,
+    notes: `Saldo parcela ${num} - pagamento parcial em ${data}`
+}
+```
+
+---
+
+## 3. Validação de Operador nas Baixas
+
+**Problema:** Campo "Nome do Operador" aceitava qualquer texto, inclusive email.
+
+**Solução:** Validar nome + senha contra tabela `employees` antes de processar baixa.
+
+**Arquivo:** `src/modules/crediario/CrediarioPage.tsx` — função `handlePay`
+
 ```typescript
-if (data) setUser(data as UserProfile); // setUser PRIMEIRO
-setLoading(false);                       // setLoading DEPOIS
+const { data: empList } = await supabase
+    .from('employees')
+    .select('id, name, access_password, active')
+    .eq('tenant_id', tenantId)
+    .ilike('name', payForm.operator_name.trim());
+
+if (!empList || empList.length === 0) {
+    alert('Funcionario nao encontrado.');
+    return;
+}
+if (String(emp.access_password).trim() !== payForm.operator_pass.trim()) {
+    alert('Senha incorreta.');
+    return;
+}
+const operatorNameVerified: string = emp.name;
 ```
 
-### PROBLEMA 3: Erro 406 no console (user_profiles)
-**Causa:** `.single()` retorna 406 quando não encontra registro.
-**Solução:** Usar `.maybeSingle()` + corrigir policy:
+---
+
+## 4. Histórico de Baixas (Auditoria)
+
+**Problema:** Não havia como saber quem deu baixa em cada parcela.
+
+**Solução:** Tabela `installment_logs` registra cada baixa automaticamente.
+
+**SQL para criar tabela:**
 ```sql
-DROP POLICY IF EXISTS "own_profile" ON user_profiles;
-CREATE POLICY "own_profile" ON user_profiles
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE TABLE IF NOT EXISTS installment_logs (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    tenant_id uuid NOT NULL,
+    installment_id uuid,
+    customer_name text,
+    installment_number int,
+    installment_count int,
+    amount numeric,
+    paid_amount numeric,
+    is_partial boolean DEFAULT false,
+    balance numeric DEFAULT 0,
+    operator_name text,
+    paid_date date,
+    created_at timestamptz DEFAULT now()
+);
+ALTER TABLE installment_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "logs_insert" ON installment_logs FOR INSERT WITH CHECK (true);
+CREATE POLICY "logs_select" ON installment_logs FOR SELECT USING (true);
 ```
 
-### PROBLEMA 4: Admin conflita com AuthContext
-**Solução no App.tsx:** Rotas admin FORA do AuthProvider:
+**Aba "Baixas Crediário"** adicionada em Relatórios Gerenciais:
+- Arquivo: `src/modules/reports/ReportsPage.tsx`
+- Componente: `BaixasTab`
+- Somente leitura — sem botões de edição/exclusão
+- Busca por cliente ou operador
+- Colunas: Data/Hora, Operador, Cliente, Parcela, Venc., Valor Parcela, Valor Pago, Saldo, Tipo
+
+---
+
+## 5. Comprovante Profissional de Pagamento
+
+**Problema:** Comprovante era simples, sem identidade visual da ótica.
+
+**Solução:** Recibo profissional com logo, CNPJ, endereço e detalhamento de pagamento parcial.
+
+**Arquivo:** `src/modules/crediario/CrediarioPage.tsx` — função `printInstallment`
+
+**Estrutura do recibo:**
+- Logo da ótica (busca do localStorage)
+- Nome da ótica em maiúsculas
+- CNPJ e endereço
+- "RECIBO DE PAGAMENTO"
+- Nome do cliente
+- Valor pago em destaque
+- Para pagamento parcial: tabela amarela com valor total, valor recebido e saldo restante em laranja
+- Referência à parcela e vencimento
+- Assinatura da ótica
+- Impressão automática via `window.print()`
+
+---
+
+## 6. Ranking de Clientes (Ouro/Prata/Bronze)
+
+**Problema:** Não havia como identificar rapidamente clientes bons e inadimplentes.
+
+**Solução:** Badge automático baseado no histórico de pagamentos.
+
+**Arquivo:** `src/modules/customers/CustomerPage.tsx`
+
+**Regras:**
+- **Ouro (★):** Todas as parcelas pagas sem atraso
+- **Prata (●):** Pagou mas com atraso em alguma parcela
+- **Bronze (◆):** Tem parcelas vencidas em aberto
+
+**Função calcRanking:**
 ```typescript
-<Route path="/admin-login" element={<AdminLoginPage />} />
-<Route path="/admin/*" element={<AdminPanelPage />} />
-<AuthProvider>
-  <Route path="/*" element={<Shell>...</Shell>} />
-</AuthProvider>
+function calcRanking(insts: InstallRecord[]): RankingData {
+    const pagas = insts.filter(i => i.status === 'paga');
+    const vencidas = insts.filter(i => i.status === 'vencida');
+    const comAtraso = pagas.filter(i =>
+        i.due_date && new Date(i.due_date + 'T00:00:00') < new Date()
+    ).length;
+    if (vencidas.length > 0) return 'bronze';
+    if (comAtraso > 0) return 'prata';
+    if (pagas.length > 0) return 'ouro';
+    return null;
+}
 ```
 
----
+**Aparece em:**
+1. Lista de clientes — badge ao lado do nome
+2. Modal de detalhes do cliente — badge no header
 
-## 📝 REGISTRO DE TENANTS — PROBLEMAS E SOLUÇÕES
-
-### PROBLEMA 5: "Database error saving new user" (CRÍTICO — OptiFlow)
-**Causa:** Trigger `on_auth_user_created` não existe ou coluna errada.
-**⚠️ ATENÇÃO:** Coluna de trial = **`trial_end_date`** (date), NÃO `trial_ends_at`.
-**Solução:**
-```sql
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP FUNCTION IF EXISTS handle_new_user();
-
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
-DECLARE new_tenant_id uuid;
-BEGIN
-  INSERT INTO public.tenants (company_name, email, plan, status, trial_end_date)
-  VALUES (COALESCE(NEW.raw_user_meta_data->>'full_name', 'Minha Ótica'),
-    NEW.email, 'trial', 'trial', (NOW() + INTERVAL '14 days')::date)
-  RETURNING id INTO new_tenant_id;
-
-  INSERT INTO public.user_profiles (id, tenant_id, full_name, email, role)
-  VALUES (NEW.id, new_tenant_id,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', 'Usuário'), NEW.email, 'master');
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
-```
-
----
-
-## 🏢 VISIONPROERP — PROBLEMAS E SOLUÇÕES
-
-### PROBLEMA 6: Inquilino cadastrado mas login/comandos não funcionam
-**Causa raiz:** Ordem errada de criação — `user_profiles` criado ANTES do `tenant`.
-**⚠️ REGRA:** No VisionProERP NÃO usar trigger `on_auth_user_created` — conflita com provisionamento manual.
-
-**Ordem correta:**
-```
-tenant → branch → store_settings → user_profiles → employee
-```
-
-**Solução — Função provision_new_tenant no Supabase:**
-```sql
-CREATE OR REPLACE FUNCTION provision_new_tenant(
-  p_tenant_id uuid, p_company_name text, p_email text, p_plan text,
-  p_user_id uuid, p_username text, p_mrr_value numeric DEFAULT 0,
-  p_phone text DEFAULT NULL, p_whatsapp text DEFAULT NULL, p_nfe_enabled boolean DEFAULT false
-)
-RETURNS json LANGUAGE plpgsql SECURITY DEFINER AS $$
-DECLARE v_branch_id uuid; v_trial_end date;
-BEGIN
-  v_trial_end := (NOW() + INTERVAL '14 days')::date;
-
-  INSERT INTO public.tenants (id, company_name, email, plan, status, trial_end_date, mrr_value, phone, whatsapp, nfe_enabled)
-  VALUES (p_tenant_id, p_company_name, p_email, p_plan, 'trial', v_trial_end, p_mrr_value, p_phone, p_whatsapp, p_nfe_enabled)
-  ON CONFLICT (id) DO UPDATE SET company_name = EXCLUDED.company_name, email = EXCLUDED.email, plan = EXCLUDED.plan;
-
-  INSERT INTO public.branches (tenant_id, name, is_main_branch, active)
-  VALUES (p_tenant_id, 'Matriz - ' || p_company_name, true, true)
-  ON CONFLICT DO NOTHING RETURNING id INTO v_branch_id;
-
-  IF v_branch_id IS NULL THEN
-    SELECT id INTO v_branch_id FROM public.branches WHERE tenant_id = p_tenant_id AND is_main_branch = true LIMIT 1;
-  END IF;
-
-  INSERT INTO public.store_settings (id, tenant_id, branch_id, name, email)
-  VALUES (gen_random_uuid(), p_tenant_id, v_branch_id, p_company_name, p_email)
-  ON CONFLICT DO NOTHING;
-
-  INSERT INTO public.user_profiles (id, tenant_id, full_name, username, role, active)
-  VALUES (p_user_id, p_tenant_id, p_company_name, p_username, 'master', true)
-  ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, full_name = EXCLUDED.full_name, role = EXCLUDED.role, active = EXCLUDED.active;
-
-  INSERT INTO public.employees (id, tenant_id, name, email, role, active)
-  VALUES (p_user_id, p_tenant_id, 'Administrador ' || p_company_name, p_email, 'master', true)
-  ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, name = EXCLUDED.name, role = EXCLUDED.role, active = EXCLUDED.active;
-
-  RETURN json_build_object('success', true, 'tenant_id', p_tenant_id, 'branch_id', v_branch_id);
-EXCEPTION WHEN OTHERS THEN
-  RETURN json_build_object('success', false, 'error', SQLERRM);
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION provision_new_tenant TO authenticated;
-```
-
-### PROBLEMA 7: "duplicate key value violates unique constraint tenants_pkey"
-**Causa:** Bloco antigo `// 2. Criar o Inquilino` ainda existia no SaasAdminPage.tsx.
-**Solução:** Remover o bloco antigo — manter apenas a chamada `provision_new_tenant`.
-
-### PROBLEMA 8: Usuários órfãos no Auth após excluir tenant
-**Sintoma:** "User already registered" ao tentar recadastrar.
-**Diagnóstico:**
-```sql
-SELECT au.id, au.email FROM auth.users au
-LEFT JOIN public.user_profiles up ON up.id = au.id
-WHERE up.id IS NULL AND au.email != 'carlosevideo28@gmail.com';
-```
-**Solução:**
-```sql
-DELETE FROM auth.users WHERE id IN ('id1', 'id2', ...);
-```
-
-### PROBLEMA 9: Botão Sair não aparece para alguns inquilinos
-**Causa:** Sidebar muito longo — footer cortado pela altura da tela.
-**Solução aplicada:** Mover botão Sair para o TOPO do sidebar (ao lado do logo) — sempre visível independente da altura:
-```tsx
-// Em Sidebar.tsx — dentro do sidebar-logo div
-<button onClick={logout} style={{ display: 'flex', alignItems: 'center', gap: 4, ... }}>
-  <LogOut size={14} />
-  <span>Sair</span>
-</button>
-```
-**⚠️ LIÇÃO:** Quando CSS não resolve após 3 tentativas, mudar a abordagem — mover o elemento para posição sempre visível.
-
-### PROBLEMA 10: Contagem de produtos incorreta (máx 1000)
-**Causa:** Supabase retorna máximo 1000 registros por padrão. Com 1948 produtos, stats ficavam errados.
-**Solução:** Usar queries separadas com `count: 'exact'` e `head: true` para contar sem buscar dados:
+**useEffect para calcular rankings:**
 ```typescript
-const { count: totalCount } = await supabase
-  .from('products')
-  .select('*', { count: 'exact', head: true })
-  .eq('tenant_id', user.tenantId)
-  .eq('active', true);
+useEffect(() => {
+    const ids = customers.map(c => c.id);
+    supabase.from('installments')
+        .select('customer_id,due_date,status')
+        .eq('tenant_id', tid)
+        .in('customer_id', ids)
+        .then(({ data }) => {
+            // agrupa por customer_id e calcula ranking
+            setRankings(nr);
+        });
+}, [customers, user?.tenantId]);
 ```
 
-### PROBLEMA 11: Estoque crítico sempre zero
-**Causa:** Não é possível comparar duas colunas diretamente no Supabase client (`stock <= min_stock`).
-**Solução:** Criar função RPC no Supabase:
+---
+
+## 7. Anexo de Receitas nos Clientes
+
+**Problema:** Receitas óticas eram anotadas em papel, sem digitalização.
+
+**Solução:** Modal para upload de fotos/PDFs de receitas vinculados ao cliente.
+
+**Tabela necessária:**
 ```sql
-CREATE OR REPLACE FUNCTION count_critical_products(p_tenant_id uuid)
-RETURNS bigint LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT COUNT(*)::bigint FROM products
-  WHERE tenant_id = p_tenant_id
-  AND active = true
-  AND min_stock > 0
-  AND stock <= min_stock;
-$$;
-GRANT EXECUTE ON FUNCTION count_critical_products TO authenticated;
-GRANT EXECUTE ON FUNCTION count_critical_products TO anon;
+CREATE TABLE IF NOT EXISTS customer_receitas (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    customer_id uuid NOT NULL,
+    tenant_id uuid NOT NULL,
+    arquivo_url text,
+    created_at timestamptz DEFAULT now()
+);
+ALTER TABLE customer_receitas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "receitas_all" ON customer_receitas FOR ALL USING (true);
 ```
-E chamar via `supabase.rpc('count_critical_products', { p_tenant_id: user.tenantId })`.
 
----
-
-## 🔒 BANCO DE DADOS — RLS E POLÍTICAS
-
-### Função get_tenant_id (OptiFlow)
+**Storage Supabase:** Bucket `arquivos` (público)
 ```sql
-CREATE OR REPLACE FUNCTION get_tenant_id()
-RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT tenant_id FROM user_profiles WHERE id = auth.uid() LIMIT 1
-$$;
+CREATE POLICY "arquivos_all" ON storage.objects
+FOR ALL USING (bucket_id = 'arquivos')
+WITH CHECK (bucket_id = 'arquivos');
 ```
 
-### Políticas RLS
+**Componente AnexoModal:**
+- Ícone 📎 amarelo nas ações da tabela de clientes
+- Upload de imagens e PDFs
+- Visualização em grid 2 colunas
+- Viewer fullscreen ao clicar em "Abrir"
+- Botão excluir (remove do storage e da tabela)
+
+---
+
+## 8. Tela de Clientes Mais Larga
+
+**Arquivo:** `src/modules/customers/CustomerPage.tsx`
+
+**Mudança:** `maxWidth: 1160` → `maxWidth: 1600`
+
+---
+
+## 9. Tabelas Criadas no Supabase
+
+| Tabela | Finalidade |
+|--------|-----------|
+| `installment_logs` | Auditoria de baixas no crediário |
+| `customer_receitas` | Anexos de receitas dos clientes |
+
+---
+
+## 10. Políticas RLS Criadas
+
 ```sql
-CREATE POLICY "tenant_isolation" ON [tabela]
-  FOR ALL TO authenticated
-  USING (tenant_id = get_tenant_id())
-  WITH CHECK (tenant_id = get_tenant_id());
+-- Funcionários
+CREATE POLICY "employees_login" ON employees FOR SELECT USING (true);
 
-CREATE POLICY "admin_read_all" ON tenants
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+-- Loja
+CREATE POLICY "store_settings_public_read" ON store_settings FOR SELECT USING (true);
+
+-- Dados
+CREATE POLICY "customers_employee_read" ON customers FOR SELECT USING (true);
+CREATE POLICY "sales_employee_read" ON sales FOR SELECT USING (true);
+CREATE POLICY "service_orders_employee_read" ON service_orders FOR SELECT USING (true);
+CREATE POLICY "products_employee_read" ON products FOR SELECT USING (true);
+CREATE POLICY "receitas_all" ON customer_receitas FOR ALL USING (true);
+CREATE POLICY "logs_insert" ON installment_logs FOR INSERT WITH CHECK (true);
+CREATE POLICY "logs_select" ON installment_logs FOR SELECT USING (true);
+CREATE POLICY "arquivos_all" ON storage.objects FOR ALL USING (bucket_id = 'arquivos') WITH CHECK (bucket_id = 'arquivos');
 ```
 
-### Índices de Performance
-```sql
-CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
--- (repetir para todas as tabelas com tenant_id)
+---
+
+## Padrão de Scripts Python para Correções
+
+Os fixes são feitos via scripts Python que manipulam os arquivos TSX diretamente:
+
+```python
+path = 'C:/VisionProERP/.../ComponentName.tsx'
+with open(path, encoding='utf-8') as f:
+    content = f.read()
+
+OLD = """bloco exato do codigo"""
+NEW = """novo codigo"""
+
+if OLD in content:
+    content = content.replace(OLD, NEW, 1)
+    print("Fix OK")
+
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(content)
 ```
 
----
+**IMPORTANTE:** Nunca usar emojis diretamente nas strings Python — usar código Unicode `\uXXXX`.
 
-## 🌐 VERCEL — VARIÁVEIS OBRIGATÓRIAS
-
-| Variável | Valor |
-|----------|-------|
-| `VITE_SUPABASE_URL` | URL do projeto Supabase |
-| `VITE_SUPABASE_ANON_KEY` | Chave anônima |
-| `VITE_ADMIN_EMAIL` | `carlosevideo28@gmail.com` |
-| `VITE_APP_NAME` | Nome do sistema |
-
-**⚠️ Após alterar variável → Redeploy obrigatório!**
-
----
-
-## 📋 CHECKLIST — NOVO DEPLOY
-
-- [ ] Trigger `on_auth_user_created` (OptiFlow) ou `provision_new_tenant` (VisionProERP)
-- [ ] Função `get_tenant_id()` criada
-- [ ] RLS ativo em todas as tabelas
-- [ ] Políticas `tenant_isolation` aplicadas
-- [ ] Índices de performance criados
-- [ ] `VITE_ADMIN_EMAIL` no Vercel correto
-- [ ] Registro/provisionamento testado
-- [ ] Login do inquilino funcionando
-- [ ] Login do admin funcionando
-- [ ] Console sem erros 406/500
-- [ ] Usuários órfãos no Auth limpos
-- [ ] Botão Sair visível em todos os tenants
-
----
-
-## 🗺️ PLANO OPTIFLOW — STATUS ATUAL
-
-| Fase | Status |
-|------|--------|
-| Fundação — Banco, RLS, trigger, índices | ✅ CONCLUÍDO |
-| Piso 1 — Auth, login, registro, trial | ✅ CONCLUÍDO |
-| Piso 2 — Clientes, Produtos | 🔄 PRÓXIMO |
-| Piso 3 — Consulta/Rx completa | ⏳ |
-| Piso 4 — OS integrada | ⏳ |
-| Piso 5 — PDV/Vendas | ⏳ |
-| Piso 6 — Estoque | ⏳ |
-| Piso 7 — Crediário | ⏳ |
-| Piso 8 — Financeiro | ⏳ |
-| Cobertura — Relatórios, Dashboard | ⏳ |
-| Acabamento — Cadastros, Configuração | ⏳ |
-| Telhado — Admin SaaS | ⏳ |
-| Externo — NF, Landing, Pagamento | ⏳ |
-
----
-
-## 🔧 COMANDOS ÚTEIS
-
+**Deploy:**
 ```powershell
-# OptiFlow
-cd C:\OptiFlow\optiflow
-npm run dev
-git add . && git commit -m "feat/fix: descrição" && git push
-
-# VisionProERP
-cd C:\VisionProERP\VisionProErp_Oficial
-npm run dev
-git add . && git commit -m "feat/fix: descrição" && git push
-
-# Verificar TypeScript
-npx tsc --noEmit 2>&1 | Select-Object -First 20
-
-# Forçar redeploy
-git commit --allow-empty -m "chore: force redeploy" && git push
+npm run build
+git add .
+git commit -m "mensagem"
+git push
 ```
+Vercel faz deploy automático. Para forçar sem cache: Vercel Dashboard → Deployments → Redeploy → desmarcar "Use existing Build Cache".
 
 ---
 
-## 💡 PRINCÍPIOS DE DESENVOLVIMENTO
+## Estrutura de Arquivos Principais
 
-1. **Da base para o topo** — nunca pular etapas
-2. **Quando CSS não resolve em 3 tentativas** — mudar abordagem (ex: mover elemento)
-3. **Ordem de criação no banco** — tenant → branch → store → user_profile → employee
-4. **Nunca usar trigger no VisionProERP** — usa provision_new_tenant
-5. **Queries com mais de 1000 registros** — usar `count: 'exact', head: true`
-6. **Comparar colunas no Supabase** — usar função RPC, não client-side filter
+```
+src/
+  modules/
+    auth/LoginPage.tsx          — Login dono + funcionário
+    customers/CustomerPage.tsx  — Clientes + ranking + anexos
+    crediario/CrediarioPage.tsx — Crediário + pagamento parcial + auditoria
+    reports/ReportsPage.tsx     — Relatórios + aba Baixas Crediário
+  hooks/
+    useAuth.tsx                 — Estado de autenticação (dono e funcionário)
+```
