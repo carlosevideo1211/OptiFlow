@@ -169,7 +169,7 @@ export default function CadastrosPage() {
   const openNewFunc = () => { setEditingFunc(null); setFuncForm(emptyFuncForm()); setShowFuncModal(true); };
   const openEditFunc = (f: Funcionario) => {
     setEditingFunc(f);
-    setFuncForm({ name:f.name, cargo:f.cargo||'Vendedor(a)', cpf:f.cpf||'', phone:f.phone||'', comissao:f.comissao||0 });
+    setFuncForm({ name:f.name, cargo:f.cargo||'Vendedor(a)', cpf:f.cpf||'', phone:f.phone||'', email:f.email||'', access_password:f.access_password||'', comissao:f.comissao||0 });
     setShowFuncModal(true);
   };
   const handleSaveFunc = async (e: React.FormEvent) => {
