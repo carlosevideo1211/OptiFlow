@@ -32,11 +32,74 @@ export default function ClientesPage() {
   const [form, setForm]           = useState(emptyForm());
   const [saving, setSaving]       = useState(false);
 
+  const [rankings, setRankings] = useState<Record<string, string|null>>({});
+
+  // Calcular ranking de cada cliente baseado no historico de parcelas
+  const calcRankings = async (ids: string[], tid: string) => {
+    if (!ids.length) return;
+    // Buscar crediarios dos clientes
+    const { data: creds } = await supabase
+      .from('crediario')
+      .select('id, customer_id')
+      .eq('tenant_id', tid)
+      .in('customer_id', ids);
+    if (!creds || !creds.length) return;
+    const credMap: Record<string, string> = {};
+    creds.forEach((c: any) => { credMap[c.id] = c.customer_id; });
+    const credIds = creds.map((c: any) => c.id);
+    // Buscar parcelas desses crediarios
+    const { data } = await supabase
+      .from('crediario_parcelas')
+      .select('crediario_id, due_date, status, paid_at')
+      .in('crediario_id', credIds);
+    if (!data) return;
+    const map: Record<string, string[]> = {};
+    data.forEach((p: any) => {
+      const cid = credMap[p.crediario_id];
+      if (!cid) return;
+      if (!map[cid]) map[cid] = [];
+      map[cid].push(JSON.stringify({ due_date: p.due_date, status: p.status, paid_at: p.paid_at }));
+    });
+    const nr: Record<string, string|null> = {};
+    ids.forEach(id => {
+      const parcelas = (map[id] || []).map((s: string) => JSON.parse(s));
+      const pagas = parcelas.filter((p: any) => p.status === 'paga' || p.status === 'pago');
+      const vencidas = parcelas.filter((p: any) => p.status === 'vencida' || p.status === 'vencido');
+      const comAtraso = pagas.filter((p: any) => {
+        if (!p.due_date || !p.paid_at) return false;
+        return new Date(p.paid_at) > new Date(p.due_date);
+      }).length;
+      if (vencidas.length > 0) nr[id] = 'bronze';
+      else if (comAtraso > 0) nr[id] = 'prata';
+      else if (pagas.length > 0) nr[id] = 'ouro';
+      else nr[id] = null;
+    });
+    setRankings(nr);
+  };
+
+  const rankBadge = (tier: string|null) => {
+    if (!tier) return null;
+    const styles: Record<string, {bg: string, color: string, label: string}> = {
+      ouro:   { bg: 'rgba(234,179,8,.2)',  color: '#eab308', label: '★ Ouro' },
+      prata:  { bg: 'rgba(148,163,184,.2)', color: '#94a3b8', label: '● Prata' },
+      bronze: { bg: 'rgba(180,83,9,.2)',   color: '#b45309', label: '◆ Bronze' },
+    };
+    const s = styles[tier];
+    return (
+      <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:10,
+        background: s.bg, color: s.color, marginLeft:6 }}>
+        {s.label}
+      </span>
+    );
+  };
+
   const load = async () => {
     setLoading(true);
     const { data } = await supabase.from('customers').select('*').eq('tenant_id', tenantId).order('name');
-    setCustomers((data as Customer[]) || []);
+    const list = (data as Customer[]) || [];
+    setCustomers(list);
     setLoading(false);
+    if (list.length && tenantId) calcRankings(list.map(c => c.id), tenantId);
   };
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
@@ -260,6 +323,7 @@ export default function ClientesPage() {
                           </div>
                         )}
                         <span style={{ fontWeight:500 }}>{c.name}</span>
+                        {rankBadge(rankings[c.id] || null)}
                       </div>
                     </td>
                     <td style={{ fontSize:13 }}>
