@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
   CreditCard, Search, CheckCircle, Trash2,
-  AlertTriangle, Download, MessageCircle, Calendar, Printer
+  AlertTriangle, Download, MessageCircle, Calendar, Printer, Lock, User, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
@@ -36,6 +36,10 @@ export default function CrediarioPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
   const [saving, setSaving]     = useState(false);
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [selectedParcela, setSelectedParcela] = useState<Parcela | null>(null);
+  const [payForm, setPayForm] = useState({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '' });
+  const [payingSaving, setPayingSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -93,28 +97,43 @@ export default function CrediarioPage() {
   const totalVencido = parcelas.filter(p => p.status !== 'pago' && p.due_date && p.due_date < hoje).reduce((s, p) => s + p.amount, 0);
   const totalRecebidoMes = parcelas.filter(p => p.status === 'pago' && p.paid_at && p.paid_at.startsWith(new Date().toISOString().slice(0,7))).reduce((s, p) => s + (p.paid_amount || p.amount), 0);
 
-  const pagarParcela = async (p: Parcela) => {
-    if (saving) return;
+  const pagarParcela = (p: Parcela) => {
+    setSelectedParcela(p);
+    setPayForm({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '' });
+    setShowPayModal(true);
+  };
+
+  const fmtM = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+  const handleConfirmPay = async () => {
+    if (!selectedParcela) return;
+    const p = selectedParcela;
+    if (!payForm.operator_name.trim()) { toast.error('Informe o nome do operador'); return; }
+    if (!payForm.operator_pass.trim()) { toast.error('Informe a senha do operador'); return; }
+    const { data: funcs } = await supabase.from('funcionarios').select('id,name,access_password').eq('tenant_id', tenantId).ilike('name', payForm.operator_name.trim());
+    if (!funcs || funcs.length === 0) { toast.error('Funcionario nao encontrado'); return; }
+    if (String(funcs[0].access_password).trim() !== payForm.operator_pass.trim()) { toast.error('Senha incorreta'); return; }
     const juros = calcJuros(p);
     const total = p.amount + juros;
-    const confirmMsg = juros > 0
-      ? 'Receber R$ ' + total.toFixed(2).replace('.',',') + ' (R$ ' + p.amount.toFixed(2).replace('.',',') + ' + R$ ' + juros.toFixed(2).replace('.',',') + ' juros)?'
-      : 'Receber parcela de R$ ' + p.amount.toFixed(2).replace('.',',') + '?';
-    if (!confirm(confirmMsg)) return;
-    setSaving(true);
-    await supabase.from('crediario_parcelas').update({
-      status: 'pago', paid_at: new Date().toISOString(), paid_amount: total
-    }).eq('id', p.id);
-    await supabase.from('financial_transactions').insert([{
-      tenant_id: tenantId, type: 'receita',
-      description: 'Parcela ' + p.installment_number + '/' + p.total_installments + ' - ' + p.customer_name,
-      category: 'Crediario', amount: total,
-      due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: 'crediario',
-    }]);
-    toast.success('Parcela recebida!');
-    setSaving(false);
-    load();
+    const pago = payForm.is_partial ? parseFloat(payForm.paid_amount.replace(',','.')) : total;
+    if (payForm.is_partial && (!pago || pago <= 0 || pago >= total)) { toast.error('Valor parcial invalido'); return; }
+    if (payForm.is_partial && !payForm.partial_due_date) { toast.error('Informe o vencimento do saldo'); return; }
+    setPayingSaving(true);
+    try {
+      const saldo = payForm.is_partial ? Math.round((total - pago) * 100) / 100 : 0;
+      await supabase.from('crediario_parcelas').update({ status: 'pago', paid_at: new Date().toISOString(), paid_amount: pago }).eq('id', p.id);
+      if (payForm.is_partial && saldo > 0) {
+        await supabase.from('crediario_parcelas').insert([{ crediario_id: p.crediario_id, tenant_id: tenantId, installment_number: p.installment_number, due_date: payForm.partial_due_date, amount: saldo, status: 'aberta' }]);
+      }
+      await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + ' - ' + p.customer_name, category: 'Crediario', amount: pago, due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: 'crediario' }]);
+      toast.success(payForm.is_partial ? 'Pagamento parcial registrado!' : 'Parcela recebida!');
+      setShowPayModal(false);
+      load();
+    } catch(e: any) { toast.error(e.message || 'Erro'); }
+    finally { setPayingSaving(false); }
   };
+
+;
 
   const abrirWhatsApp = (p: Parcela) => {
     const num = (p.whatsapp || '').replace(/\D/g, '');
@@ -218,8 +237,64 @@ export default function CrediarioPage() {
     w.document.write(html);
     w.document.close();
   };
+  const payModal = showPayModal && selectedParcela ? (
+    <div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.85)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center'}}
+      onClick={()=>setShowPayModal(false)}>
+      <div style={{background:'var(--card,#1e2130)',borderRadius:12,padding:28,width:'100%',maxWidth:460,boxShadow:'0 20px 60px rgba(0,0,0,0.5)',border:'1px solid rgba(255,255,255,0.08)'}}
+        onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <h2 style={{fontSize:16,fontWeight:700,margin:0}}>Receber Parcela</h2>
+          <button onClick={()=>setShowPayModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted,#888)',padding:4}}><X size={18}/></button>
+        </div>
+        <div style={{background:'rgba(255,255,255,0.05)',borderRadius:8,padding:12,marginBottom:16,fontSize:13}}>
+          <div style={{fontWeight:600,fontSize:14}}>{selectedParcela.customer_name}</div>
+          <div style={{color:'var(--text-muted,#888)',marginTop:2}}>Parcela {selectedParcela.installment_number} &mdash; Venc: {selectedParcela.due_date ? new Date(selectedParcela.due_date+'T00:00:00').toLocaleDateString('pt-BR') : '--'}</div>
+          <div style={{fontSize:22,fontWeight:700,color:'#6366f1',marginTop:6}}>{fmtM(selectedParcela.amount + calcJuros(selectedParcela))}</div>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Valor Recebido (R$)</label>
+          <input className="form-input" value={payForm.is_partial ? payForm.paid_amount : fmtM(selectedParcela.amount+calcJuros(selectedParcela)).replace('R$ ','').replace('R$','').trim()}
+            onChange={e=>setPayForm(f=>({...f,paid_amount:e.target.value}))} readOnly={!payForm.is_partial} style={{marginBottom:10}}/>
+          <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Data do Pagamento</label>
+          <input className="form-input" type="date" value={payForm.partial_due_date || new Date().toISOString().split('T')[0]}
+            onChange={e=>setPayForm(f=>({...f,partial_due_date:e.target.value}))}/>
+        </div>
+        <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,fontSize:13,cursor:'pointer'}}>
+          <input type="checkbox" checked={payForm.is_partial} onChange={e=>setPayForm(f=>({...f,is_partial:e.target.checked}))} style={{width:16,height:16}}/>
+          Pagamento Parcial
+        </label>
+        {payForm.is_partial && (
+          <div style={{marginBottom:14,padding:12,background:'rgba(234,179,8,0.1)',borderRadius:8}}>
+            <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Valor pago *</label>
+            <input className="form-input" placeholder="0,00" value={payForm.paid_amount} onChange={e=>setPayForm(f=>({...f,paid_amount:e.target.value}))} style={{marginBottom:10}}/>
+            <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Vencimento do saldo *</label>
+            <input className="form-input" type="date" value={payForm.partial_due_date} onChange={e=>setPayForm(f=>({...f,partial_due_date:e.target.value}))}/>
+          </div>
+        )}
+        <div style={{borderTop:'1px solid rgba(255,255,255,0.1)',paddingTop:14,marginBottom:16}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10,fontSize:12,color:'var(--text-muted,#888)'}}><Lock size={12}/> Autorização do Operador</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div>
+              <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}><User size={11} style={{marginRight:3,verticalAlign:'middle'}}/> Nome *</label>
+              <input className="form-input" placeholder="Nome do funcionário" value={payForm.operator_name} onChange={e=>setPayForm(f=>({...f,operator_name:e.target.value}))}/>
+            </div>
+            <div>
+              <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}><Lock size={11} style={{marginRight:3,verticalAlign:'middle'}}/> Senha *</label>
+              <input className="form-input" type="password" placeholder="••••••" value={payForm.operator_pass} onChange={e=>setPayForm(f=>({...f,operator_pass:e.target.value}))}/>
+            </div>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <button className="btn btn-secondary" onClick={()=>setShowPayModal(false)} style={{flex:1}}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleConfirmPay} disabled={payingSaving} style={{flex:1}}>{payingSaving ? 'Processando...' : 'Confirmar Baixa'}</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div>
+      {payModal}
       <div className="page-header">
         <div>
           <h1 className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}>
