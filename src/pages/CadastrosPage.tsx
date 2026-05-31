@@ -30,7 +30,7 @@ function emptyProfForm() {
   return { name:'', cro:'', specialty:'Optometria', phone:'', email:'' };
 }
 function emptyFuncForm() {
-  return { name:'', cargo:'Vendedor(a)', cpf:'', phone:'', email:'', access_password:'', comissao:0, commission_rate:0 };
+  return { name:'', cargo:'Vendedor(a)', cpf:'', phone:'', email:'', access_password:'', comissao:0 };
 }
 
 export default function CadastrosPage() {

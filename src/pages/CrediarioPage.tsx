@@ -176,7 +176,7 @@ export default function CrediarioPage() {
     const fmtV = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
     const fmtD2 = (d: string) => { if (!d) return '--'; const dt=d.includes('T')?new Date(d):new Date(d+'T12:00:00'); return dt.toLocaleDateString('pt-BR'); };
     const pNum = p.installment_number;
-    const nP2 = p.installment_count || '?';
+    const nP2 = p.total_installments || '?';
     const venc = p.due_date ? fmtD2(p.due_date) : '--';
     const hoje = new Date().toLocaleDateString('pt-BR');
     // Buscar dados da loja do localStorage
