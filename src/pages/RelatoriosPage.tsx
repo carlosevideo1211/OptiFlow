@@ -7,6 +7,7 @@ import {
   ClipboardList, UserCheck, Award
 } from 'lucide-react';
 import { formatBRL } from '../types/index';
+import BaixasTab from './BaixasTab';
 
 const PAGAMENTO_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro', pix: 'PIX', credito: 'Cartão Crédito',
@@ -16,6 +17,7 @@ const PAGAMENTO_LABELS: Record<string, string> = {
 export default function RelatoriosPage() {
   const { tenantId } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [abaAtiva, setAbaAtiva] = useState('resumo');
   const [periodo, setPeriodo] = useState('mes');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
@@ -174,6 +176,14 @@ export default function RelatoriosPage() {
           <button className="btn btn-secondary" onClick={exportCSV}><Download size={15}/> Exportar CSV</button>
         </div>
       </div>
+
+      {/* Abas */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid rgba(255,255,255,.1)' }}>
+        <button onClick={() => setAbaAtiva('resumo')} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, background: abaAtiva === 'resumo' ? '#6366f1' : 'transparent', color: abaAtiva === 'resumo' ? 'white' : 'rgba(255,255,255,.5)', borderRadius: '6px 6px 0 0' }}>Resumo</button>
+        <button onClick={() => setAbaAtiva('baixas')} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, background: abaAtiva === 'baixas' ? '#6366f1' : 'transparent', color: abaAtiva === 'baixas' ? 'white' : 'rgba(255,255,255,.5)', borderRadius: '6px 6px 0 0' }}>Baixas Crediario</button>
+      </div>
+      {abaAtiva === 'baixas' && <BaixasTab />}
+      {abaAtiva === 'resumo' && (<>
 
       {/* Filtro de período */}
       <div style={{ display:'flex', gap:8, marginBottom:24, flexWrap:'wrap', alignItems:'center' }}>
@@ -343,6 +353,7 @@ export default function RelatoriosPage() {
           ))}
         </div>
 
+      </>)}
       </>)}
     </div>
   );
