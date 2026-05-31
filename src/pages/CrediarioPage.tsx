@@ -153,23 +153,67 @@ export default function CrediarioPage() {
     const w = window.open('', '_blank', 'width=800,height=600');
     if (!w) return;
     const fmtV = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-    const fmtD2 = (d: string) => { if (!d) return '--'; const dt=d.includes('T')?new Date(d):new Date(d+'T12:00:00'); return isNaN(dt.getTime())?'--':dt.toLocaleDateString('pt-BR'); };
+    const fmtD2 = (d: string) => { if (!d) return '--'; const dt=d.includes('T')?new Date(d):new Date(d+'T12:00:00'); return dt.toLocaleDateString('pt-BR'); };
     const pNum = p.installment_number;
+    const nP2 = p.installment_count || '?';
     const venc = p.due_date ? fmtD2(p.due_date) : '--';
-    const vlrStr = fmtV(p.amount).replace('R$\u00a0','').replace('R$','').trim();
-    const css = '@page{size:A4 portrait;margin:15mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#000}.slip{display:flex;border:1px solid #444;margin-bottom:8mm}.main{flex:6.5;padding:8px;border-right:1px solid #444}.stub{flex:3;padding:8px;background:#fafafa}.sh{display:flex;justify-content:space-between;border-bottom:2px solid #1a3a8f;padding-bottom:4px;margin-bottom:6px}.shn{font-size:11px;font-weight:800;color:#1a3a8f}.shp{font-size:11px;font-weight:800;color:#1a3a8f}.fr{display:flex;gap:4px;margin-bottom:6px}.fb{border:1px solid #bbb;padding:3px 6px;flex:1}.fl{font-size:8px;color:#777;font-weight:700;text-transform:uppercase;display:block}.fv{font-size:11px;font-weight:700;display:block}.instr{border:1px solid #e5c840;background:#fffbe6;padding:4px 7px;font-size:9px;color:#555;margin-bottom:6px}.vh{font-size:13px;font-weight:900;color:#1a3a8f}.s2{display:flex;justify-content:space-between;border-bottom:2px solid #1a3a8f;padding-bottom:4px;margin-bottom:6px}.s2p{font-size:13px;font-weight:900;color:#1a3a8f}.sr{border:1px solid #bbb;padding:4px 6px;margin-bottom:4px}.sl{font-size:8px;color:#777;font-weight:700;text-transform:uppercase;display:block}.sv{font-size:11px;font-weight:700;display:block}.sb{font-size:14px;font-weight:900;color:#1a3a8f}.sbl{min-height:18px;border-bottom:1px solid #555;margin-top:6px}.scli{font-size:10px;font-weight:700;margin-top:4px}.sig{border-top:1px solid #555;margin-top:auto;padding-top:3px;font-size:8px;text-align:center;color:#777}@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}';
-    const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Parcela</title><style>'+css+'</style></head><body>'
-      +'<div class="slip"><div class="main"><div class="sh"><span class="shn">'+p.customer_name+'</span><span class="shp">'+pNum+'/'+nP+'</span></div>'
-      +'<div class="fr"><div class="fb"><span class="fl">Parcela</span><span class="fv">'+pNum+'</span></div><div class="fb"><span class="fl">Vencimento</span><span class="fv">'+venc+'</span></div><div class="fb" style="flex:2"><span class="fl">Cliente</span><span class="fv">'+p.customer_name+'</span></div></div>'
-      +'<div class="instr">O nao pagamento acarretara juros de R$ 0,07 ao dia. Pagavel somente na loja de origem.</div>'
-      +'<div class="fr"><div class="fb" style="flex:2"><span class="fl">Nr. Parcela</span><span class="fv">'+String(pNum).padStart(3,'0')+'</span></div><div class="fb"><span class="fl">Emissao</span><span class="fv">'+fmtD2(new Date().toISOString())+'</span></div><div class="fb"><span class="fl">Valor</span><span class="fv vh">R$ '+vlrStr+'</span></div></div>'
-      +'</div><div class="stub"><div class="s2"><span class="s2p">'+pNum+'/'+nP+'</span></div>'
-      +'<div class="sr"><span class="sl">Vencimento</span><span class="sv">'+venc+'</span></div>'
-      +'<div class="sr"><span class="sl">Valor Cobrado</span><span class="sv sb">R$ '+vlrStr+'</span></div>'
-      +'<div class="sr"><span class="sl">Valor Recebido</span><div class="sbl"></div></div>'
-      +'<div class="scli">'+p.customer_name+'</div>'
-      +'<div class="sig">Assinatura do Cobrador</div>'
-      +'</div></div>'
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    // Buscar dados da loja do localStorage
+    const storeRaw = localStorage.getItem('store_settings') || localStorage.getItem('func_session') || '{}';
+    let storeName = 'OPTIFLOW';
+    let storeCnpj = '';
+    let storeAddr = '';
+    let storeTel = '';
+    let storeLogo = '';
+    try {
+      const ss = JSON.parse(storeRaw);
+      storeName = (ss.store_name || ss.name || ss.company_name || 'OPTIFLOW').toUpperCase();
+      storeCnpj = ss.cnpj || '';
+      storeAddr = [ss.address, ss.city, ss.state].filter(Boolean).join(', ');
+      storeTel = ss.phone || '';
+      storeLogo = ss.logo_url || '';
+    } catch(e) {}
+    const logoHtml = storeLogo
+      ? '<img src="'+storeLogo+'" style="width:60px;height:60px;object-fit:contain;border-radius:8px;" />'
+      : '<div style="width:60px;height:60px;background:linear-gradient(135deg,#6366f1,#06b6d4);border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:18px;">O</div>';
+    const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Comprovante</title>'
+      +'<style>@page{size:A4 portrait;margin:12mm}*{margin:0;padding:0;box-sizing:border-box}'
+      +'body{font-family:Arial,sans-serif;color:#222;background:#fff}'
+      +'.header{text-align:center;padding-bottom:16px;border-bottom:2px solid #1e3a5f;margin-bottom:20px}'
+      +'.logo-row{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:8px}'
+      +'.store-name{font-size:22px;font-weight:800;color:#1e3a5f;letter-spacing:1px}'
+      +'.store-info{font-size:11px;color:#555;margin-top:2px}'
+      +'.title{font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:14px 0 18px;text-align:center;border-top:1px solid #ddd;border-bottom:1px solid #ddd;padding:8px 0}'
+      +'.table{width:100%;border-collapse:collapse;margin-bottom:16px}'
+      +'.table th{background:#1e3a5f;color:#fff;padding:8px 12px;font-size:12px;text-align:left}'
+      +'.table td{padding:8px 12px;font-size:12px;border-bottom:1px solid #eee}'
+      +'.value-box{text-align:center;border:2px solid #1e3a5f;border-radius:8px;padding:16px;margin:20px 0}'
+      +'.value-label{font-size:12px;color:#666;margin-bottom:4px}'
+      +'.value-amount{font-size:32px;font-weight:800;color:#1e3a5f}'
+      +'.footer{margin-top:40px;text-align:center;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:14px}'
+      +'.sig{display:flex;justify-content:space-around;margin-top:50px}'
+      +'.sig-line{text-align:center;width:200px}'
+      +'.sig-line hr{border:none;border-top:1px solid #333;margin-bottom:6px}'
+      +'</style></head><body>'
+      +'<div class="header">'
+      +'<div class="logo-row">'+logoHtml+'<span class="store-name">'+storeName+'</span></div>'
+      +(storeCnpj?'<div class="store-info">CNPJ: '+storeCnpj+'</div>':'')
+      +(storeAddr?'<div class="store-info">'+storeAddr+'</div>':'')
+      +(storeTel?'<div class="store-info">Tel: '+storeTel+'</div>':'')
+      +'</div>'
+      +'<div class="title">Recibo de Pagamento de Parcela</div>'
+      +'<table class="table"><thead><tr><th>Parcela</th><th>Cliente</th><th>Vencimento</th><th>Emissão</th></tr></thead>'
+      +'<tbody><tr><td>'+pNum+'/'+nP2+'</td><td>'+p.customer_name+'</td><td>'+venc+'</td><td>'+hoje+'</td></tr></tbody></table>'
+      +'<div class="value-box">'
+      +'<div class="value-label">VALOR DA PARCELA</div>'
+      +'<div class="value-amount">'+fmtV(p.amount)+'</div>'
+      +'</div>'
+      +'<p style="font-size:11px;color:#888;text-align:center;">O não pagamento acarretará juros de R$ 0,07 ao dia. Pagável somente na loja de origem.</p>'
+      +'<div class="sig">'
+      +'<div class="sig-line"><hr><span>'+p.customer_name+'</span><br><span style="font-size:10px;color:#888">Assinatura do Cliente</span></div>'
+      +'<div class="sig-line"><hr><span>'+storeName+'</span><br><span style="font-size:10px;color:#888">Assinatura da Empresa</span></div>'
+      +'</div>'
+      +'<div class="footer">'+storeName+' &mdash; '+hoje+'</div>'
       +'<script>window.onload=()=>window.print()<\/script></body></html>';
     w.document.write(html);
     w.document.close();
