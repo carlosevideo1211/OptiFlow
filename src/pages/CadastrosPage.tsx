@@ -557,6 +557,12 @@ export default function CadastrosPage() {
                     <label className="form-label">Comissão (%)</label>
                     <input className="form-input" type="number" min="0" max="100" step="0.5" value={funcForm.comissao} onChange={e=>setF('comissao',parseFloat(e.target.value)||0)}/>
                   </div>
+                  <label className="form-label">E-mail de acesso</label>
+                  <input className="form-input" type="email" value={funcForm.email||''} onChange={e=>setF('email',e.target.value)} placeholder="email@exemplo.com"/>
+                </div>
+                <div>
+                  <label className="form-label">Senha de acesso</label>
+                  <input className="form-input" type="password" value={funcForm.access_password||''} onChange={e=>setF('access_password',e.target.value)} placeholder="Senha para login"/>
                 </div>
               </div>
               <div className="modal-footer">
