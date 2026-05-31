@@ -15,7 +15,7 @@ interface Professional {
 }
 interface Funcionario {
   id: string; tenant_id: string; name: string; cargo?: string;
-  cpf?: string; phone?: string; comissao?: number; active: boolean; created_at: string;
+  cpf?: string; phone?: string; email?: string; access_password?: string; comissao?: number; active: boolean; created_at: string;
 }
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -30,7 +30,7 @@ function emptyProfForm() {
   return { name:'', cro:'', specialty:'Optometria', phone:'', email:'' };
 }
 function emptyFuncForm() {
-  return { name:'', cargo:'Vendedor(a)', cpf:'', phone:'', comissao:0 };
+  return { name:'', cargo:'Vendedor(a)', cpf:'', phone:'', email:'', access_password:'', comissao:0 };
 }
 
 export default function CadastrosPage() {
@@ -499,6 +499,19 @@ export default function CadastrosPage() {
                   <div>
                     <label className="form-label">E-mail</label>
                     <input className="form-input" value={profForm.email} onChange={e=>setP('email',e.target.value)}/>
+                  </div>
+                </div>
+                <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:4}}>
+                  <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:10}}>Acesso ao sistema (login)</div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                    <div>
+                      <label className="form-label">E-mail de acesso</label>
+                      <input className="form-input" type="email" value={funcForm.email||''} onChange={e=>setF('email',e.target.value)} placeholder="email@exemplo.com"/>
+                    </div>
+                    <div>
+                      <label className="form-label">Senha de acesso</label>
+                      <input className="form-input" type="password" value={funcForm.access_password||''} onChange={e=>setF('access_password',e.target.value)} placeholder="Senha para login"/>
+                    </div>
                   </div>
                 </div>
               </div>
