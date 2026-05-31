@@ -44,7 +44,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     profileLoaded = false;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    if (error) {
+      // Tentar login como funcionario
+      const { data: func } = await supabase
+        .from('funcionarios')
+        .select('id, name, email, cargo, access_password, tenant_id, active')
+        .ilike('email', email.trim())
+        .eq('active', true)
+        .single();
+      if (!func) throw error;
+      if (func.access_password !== password) throw error;
+      // Buscar dados da loja
+      const { data: store } = await supabase
+        .from('tenants')
+        .select('company_name')
+        .eq('id', func.tenant_id)
+        .maybeSingle();
+      const storeName = store?.company_name || 'OptiFlow';
+      localStorage.setItem('func_session', JSON.stringify({
+        id: func.id,
+        name: func.name,
+        email: func.email,
+        cargo: func.cargo,
+        tenant_id: func.tenant_id,
+        store_name: storeName,
+        isFuncionario: true,
+        loginAt: new Date().toISOString()
+      }));
+      setUser({ id: func.id, full_name: func.name, email: func.email, tenant_id: func.tenant_id, role: func.cargo || 'operator', store_name: storeName } as any); setLoading(false);
+      return;
+    }
   };
   const signUp = async (email: string, password: string, name: string) => {
     const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name, role: 'master' } } });

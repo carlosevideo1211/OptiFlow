@@ -103,7 +103,7 @@ export default function DashboardPage() {
       {/* Header boas-vindas */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {greeting}, {storeName || user?.full_name?.split(' ')[0] || 'usuário'}! 👋
+          {greeting}, {storeName || 'usuário'}! 👋
         </h1>
         <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
           Visão geral do negócio em tempo real
