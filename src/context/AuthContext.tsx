@@ -23,7 +23,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (email === ADMIN_EMAIL) { setLoading(false); return; }
     try {
       const { data } = await supabase.from('user_profiles').select('*').eq('id', uid).maybeSingle();
-      if (data) setUser(data as UserProfile);
+      if (data) {
+        // Se perfil nao tem tenant_id, buscar pelo email na tabela tenants
+        if (!data.tenant_id && email) {
+          const { data: tenant } = await supabase
+            .from('tenants')
+            .select('id, company_name')
+            .eq('email', email)
+            .maybeSingle();
+          if (tenant?.id) {
+            // Vincular tenant ao perfil
+            await supabase.from('user_profiles')
+              .update({ tenant_id: tenant.id, full_name: data.full_name || email })
+              .eq('id', uid);
+            setUser({ ...data, tenant_id: tenant.id } as UserProfile);
+          } else {
+            setUser(data as UserProfile);
+          }
+        } else {
+          setUser(data as UserProfile);
+        }
+      }
     } finally {
       setLoading(false);
     }

@@ -61,6 +61,14 @@ export default function RegisterPage() {
           city: form.city,
           state: form.state,
         }]);
+        // Vincular tenant_id ao user_profiles (aguardar trigger criar o registro)
+        await new Promise(r => setTimeout(r, 1500));
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser?.id) {
+          await supabase.from('user_profiles')
+            .update({ tenant_id: tenantData.id, full_name: form.name })
+            .eq('id', authUser.id);
+        }
       }
 
       toast.success('Conta criada! Bem-vindo ao OptiFlow 14 dias gratis!');

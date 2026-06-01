@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Shell from './components/Shell';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import ClientesPage from './pages/ClientesPage';
 import ConsultaPage from './pages/consulta/ConsultaPage';
@@ -61,6 +62,7 @@ function AppRoutes() {
       <Route path="/admin/*"     element={<AdminPanelPage />} />
       <Route path="/login"       element={!user ? <LoginPage />    : <Navigate to="/dashboard" />} />
       <Route path="/registro"    element={!user ? <RegisterPage /> : <Navigate to="/dashboard" />} />
+      <Route path="/esqueci-senha" element={!user ? <ForgotPasswordPage /> : <Navigate to="/dashboard" />} />
       <Route path="/trial-expirado" element={<TrialExpiredPage />} />
       <Route path="/*" element={
         !user ? <Navigate to="/login" /> :

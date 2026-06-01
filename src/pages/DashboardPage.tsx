@@ -10,7 +10,7 @@ interface MonthPoint { label: string; total: number; key: string; }
 export default function DashboardPage() {
   const { user, tenantId } = useAuth();
   const navigate = useNavigate();
-  const [storeName, setStoreName] = useState('');
+  const [storeName, setStoreName] = useState(localStorage.getItem('new_store_name') || (user as any)?.store_name || '');
   const [stats, setStats] = useState({
     clientes: 0, os_abertas: 0, vendas_hoje: 0, crediario_vencido: 0,
     consultas_hoje: 0, produtos_baixo: 0, receita_mes: 0
@@ -59,7 +59,12 @@ export default function DashboardPage() {
     const vendasHoje = (sales.data ?? []).reduce((s: number, v: any) => s + (v.total || 0), 0);
     const receitaMes = (receita.data ?? []).reduce((s: number, v: any) => s + (v.total || 0), 0);
 
-    if (storeData.data?.name) setStoreName(storeData.data.name);
+    if (storeData.data?.name) {
+      setStoreName(storeData.data.name);
+      localStorage.removeItem('new_store_name');
+    } else if (localStorage.getItem('new_store_name')) {
+      setStoreName(localStorage.getItem('new_store_name')!);
+    }
 
     // Montar gráfico
     const salesByMonth: Record<string, number> = {};
