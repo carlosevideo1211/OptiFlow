@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import {
   Plus, Search, Edit2, Eye, ClipboardList,
   Clock, CheckCircle, Truck, Package, X, Save,
-  Download, Trash2, Circle, User, ShoppingBag
+  Download, Trash2, Printer, Circle, User, ShoppingBag
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL, formatDate } from '../types/index';
@@ -73,6 +73,7 @@ function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string })
 
 export default function OrdemServicoPage() {
   const { tenantId } = useAuth();
+  const [storeSettings, setStoreSettings] = useState<any>(null);
   const [orders, setOrders]       = useState<OS[]>([]);
   const [products, setProducts]   = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -104,6 +105,10 @@ export default function OrdemServicoPage() {
     setCustomers((cust as Customer[]) || []);
     setLoading(false);
   };
+
+  useEffect(() => {
+    if (tenantId) supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single().then(({data}) => { if (data) setStoreSettings(data); });
+  }, [tenantId]);
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
 
@@ -345,6 +350,34 @@ export default function OrdemServicoPage() {
     color: color, display:'flex', alignItems:'center'
   });
 
+  const printOS = async (os: OS) => {
+    const w = window.open('', '_blank', 'width=800,height=900');
+    if (!w) return;
+    // Buscar itens da OS
+    const { data: itens } = await supabase.from('os_itens').select('*').eq('os_id', os.id).order('created_at');
+    const osItensData = itens || [];
+    const s = storeSettings;
+    const sName = (s?.name || 'OPTIFLOW').toUpperCase();
+    const sCnpj = s?.cnpj || '';
+    const sAddr = [s?.address, s?.city, s?.state].filter(Boolean).join(', ');
+    const sTel = s?.phone || '';
+    const sLogo = s?.logo_url || '';
+    const fmtD = (d: string) => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '--';
+    const fmtV = (n: number) => (n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    const fmtRxVal = (v: any, tipo: string) => {
+      if (v === null || v === undefined || v === '') return '--';
+      const n = parseFloat(String(v));
+      if (isNaN(n)) return String(v);
+      if (tipo === 'eixo') return String(Math.round(n));
+      if (tipo === 'adicao') return '+' + Math.abs(n).toFixed(2).replace('.',',');
+      const abs = Math.abs(n).toFixed(2).replace('.',',');
+      return (n >= 0 ? '+' : '-') + abs;
+    };
+    const STATUS_LABELS: Record<string,string> = {orcamento:'Orçamento',aprovado:'Aprovado',producao:'Em Produção',pronto:'Pronto',entregue:'Entregue',cancelado:'Cancelado',garantia:'Garantia'};
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>OS #${os.os_number}</title><style>@page{size:A4;margin:12mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#222;font-size:13px}.header{text-align:center;padding-bottom:14px;border-bottom:2px solid #1e3a5f;margin-bottom:16px}.store-name{font-size:20px;font-weight:800;color:#1e3a5f}.store-info{font-size:11px;color:#555;margin-top:2px}.title{font-size:15px;font-weight:700;text-align:center;margin:14px 0;padding:8px;background:#1e3a5f;color:white;border-radius:4px}.section{margin-bottom:12px;padding:12px;border:1px solid #ddd;border-radius:6px}.section-title{font-size:11px;font-weight:700;color:#1e3a5f;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:4px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.field-label{color:#888;font-size:10px;text-transform:uppercase}.field-value{font-weight:600;font-size:12px;margin-top:1px}.rx-table{width:100%;border-collapse:collapse;font-size:11px}.rx-table th{background:#f0f4f8;padding:6px;text-align:center;font-weight:600;border:1px solid #ddd}.rx-table td{padding:6px;text-align:center;border:1px solid #ddd}.total-box{text-align:center;border:2px solid #1e3a5f;border-radius:8px;padding:12px;margin:14px 0}.total-value{font-size:26px;font-weight:800;color:#1e3a5f}.sig{display:flex;justify-content:space-around;margin-top:50px}.sig-line{text-align:center;width:200px}.sig-line hr{border:none;border-top:1px solid #333;margin-bottom:6px}</style></head><body><div class="header">${sLogo?`<img src="${sLogo}" style="max-height:60px;margin-bottom:6px"><br>`:''}<div class="store-name">${sName}</div>${sCnpj?`<div class="store-info">CNPJ: ${sCnpj}</div>`:''} ${sAddr?`<div class="store-info">${sAddr}</div>`:''} ${sTel?`<div class="store-info">Tel: ${sTel}</div>`:''}</div><div class="title">ORDEM DE SERVIÇO #${os.os_number}</div><div class="section"><div class="section-title">Dados</div><div class="grid2"><div><div class="field-label">Cliente</div><div class="field-value">${os.customer_name}</div></div><div><div class="field-label">Status</div><div class="field-value">${STATUS_LABELS[os.status]||os.status}</div></div><div><div class="field-label">Entrada</div><div class="field-value">${fmtD(os.created_at?.split('T')[0]||'')}</div></div><div><div class="field-label">Entrega</div><div class="field-value">${fmtD(os.delivery_date||'')}</div></div></div></div>${(os.od_esf||os.oe_esf)?`<div class="section"><div class="section-title">Receitário</div><table class="rx-table"><tr><th>Olho</th><th>ESF</th><th>CIL</th><th>EIXO</th><th>Adição</th></tr><tr><td>OD</td><td>${fmtRxVal(os.od_esf,'esf')}</td><td>${fmtRxVal(os.od_cil,'cil')}</td><td>${fmtRxVal(os.od_eixo,'eixo')}</td><td>${fmtRxVal(os.od_adicao,'adicao')}</td></tr><tr><td>OE</td><td>${fmtRxVal(os.oe_esf,'esf')}</td><td>${fmtRxVal(os.oe_cil,'cil')}</td><td>${fmtRxVal(os.oe_eixo,'eixo')}</td><td>${fmtRxVal(os.oe_adicao,'adicao')}</td></tr></table>${os.medico?`<div style="margin-top:8px"><div class="field-label">Médico</div><div class="field-value">${os.medico}</div></div>`:''}</div>`:''}<div class="section"><div class="section-title">Observações</div><div style="font-size:12px;min-height:30px">${os.notes||'—'}</div></div>${osItensData.length>0?`<div class="section"><div class="section-title">Produtos e Servicos</div><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="background:#f0f4f8"><th style="padding:5px 8px;text-align:left;border:1px solid #ddd">Item</th><th style="padding:5px 8px;text-align:center;border:1px solid #ddd">Qtd</th><th style="padding:5px 8px;text-align:right;border:1px solid #ddd">Unit.</th><th style="padding:5px 8px;text-align:right;border:1px solid #ddd">Total</th></tr>${osItensData.map(it=>`<tr><td style="padding:5px 8px;border:1px solid #eee">${it.descricao||''}</td><td style="padding:5px 8px;text-align:center;border:1px solid #eee">${it.quantidade||1}</td><td style="padding:5px 8px;text-align:right;border:1px solid #eee">${fmtV(it.valor_unitario||0)}</td><td style="padding:5px 8px;text-align:right;border:1px solid #eee">${fmtV(it.valor_total||0)}</td></tr>`).join('')}</table></div>`:''}<div class="total-box"><div class="field-label">VALOR TOTAL</div><div class="total-value">${fmtV(os.total||0)}</div>${os.entrada?`<div style="display:flex;justify-content:center;gap:32px;margin-top:8px"><div><div class="field-label">Entrada paga</div><div style="font-size:14px;font-weight:700;color:#22c55e">${fmtV(os.entrada)}</div></div><div><div class="field-label">Saldo restante</div><div style="font-size:14px;font-weight:700;color:#f59e0b">${fmtV((os.total||0)-(os.entrada||0))}</div></div></div>`:''}</div><div class="sig"><div class="sig-line"><hr><span style="font-size:12px">${os.customer_name}</span><br><span style="font-size:10px;color:#888">Assinatura do Cliente</span></div><div class="sig-line"><hr><span style="font-size:12px">${sName}</span><br><span style="font-size:10px;color:#888">Assinatura da Empresa</span></div></div><script>window.onload=()=>window.print()<\/script></body></html>`;
+    w.document.write(html); w.document.close();
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -432,6 +465,7 @@ export default function OrdemServicoPage() {
                           <button onClick={() => avancarStatus(o)} title="Avançar status" style={btnStyle('#22c55e','rgba(34,197,94,.1)')}>
                             <CheckCircle size={14}/>
                           </button>
+                          <button onClick={() => printOS(o)} title="Imprimir OS" style={btnStyle('#f59e0b','rgba(245,158,11,0.15)')}><Printer size={14}/></button>
                           <button onClick={() => openEdit(o)} title="Editar" style={btnStyle('#6366f1','rgba(99,102,241,.1)')}>
                             <Edit2 size={14}/>
                           </button>
