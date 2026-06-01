@@ -128,7 +128,22 @@ export default function CrediarioPage() {
       await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + ' - ' + p.customer_name, category: 'Crediario', amount: pago, due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: 'crediario' }]);
       await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount+calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial?Math.round((p.amount+calcJuros(p)-pago)*100)/100:0, operator_name: funcs[0].name, paid_date: new Date().toISOString().split('T')[0] }]);
       await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount + calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial ? Math.round((p.amount+calcJuros(p)-pago)*100)/100 : 0, operator_name: funcs[0].name, paid_date: new Date().toISOString().split('T')[0] }]);
-      toast.success(payForm.is_partial ? 'Pagamento parcial registrado!' : 'Parcela recebida!');
+      // Verificar se todas as parcelas do crediario estao pagas -> quitar
+      if (!payForm.is_partial) {
+        const { data: todasParcelas } = await supabase
+          .from('crediario_parcelas')
+          .select('id, status')
+          .eq('crediario_id', p.crediario_id);
+        const todasPagas = todasParcelas && todasParcelas.every(pp => pp.id === p.id || pp.status === 'pago');
+        if (todasPagas) {
+          await supabase.from('crediario').update({ status: 'quitado' }).eq('id', p.crediario_id);
+          toast.success('Crediario quitado! Todas as parcelas foram pagas.');
+        } else {
+          toast.success('Parcela recebida!');
+        }
+      } else {
+        toast.success('Pagamento parcial registrado!');
+      }
       setShowPayModal(false);
       load();
     } catch(e: any) { toast.error(e.message || 'Erro'); }
