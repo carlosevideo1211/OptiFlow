@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { sendEmail, emailBoasVindas } from '../../lib/email';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, Store, User, Mail, Lock, Phone } from 'lucide-react';
 
@@ -28,6 +29,18 @@ export default function RegisterPage() {
     if (form.password !== form.confirm) { toast.error('Senhas nao conferem'); return; }
     setLoading(true);
     try {
+      // 0. Verificar se email ja existe na tabela tenants
+      const { data: existingTenant } = await supabase
+        .from('tenants')
+        .select('id')
+        .ilike('email', form.email.trim())
+        .maybeSingle();
+      if (existingTenant) {
+        toast.error('Este e-mail ja esta cadastrado. Faca login ou use outro e-mail.');
+        setLoading(false);
+        return;
+      }
+
       // 1. Criar usuario no Supabase Auth
       await signUp(form.email, form.password, form.name);
 
@@ -70,6 +83,10 @@ export default function RegisterPage() {
             .eq('id', authUser.id);
         }
       }
+
+      // Enviar email de boas-vindas
+      const emailData = emailBoasVindas(form.company, form.name, form.email);
+      sendEmail(emailData).then(r => console.log('Email boas-vindas:', r.ok ? 'enviado' : 'erro'));
 
       toast.success('Conta criada! Bem-vindo ao OptiFlow 14 dias gratis!');
       navigate('/dashboard');
