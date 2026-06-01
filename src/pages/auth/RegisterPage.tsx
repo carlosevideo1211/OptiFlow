@@ -42,49 +42,35 @@ export default function RegisterPage() {
       }
 
       // 1. Criar usuario no Supabase Auth
-      await signUp(form.email, form.password, form.name);
+      await signUp(form.email, form.password, form.name, form.company);
 
-      // 2. Criar tenant
-      const trialEnd = new Date();
-      trialEnd.setDate(trialEnd.getDate() + 14);
-      const { data: tenantData, error: tenantErr } = await supabase
-        .from('tenants')
-        .insert([{
-          company_name: form.company,
-          email: form.email,
-          phone: form.phone,
-          city: form.city,
-          state: form.state,
-          plan: 'trial',
-          status: 'trial',
-          trial_end_date: trialEnd.toISOString().split('T')[0],
-          mrr_value: 0
-        }])
-        .select()
-        .single();
-
-      if (tenantErr) throw tenantErr;
-
-      // 3. Criar store_settings basico
-      if (tenantData?.id) {
-        await supabase.from('store_settings').insert([{
-          tenant_id: tenantData.id,
-          name: form.company,
-          phone: form.phone,
-          city: form.city,
-          state: form.state,
-        }]);
-        // Vincular tenant_id ao user_profiles (aguardar trigger criar o registro)
-        await new Promise(r => setTimeout(r, 1500));
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser?.id) {
-          await supabase.from('user_profiles')
-            .update({ tenant_id: tenantData.id, full_name: form.name })
-            .eq('id', authUser.id);
+      // 2. Aguardar trigger criar tenant+store_settings+user_profiles
+      await new Promise(r => setTimeout(r, 2500));
+      
+      // Atualizar dados extras (phone, city, state)
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id) {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('id')
+          .eq('email', form.email.trim())
+          .maybeSingle();
+        if (tenantRow?.id) {
+          await Promise.all([
+            supabase.from('tenants').update({
+              phone: form.phone, city: form.city, state: form.state
+            }).eq('id', tenantRow.id),
+            supabase.from('store_settings').update({
+              phone: form.phone, city: form.city, state: form.state
+            }).eq('tenant_id', tenantRow.id),
+            supabase.from('user_profiles').update({
+              tenant_id: tenantRow.id, full_name: form.name
+            }).eq('id', authData.user.id),
+          ]);
         }
       }
 
-      // Enviar email de boas-vindas
+            // Enviar email de boas-vindas
       const emailData = emailBoasVindas(form.company, form.name, form.email);
       sendEmail(emailData).then(r => console.log('Email boas-vindas:', r.ok ? 'enviado' : 'erro'));
 

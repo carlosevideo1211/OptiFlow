@@ -6,7 +6,7 @@ interface AuthCtx {
   tenantId: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string, company?: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 const Ctx = createContext<AuthCtx | null>(null);
@@ -95,8 +95,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
   };
-  const signUp = async (email: string, password: string, name: string) => {
-    const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name, role: 'master' } } });
+  const signUp = async (email: string, password: string, name: string, company?: string) => {
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name, company_name: company || name, role: 'master' } } });
     if (error) throw error;
   };
   const signOut = async () => { profileLoaded = false; await supabase.auth.signOut(); setUser(null); };
