@@ -194,20 +194,21 @@ export default function CrediarioPage() {
     const nP2 = p.total_installments || '?';
     const venc = p.due_date ? fmtD2(p.due_date) : '--';
     const hoje = new Date().toLocaleDateString('pt-BR');
-    // Buscar dados da loja do localStorage
-    const storeRaw = localStorage.getItem('store_settings') || localStorage.getItem('func_session') || '{}';
+    // Buscar dados da loja do Supabase
     let storeName = 'OPTIFLOW';
     let storeCnpj = '';
     let storeAddr = '';
     let storeTel = '';
     let storeLogo = '';
     try {
-      const ss = JSON.parse(storeRaw);
-      storeName = (ss.store_name || ss.name || ss.company_name || 'OPTIFLOW').toUpperCase();
-      storeCnpj = ss.cnpj || '';
-      storeAddr = [ss.address, ss.city, ss.state].filter(Boolean).join(', ');
-      storeTel = ss.phone || '';
-      storeLogo = ss.logo_url || '';
+      const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single();
+      if (ss) {
+        storeName = (ss.name || ss.company_name || 'OPTIFLOW').toUpperCase();
+        storeCnpj = ss.cnpj || '';
+        storeAddr = [ss.address, ss.city, ss.state].filter(Boolean).join(', ');
+        storeTel = ss.phone || '';
+        storeLogo = ss.logo_url || '';
+      }
     } catch(e) {}
     const logoHtml = storeLogo
       ? '<img src="'+storeLogo+'" style="width:60px;height:60px;object-fit:contain;border-radius:8px;" />'
