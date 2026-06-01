@@ -9,44 +9,55 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-const navSections = [
+// Cargos com acesso restrito (nao veem financeiro/relatorios/config)
+const CARGOS_RESTRITOS = ['Vendedor(a)', 'Atendente', 'Caixa', 'Recepcionista', 'Estoquista'];
+
+const ALL_NAV_SECTIONS = [
   {
     label: 'Principal',
     items: [
-      { to: '/dashboard',  label: 'Dashboard',       icon: LayoutDashboard, sub: false },
-      { to: '/clientes',   label: 'Clientes',         icon: Users,           sub: false },
-      { to: '/consulta',   label: 'Consulta / Rx',    icon: Eye,             sub: false },
-      { to: '/os',         label: 'Ordem de Serviço', icon: ClipboardList,   sub: false },
-      { to: '/vendas',     label: 'Vendas / PDV',     icon: ShoppingCart,    sub: false },
+      { to: '/dashboard',  label: 'Dashboard',       icon: LayoutDashboard, sub: false, roles: [] },
+      { to: '/clientes',   label: 'Clientes',         icon: Users,           sub: false, roles: [] },
+      { to: '/consulta',   label: 'Consulta / Rx',    icon: Eye,             sub: false, roles: [] },
+      { to: '/os',         label: 'Ordem de Serviço', icon: ClipboardList,   sub: false, roles: [] },
+      { to: '/vendas',     label: 'Vendas / PDV',     icon: ShoppingCart,    sub: false, roles: [] },
     ]
   },
   {
     label: 'Estoque',
     items: [
-      { to: '/produtos', label: 'Produtos', icon: Package, sub: false },
-      { to: '/estoque',  label: 'Estoque',  icon: Boxes,   sub: false },
+      { to: '/produtos', label: 'Produtos', icon: Package, sub: false, roles: [] },
+      { to: '/estoque',  label: 'Estoque',  icon: Boxes,   sub: false, roles: [] },
     ]
   },
   {
     label: 'Financeiro',
     items: [
-      { to: '/crediario',  label: 'Crediário',  icon: CreditCard, sub: false },
-      { to: '/financeiro', label: 'Financeiro', icon: TrendingUp, sub: false },
-      { to: '/relatorios', label: 'Relatórios', icon: BarChart3,  sub: false },
-      { to: '/nfe',        label: 'NF-e',       icon: FileText,   sub: false },
+      { to: '/crediario',  label: 'Crediário',  icon: CreditCard, sub: false, roles: [] },
+      { to: '/financeiro', label: 'Financeiro', icon: TrendingUp, sub: false, roles: ['master','Gerente'] },
+      { to: '/relatorios', label: 'Relatórios', icon: BarChart3,  sub: false, roles: ['master','Gerente'] },
+      { to: '/nfe',        label: 'NF-e',       icon: FileText,   sub: false, roles: ['master','Gerente'] },
     ]
   },
   {
     label: 'Sistema',
     items: [
-      { to: '/cadastros',    label: 'Cadastros',    icon: BookUser, sub: false },
-      { to: '/configuracao', label: 'Configuração', icon: Settings, sub: false },
+      { to: '/cadastros',    label: 'Cadastros',    icon: BookUser, sub: false, roles: ['master','Gerente'] },
+      { to: '/configuracao', label: 'Configuração', icon: Settings, sub: false, roles: ['master','Gerente'] },
     ]
   }
 ];
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const { user, tenantId, signOut } = useAuth();
+  const userRole = (user as any)?.role || (user as any)?.cargo || 'master';
+  const isMaster = userRole === 'master' || !CARGOS_RESTRITOS.includes(userRole);
+  const navSections = ALL_NAV_SECTIONS.map(section => ({
+    ...section,
+    items: section.items.filter(item =>
+      item.roles.length === 0 || isMaster || item.roles.includes(userRole)
+    )
+  })).filter(section => section.items.length > 0);
   const navigate = useNavigate();
   const [collapsed, setCollapsed]   = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
