@@ -76,13 +76,32 @@ export default function LoginPage() {
       {/* Right */}
       <div style={{ flex:1, background:'var(--bg2)', borderLeft:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'center', padding:48 }}>
         <div style={{ maxWidth:360, textAlign:'center' }}>
-          <div style={{ fontSize:64, marginBottom:24 }}>👁️</div>
-          <h2 style={{ fontSize:26, fontWeight:800, color:'var(--text)', marginBottom:16, letterSpacing:'-0.5px' }}>
+          <div style={{ fontSize:48, marginBottom:12 }}>👁️</div>
+          <h2 style={{ fontSize:22, fontWeight:800, color:'var(--text)', marginBottom:8, letterSpacing:'-0.5px' }}>
             Sistema completo para <span style={{ color:'#06b6d4' }}>óticas</span>
           </h2>
-          <p style={{ color:'var(--text2)', lineHeight:1.8, fontSize:14 }}>
+          <p style={{ color:'var(--text2)', lineHeight:1.6, fontSize:13, marginBottom:20 }}>
             Consulta, OS, PDV, Crediário e muito mais — tudo integrado e simples de usar.
           </p>
+
+          <div style={{ background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.3)', borderRadius:12, padding:16, marginBottom:16 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'#6366f1', marginBottom:12, textAlign:'center' }}>🚀 Planos e Preços</div>
+            {[
+              { id:'basico',     nome:'Básico',      preco:'R$ 97,00',   color:'#6366f1' },
+              { id:'pro',        nome:'Pro',          preco:'R$ 147,00',  color:'#f59e0b' },
+              { id:'premium',    nome:'Premium',      preco:'R$ 197,00',  color:'#a855f7' },
+              { id:'lancamento', nome:'🔥 Lançamento', preco:'R$ 109,90', color:'#22c55e' },
+            ].map(p => (
+              <div key={p.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8, padding:'6px 8px', background:'rgba(255,255,255,0.05)', borderRadius:8 }}>
+                <span style={{ fontSize:13, color:'var(--text)', fontWeight:500 }}>{p.nome}</span>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:13, fontWeight:700, color:p.color }}>{p.preco}<span style={{ fontSize:10, color:'var(--text2)' }}>/mês</span></span>
+                  <button onClick={() => navigate('/planos')} style={{ fontSize:11, padding:'3px 10px', background:p.color, color:'white', border:'none', borderRadius:6, cursor:'pointer', fontWeight:600 }}>Assinar</button>
+                </div>
+              </div>
+            ))}
+            <div style={{ textAlign:'center', marginTop:10, fontSize:11, color:'var(--text2)' }}>✅ 14 dias grátis · Sem cartão de crédito</div>
+          </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:28 }}>
             {[['👥','Clientes'],['👁️','Consulta Rx'],['📋','Ordem de Serviço'],['💰','PDV / Vendas'],['💳','Crediário'],['📊','Relatórios']].map(([icon, label]) => (
               <div key={label} style={{ background:'var(--bg3)', borderRadius:10, padding:'12px', border:'1px solid var(--border)', textAlign:'left' }}>
