@@ -1,30 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
-  const { signIn, user } = useAuth();
+  const { signIn } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // Redirecionar quando user for setado pelo AuthContext
-  useEffect(() => {
-    if (user) navigate('/dashboard');
-  }, [user]);
+  const [showPass, setShowPass] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       await signIn(email, password);
-      // useEffect acima vai redirecionar quando user for carregado
-    } catch {
-      toast.error('Email ou senha incorretos');
+      navigate('/dashboard');
+    } catch (err: any) {
+      toast.error(err.message ?? 'Email ou senha incorretos');
     } finally {
       setLoading(false);
     }
@@ -32,81 +26,94 @@ export default function LoginPage() {
 
   return (
     <div style={{ minHeight:'100vh', display:'flex', background:'var(--bg)' }}>
-      {/* Left */}
-      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'48px', maxWidth:460 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:48 }}>
-          <svg width="40" height="40" viewBox="0 0 32 32" fill="none">
-            <rect width="32" height="32" rx="10" fill="url(#lg_login)"/>
-            <ellipse cx="16" cy="16" rx="10" ry="6" stroke="white" strokeWidth="1.8" fill="none"/>
-            <circle cx="16" cy="16" r="3.5" fill="white"/>
-            <circle cx="16" cy="16" r="1.5" fill="url(#lg_login)"/>
-            <defs><linearGradient id="lg_login" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#6366f1"/><stop offset="1" stopColor="#06b6d4"/>
-            </linearGradient></defs>
-          </svg>
-          <span style={{ fontSize:22, fontWeight:800, color:'var(--text)' }}>Opti<span style={{ color:'#06b6d4' }}>Flow</span></span>
-        </div>
-        <h1 style={{ fontSize:30, fontWeight:800, color:'var(--text)', letterSpacing:'-0.5px', marginBottom:8 }}>Bem-vindo de volta</h1>
-        <p style={{ color:'var(--text2)', marginBottom:36, fontSize:14 }}>Entre para acessar o sistema</p>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">E-mail</label>
-            <input className="form-input" type="email" placeholder="seu@email.com" value={email} onChange={e => setEmail(e.target.value)} required autoFocus/>
+      {/* Lado esquerdo - Login */}
+      <div style={{ width:'40%', minWidth:340, display:'flex', flexDirection:'column', justifyContent:'center', padding:'48px 40px' }}>
+        <div style={{ marginBottom:40 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:32 }}>
+            <div style={{ width:36, height:36, borderRadius:10, background:'linear-gradient(135deg,#6366f1,#a855f7)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <span style={{ color:'white', fontSize:18 }}>👁</span>
+            </div>
+            <span style={{ fontSize:20, fontWeight:800, color:'var(--text)' }}>Opti<span style={{ color:'#6366f1' }}>Flow</span></span>
           </div>
-          <div className="form-group">
-            <label className="form-label">Senha</label>
+          <h1 style={{ fontSize:26, fontWeight:800, color:'var(--text)', marginBottom:8 }}>Bem-vindo de volta</h1>
+          <p style={{ color:'var(--text-muted)', fontSize:14 }}>Entre para acessar o sistema</p>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom:16 }}>
+            <label style={{ fontSize:12, fontWeight:600, color:'var(--text-muted)', display:'block', marginBottom:6 }}>E-MAIL</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="seu@email.com"
+              autoComplete="email"
+              required
+              style={{ width:'100%', padding:'10px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--bg-secondary)', color:'var(--text)', fontSize:14, boxSizing:'border-box' }}
+            />
+          </div>
+          <div style={{ marginBottom:24 }}>
+            <label style={{ fontSize:12, fontWeight:600, color:'var(--text-muted)', display:'block', marginBottom:6 }}>SENHA</label>
             <div style={{ position:'relative' }}>
-              <input className="form-input" type={showPass ? 'text' : 'password'} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} style={{ paddingRight:44 }} required />
-              <button type="button" onClick={() => setShowPass(!showPass)} style={{ position:'absolute', right:13, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'var(--text2)', cursor:'pointer' }}>
-                {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+              <input
+                type={showPass ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                required
+                style={{ width:'100%', padding:'10px 40px 10px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--bg-secondary)', color:'var(--text)', fontSize:14, boxSizing:'border-box' }}
+              />
+              <button type="button" onClick={() => setShowPass(!showPass)}
+                style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', fontSize:16 }}>
+                {showPass ? '🙈' : '👁'}
               </button>
             </div>
           </div>
-          <button type="submit" className="btn btn-primary btn-lg" style={{ width:'100%', justifyContent:'center', marginTop:4 }} disabled={loading}>
+          <button type="submit" disabled={loading} className="btn btn-primary"
+            style={{ width:'100%', padding:'12px', fontSize:15, fontWeight:700 }}>
             {loading ? 'Entrando...' : 'Entrar no sistema →'}
           </button>
         </form>
-        <p style={{ textAlign:'center', marginTop:24, fontSize:13, color:'var(--text2)' }}>
-          Não tem conta? <Link to="/registro" style={{ color:'#06b6d4', fontWeight:600 }}>Criar agora →</Link>
-        </p>
-        <p style={{ textAlign:'center', marginTop:8, fontSize:13 }}>
-          <Link to="/admin-login" style={{ color:'var(--text3)' }}>Acesso administrativo</Link>
-        </p>
+
+        <div style={{ marginTop:24, textAlign:'center' }}>
+          <p style={{ color:'var(--text-muted)', fontSize:13 }}>
+            Não tem conta? <Link to="/registro" style={{ color:'#6366f1', fontWeight:600 }}>Criar agora →</Link>
+          </p>
+          <p style={{ marginTop:8 }}>
+            <Link to="/admin" style={{ color:'var(--text-muted)', fontSize:12 }}>Acesso administrativo</Link>
+          </p>
+          <p style={{ marginTop:8 }}>
+            <Link to="/esqueci-senha" style={{ color:'var(--text-muted)', fontSize:12 }}>Esqueci minha senha</Link>
+          </p>
+        </div>
       </div>
-      {/* Right */}
-      <div style={{ flex:1, background:'var(--bg2)', borderLeft:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'center', padding:48 }}>
-        <div style={{ maxWidth:360, textAlign:'center' }}>
-          <div style={{ fontSize:48, marginBottom:12 }}>👁️</div>
-          <h2 style={{ fontSize:22, fontWeight:800, color:'var(--text)', marginBottom:8, letterSpacing:'-0.5px' }}>
+
+      {/* Lado direito - Info + Planos */}
+      <div style={{ flex:1, background:'linear-gradient(135deg,rgba(99,102,241,0.1),rgba(168,85,247,0.05))', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', padding:48, borderLeft:'1px solid var(--border)' }}>
+        <div style={{ textAlign:'center', maxWidth:440 }}>
+          <div style={{ fontSize:56, marginBottom:16 }}>👁️</div>
+          <h2 style={{ fontSize:26, fontWeight:800, color:'var(--text)', marginBottom:12 }}>
             Sistema completo para <span style={{ color:'#06b6d4' }}>óticas</span>
           </h2>
-          <p style={{ color:'var(--text2)', lineHeight:1.6, fontSize:13, marginBottom:20 }}>
+          <p style={{ color:'var(--text-muted)', fontSize:14, lineHeight:1.7, marginBottom:32 }}>
             Consulta, OS, PDV, Crediário e muito mais — tudo integrado e simples de usar.
           </p>
 
-          <div style={{ background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.3)', borderRadius:12, padding:16, marginBottom:16 }}>
-            <div style={{ fontSize:13, fontWeight:700, color:'#6366f1', marginBottom:12, textAlign:'center' }}>🚀 Planos e Preços</div>
-            {[
-              { id:'basico',     nome:'Básico',      preco:'R$ 97,00',   color:'#6366f1' },
-              { id:'pro',        nome:'Pro',          preco:'R$ 147,00',  color:'#f59e0b' },
-              { id:'premium',    nome:'Premium',      preco:'R$ 197,00',  color:'#a855f7' },
-              { id:'lancamento', nome:'🔥 Lançamento', preco:'R$ 109,90', color:'#22c55e' },
-            ].map(p => (
-              <div key={p.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8, padding:'6px 8px', background:'rgba(255,255,255,0.05)', borderRadius:8 }}>
-                <span style={{ fontSize:13, color:'var(--text)', fontWeight:500 }}>{p.nome}</span>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span style={{ fontSize:13, fontWeight:700, color:p.color }}>{p.preco}<span style={{ fontSize:10, color:'var(--text2)' }}>/mês</span></span>
-                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); location.href='/planos'; }}>Assinar</button>
-                </div>
-              </div>
-            ))}
-            <div style={{ textAlign:'center', marginTop:10, fontSize:11, color:'var(--text2)' }}>✅ 14 dias grátis · Sem cartão de crédito</div>
+          {/* Banner de planos */}
+          <div style={{ background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.3)', borderRadius:12, padding:24, marginBottom:24 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:'#6366f1', marginBottom:8 }}>🚀 Planos a partir de R$ 97/mês</div>
+            <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:20 }}>Básico · Pro · Premium · Lançamento R$109,90</div>
+            <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = "/planos"; }} style={{ display:"inline-block", background:"#6366f1", color:"white", padding:"12px 32px", borderRadius:"8px", fontWeight:700, fontSize:15, border:"none", cursor:"pointer" }}>Ver planos e preços →</button>
+            <div style={{ marginTop:12, fontSize:12, color:'var(--text-muted)' }}>✅ 14 dias grátis · Cartão ou Pix · Cancele quando quiser</div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:28 }}>
-            {[['👥','Clientes'],['👁️','Consulta Rx'],['📋','Ordem de Serviço'],['💰','PDV / Vendas'],['💳','Crediário'],['📊','Relatórios']].map(([icon, label]) => (
-              <div key={label} style={{ background:'var(--bg3)', borderRadius:10, padding:'12px', border:'1px solid var(--border)', textAlign:'left' }}>
-                <span style={{ fontSize:20 }}>{icon}</span>
-                <div style={{ fontSize:12, fontWeight:600, color:'var(--text2)', marginTop:6 }}>{label}</div>
+
+          {/* Grid de módulos */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            {[['👥','Clientes'],['👁️','Consulta Rx'],['📋','Ordem de Serviço'],['💰','PDV / Vendas'],['💳','Crediário'],['📊','Relatórios']].map(([icon,label]) => (
+              <div key={label} style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'10px 12px', display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:16 }}>{icon}</span>
+                <span style={{ fontSize:12, color:'var(--text-muted)', fontWeight:500 }}>{label}</span>
               </div>
             ))}
           </div>

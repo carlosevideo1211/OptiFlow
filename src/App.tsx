@@ -62,6 +62,8 @@ function AppRoutes() {
       <Route path="/admin-login" element={<AdminLoginPage />} />
       <Route path="/admin"       element={<AdminPanelPage />} />
       <Route path="/admin/*"     element={<AdminPanelPage />} />
+      <Route path="/planos"        element={<PlanosPage />} />
+      <Route path="/planos/sucesso"  element={<PlanosSuccessPage />} />
       <Route path="/login"       element={!user ? <LoginPage />    : <Navigate to="/dashboard" />} />
       <Route path="/registro"    element={!user ? <RegisterPage /> : <Navigate to="/dashboard" />} />
       <Route path="/esqueci-senha" element={!user ? <ForgotPasswordPage /> : <Navigate to="/dashboard" />} />
@@ -83,8 +85,6 @@ function AppRoutes() {
             <Route path="/produtos"     element={<ProdutosPage />} />
             <Route path="/estoque"      element={<EstoquePage />} />
             <Route path="/crediario"    element={<CrediarioPage />} />
-            <Route path="/planos/sucesso"    element={<PlanosSuccessPage />} />
-            <Route path="/planos"          element={<PlanosPage />} />
             <Route path="/financeiro"   element={<FinanceiroPage />} />
             <Route path="/relatorios"   element={<RelatoriosPage />} />
             <Route path="/cadastros"    element={<CadastrosPage />} />
