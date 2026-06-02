@@ -7,13 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server.js"
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.7.0",
     "@supabase/supabase-js": "^2.105.4",
     "date-fns": "^4.1.0",
     "exceljs": "^4.4.0",
+    "express": "^4.22.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^1.14.0",
