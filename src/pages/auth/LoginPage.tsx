@@ -96,7 +96,7 @@ export default function LoginPage() {
                 <span style={{ fontSize:13, color:'var(--text)', fontWeight:500 }}>{p.nome}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <span style={{ fontSize:13, fontWeight:700, color:p.color }}>{p.preco}<span style={{ fontSize:10, color:'var(--text2)' }}>/mês</span></span>
-                  <button onClick={() => navigate('/planos')} style={{ fontSize:11, padding:'3px 10px', background:p.color, color:'white', border:'none', borderRadius:6, cursor:'pointer', fontWeight:600 }}>Assinar</button>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); location.href='/planos'; }}>Assinar</button>
                 </div>
               </div>
             ))}
