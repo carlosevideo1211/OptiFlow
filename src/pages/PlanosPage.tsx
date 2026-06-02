@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import { Check, Zap, Star, Crown } from 'lucide-react';
+import { Check, Zap, Star, Crown, Rocket } from 'lucide-react';
 
 const STRIPE_PK = "pk_test_51TQwAn0MJPFm576O3btqmhbvkUaKB0K29sQed43MayJTXVnbUaJyzs4DjgnEvPerCLZ4X3mNYbA8VwBgUVOoKItK00iVcG2EoM";
 
@@ -60,6 +60,24 @@ const planos = [
       'Suporte 24/7',
     ],
   },
+  {
+    id: 'lancamento',
+    nome: 'Lançamento',
+    preco: 109.90,
+    icon: Rocket,
+    color: '#22c55e',
+    descricao: 'Oferta por tempo limitado',
+    price_id: 'price_premium',
+    tag: '🔥 MELHOR OFERTA',
+    features: [
+      'Tudo do Premium incluso',
+      'Usuários ilimitados',
+      'Suporte 24/7',
+      'Preço garantido por 12 meses',
+      'Após 1 ano: R$ 197/mês',
+      'Cancele quando quiser',
+    ],
+  },
 ];
 
 export default function PlanosPage() {
@@ -103,7 +121,7 @@ export default function PlanosPage() {
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 24 }}>
           {planos.map((plano) => {
             const Icon = plano.icon;
             return (
@@ -127,6 +145,15 @@ export default function PlanosPage() {
                     MAIS POPULAR
                   </div>
                 )}
+                {plano.tag && (
+                  <div style={{
+                    position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)',
+                    background: plano.color, color: 'white', padding: '2px 16px',
+                    borderRadius: 20, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
+                  }}>
+                    {plano.tag}
+                  </div>
+                )}
                 <div style={{ color: plano.color, marginBottom: 12 }}>
                   <Icon size={24} />
                 </div>
@@ -138,7 +165,7 @@ export default function PlanosPage() {
                 </div>
                 <div style={{ marginBottom: 24 }}>
                   <span style={{ fontSize: 36, fontWeight: 800, color: plano.color }}>
-                    R$ {plano.preco}
+                    R$ {plano.preco.toFixed(2).replace('.', ',')}
                   </span>
                   <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>/mês</span>
                 </div>
