@@ -17,6 +17,8 @@ import VendasPage from './pages/VendasPage';
 import ProdutosPage from './pages/ProdutosPage';
 import EstoquePage from './pages/EstoquePage';
 import CrediarioPage from './pages/CrediarioPage';
+import PlanosPage from './pages/PlanosPage';
+import PlanosSuccessPage from './pages/planos/SuccessPage';
 import FinanceiroPage from './pages/FinanceiroPage';
 import RelatoriosPage from './pages/RelatoriosPage';
 import CadastrosPage from './pages/CadastrosPage';
@@ -81,6 +83,8 @@ function AppRoutes() {
             <Route path="/produtos"     element={<ProdutosPage />} />
             <Route path="/estoque"      element={<EstoquePage />} />
             <Route path="/crediario"    element={<CrediarioPage />} />
+            <Route path="/planos/sucesso"    element={<PlanosSuccessPage />} />
+            <Route path="/planos"          element={<PlanosPage />} />
             <Route path="/financeiro"   element={<FinanceiroPage />} />
             <Route path="/relatorios"   element={<RelatoriosPage />} />
             <Route path="/cadastros"    element={<CadastrosPage />} />
