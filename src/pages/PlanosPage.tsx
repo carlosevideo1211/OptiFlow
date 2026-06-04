@@ -15,7 +15,7 @@ const planos = [
     features: ['Ate 5 usuarios','Tudo do Basico','Relatorios avancados','NF-e','Controle de estoque','Suporte prioritario'] },
   { id: 'premium', nome: 'Premium', preco: 197, icon: Crown, color: '#a855f7', descricao: 'Para redes de oticas', price_id: 'price_premium',
     features: ['Usuarios ilimitados','Tudo do Pro','Multi-filial','API de integracao','Gerente de conta','Suporte 24/7'] },
-  { id: 'lancamento', nome: 'Lancamento', preco: 109.90, icon: Rocket, color: '#22c55e', descricao: 'Oferta por tempo limitado', price_id: 'price_premium', tag: 'MELHOR OFERTA',
+  { id: 'lancamento', nome: 'Lancamento', preco: 109.90, icon: Rocket, color: '#22c55e', descricao: 'Oferta por tempo limitado', price_id: 'price_lancamento', tag: 'MELHOR OFERTA',
     features: ['Tudo do Premium incluso','Usuarios ilimitados','Suporte 24/7','Preco garantido por 12 meses','Apos 1 ano: R$ 197/mes','Cancele quando quiser'] },
 ];
 
