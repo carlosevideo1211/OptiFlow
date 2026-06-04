@@ -16,6 +16,7 @@ export default function DashboardPage() {
     consultas_hoje: 0, produtos_baixo: 0, receita_mes: 0
   });
   const [osRecentes, setOsRecentes] = useState<any[]>([]);
+  const [trialInfo, setTrialInfo] = useState<{dias: number, status: string} | null>(null);
   const [monthPoints, setMonthPoints] = useState<MonthPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -103,6 +104,21 @@ export default function DashboardPage() {
   const chartW = 680;
   const barW = Math.floor(chartW / monthPoints.length) - 6;
 
+
+  // Buscar info do trial
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase.from('tenants').select('status, trial_end_date').eq('id', tenantId).single()
+      .then(({ data }) => {
+        if (data) {
+          const hoje = new Date();
+          const fim = new Date(data.trial_end_date);
+          const dias = Math.ceil((fim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+          setTrialInfo({ dias, status: data.status });
+        }
+      });
+  }, [tenantId]);
+
   return (
     <div>
       {/* Header boas-vindas */}
@@ -114,6 +130,55 @@ export default function DashboardPage() {
           Visão geral do negócio em tempo real
         </p>
       </div>
+
+
+
+      {/* Banner de Trial */}
+      {trialInfo && trialInfo.status === 'trial' && trialInfo.dias >= 0 && (() => {
+        const urgente = trialInfo.dias <= 3;
+        return (
+          <div style={{
+            background: urgente ? 'linear-gradient(135deg, #dc2626, #b91c1c)' : 'linear-gradient(135deg, #6366f1, #4f46e5)',
+            borderRadius: 12,
+            padding: '16px 24px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            boxShadow: urgente ? '0 4px 20px rgba(220,38,38,0.3)' : '0 4px 20px rgba(99,102,241,0.3)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 28 }}>{urgente ? '🚨' : '⏰'}</span>
+              <div>
+                <div style={{ color: 'white', fontWeight: 700, fontSize: 16 }}>
+                  {urgente ? `Seu trial expira em ${trialInfo.dias} dia(s)!` : `Você tem ${trialInfo.dias} dias de trial restantes`}
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 }}>
+                  {urgente ? 'Assine agora para não perder o acesso ao sistema' : 'Assine um plano para continuar usando após o trial'}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => window.location.href = '/planos'}
+              style={{
+                background: 'white',
+                color: urgente ? '#dc2626' : '#6366f1',
+                border: 'none',
+                borderRadius: 8,
+                padding: '10px 20px',
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Ver planos e assinar →
+            </button>
+          </div>
+        );
+      })()}
 
       {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
