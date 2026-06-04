@@ -101,8 +101,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
   const signOut = async () => { profileLoaded = false; await supabase.auth.signOut(); setUser(null); };
 
+  const adminViewingTenant = localStorage.getItem('admin_viewing_tenant');
+  const effectiveTenantId = adminViewingTenant || user?.tenant_id || null;
+
   return (
-    <Ctx.Provider value={{ user, tenantId: user?.tenant_id || null, loading, signIn, signUp, signOut }}>
+    <Ctx.Provider value={{ user, tenantId: effectiveTenantId, loading, signIn, signUp, signOut }}>
       {children}
     </Ctx.Provider>
   );

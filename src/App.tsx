@@ -69,7 +69,7 @@ function AppRoutes() {
       <Route path="/esqueci-senha" element={!user ? <ForgotPasswordPage /> : <Navigate to="/dashboard" />} />
       <Route path="/trial-expirado" element={<TrialExpiredPage />} />
       <Route path="/*" element={
-        !user ? <Navigate to="/login" /> :
+        (!user && !localStorage.getItem('admin_viewing_tenant')) ? <Navigate to="/login" /> :
         <Shell>
           <Routes>
             <Route path="/dashboard"    element={<DashboardPage />} />

@@ -9,6 +9,7 @@ interface MonthPoint { label: string; total: number; key: string; }
 
 export default function DashboardPage() {
   const { user, tenantId } = useAuth();
+  const isAdminViewing = localStorage.getItem('admin_viewing_tenant') !== null;
   const navigate = useNavigate();
   const [storeName, setStoreName] = useState(localStorage.getItem('new_store_name') || (user as any)?.store_name || '');
   const [stats, setStats] = useState({
@@ -121,6 +122,23 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {/* Banner Admin Visualizando */}
+      {isAdminViewing && (
+        <div style={{ position:'fixed', bottom:24, left:24, zIndex:9999, background:'linear-gradient(135deg,#6366f1,#06b6d4)', borderRadius:12, padding:'12px 20px', display:'flex', alignItems:'center', gap:12, boxShadow:'0 4px 20px rgba(99,102,241,0.5)' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'white' }}>
+            👁️ Visualizando como inquilino
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem('admin_viewing_tenant');
+              window.location.href = '/admin';
+            }}
+            style={{ background:'rgba(255,255,255,0.2)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, padding:'6px 14px', cursor:'pointer', color:'white', fontSize:12, fontWeight:700 }}
+          >
+            Sair da Visualização
+          </button>
+        </div>
+      )}
       {/* Header boas-vindas */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
