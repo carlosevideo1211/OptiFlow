@@ -343,3 +343,47 @@ tbody tr:last-child { border-bottom: none; }
   .form-row-2, .form-row-3 { grid-template-columns: 1fr; }
   .balance-row { flex-direction: column; gap: 12px; }
 }
+
+/* ── TEMAS ─────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:#0B1120;--bg2:#111827;--bg3:#1A2235;--bg4:#242F45;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --text:#E8EDF5;--text2:#8892A4;--text3:#4A5568;
+  --primary:#6366F1;--primary2:#4F46E5;--accent:#06B6D4;--accent2:#0891B2;
+  --card-bg:#111827;--input-bg:#1A2235;
+}
+[data-theme="light"] {
+  --bg:#F1F5F9;--bg2:#FFFFFF;--bg3:#F8FAFC;--bg4:#E2E8F0;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.14);
+  --text:#0F172A;--text2:#475569;--text3:#94A3B8;
+  --primary:#6366F1;--primary2:#4F46E5;--accent:#0891B2;--accent2:#0E7490;
+  --card-bg:#FFFFFF;--input-bg:#F8FAFC;
+}
+[data-theme="purple"] {
+  --bg:#0D0A1E;--bg2:#13102A;--bg3:#1C1838;--bg4:#282350;
+  --border:rgba(139,92,246,0.15);--border2:rgba(139,92,246,0.25);
+  --text:#EDE9FE;--text2:#A78BFA;--text3:#6D28D9;
+  --primary:#8B5CF6;--primary2:#7C3AED;--accent:#EC4899;--accent2:#DB2777;
+  --card-bg:#13102A;--input-bg:#1C1838;
+}
+[data-theme="ocean"] {
+  --bg:#0A1628;--bg2:#0F2040;--bg3:#162B55;--bg4:#1E3A6E;
+  --border:rgba(56,189,248,0.12);--border2:rgba(56,189,248,0.22);
+  --text:#E0F2FE;--text2:#7DD3FC;--text3:#0369A1;
+  --primary:#38BDF8;--primary2:#0EA5E9;--accent:#34D399;--accent2:#10B981;
+  --card-bg:#0F2040;--input-bg:#162B55;
+}
+[data-theme="emerald"] {
+  --bg:#071A12;--bg2:#0D2B1D;--bg3:#143D29;--bg4:#1A5235;
+  --border:rgba(52,211,153,0.12);--border2:rgba(52,211,153,0.22);
+  --text:#D1FAE5;--text2:#6EE7B7;--text3:#065F46;
+  --primary:#34D399;--primary2:#10B981;--accent:#FCD34D;--accent2:#F59E0B;
+  --card-bg:#0D2B1D;--input-bg:#143D29;
+}
+[data-theme="sunset"] {
+  --bg:#1A0A0A;--bg2:#2D1010;--bg3:#3D1818;--bg4:#4F2020;
+  --border:rgba(251,146,60,0.12);--border2:rgba(251,146,60,0.22);
+  --text:#FEF3C7;--text2:#FCA5A5;--text3:#7F1D1D;
+  --primary:#FB923C;--primary2:#EA580C;--accent:#FBBF24;--accent2:#D97706;
+  --card-bg:#2D1010;--input-bg:#3D1818;
+}

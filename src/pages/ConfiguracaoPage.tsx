@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTheme, THEMES } from '../hooks/useTheme';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
@@ -17,9 +18,10 @@ const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG
 
 export default function ConfiguracaoPage() {
   const { tenantId } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
-  const [tab, setTab]             = useState<'loja'|'integracoes'>('loja');
+  const [tab, setTab]             = useState<'loja'|'integracoes'|'tema'>('loja');
   const [showToken, setShowToken] = useState(false);
   const [form, setForm] = useState<StoreSettings>({
     tenant_id: tenantId||'', name:'', cnpj:'', phone:'', email:'',
@@ -76,7 +78,7 @@ export default function ConfiguracaoPage() {
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:4, marginBottom:24, borderBottom:'1px solid var(--border)' }}>
-        {[{k:'loja',l:'🏪 Dados da Loja'},{k:'integracoes',l:'🔗 Integrações'}].map(t => (
+        {[{k:'loja',l:'🏪 Dados da Loja'},{k:'integracoes',l:'🔗 Integrações'},{k:'tema',l:'🎨 Aparência'}].map(t => (
           <button key={t.k} onClick={() => setTab(t.k as any)}
             style={{ padding:'10px 20px', background:'none', border:'none', cursor:'pointer',
               fontSize:14, fontWeight:600,
@@ -87,6 +89,47 @@ export default function ConfiguracaoPage() {
         ))}
       </div>
 
+      {/* ── TEMA ── */}
+      {tab === 'tema' && (
+        <div>
+          <div className="card" style={{padding:24,marginBottom:20}}>
+            <h3 style={{fontSize:15,fontWeight:700,marginBottom:6,display:'flex',alignItems:'center',gap:8}}>
+              🎨 Personalização Visual
+            </h3>
+            <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:24}}>Escolha o tema que melhor se adapta ao seu estilo de trabalho.</p>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:16}}>
+              {THEMES.map(t => (
+                <div key={t.id} onClick={()=>setTheme(t.id as any)}
+                  style={{cursor:'pointer',border:'2px solid',borderColor:theme===t.id?'var(--primary)':'var(--border)',borderRadius:12,overflow:'hidden',transition:'all 0.2s',transform:theme===t.id?'scale(1.02)':'scale(1)'}}>
+                  <div style={{height:80,background:t.id==='dark'?'#0B1120':t.id==='light'?'#F1F5F9':t.id==='purple'?'#0D0A1E':t.id==='ocean'?'#0A1628':t.id==='emerald'?'#071A12':'#1A0A0A',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32}}>
+                    {t.icon}
+                  </div>
+                  <div style={{padding:'12px 14px',background:'var(--bg2)'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700}}>{t.name}</div>
+                        <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{t.desc}</div>
+                      </div>
+                      {theme===t.id && <div style={{width:20,height:20,borderRadius:'50%',background:'var(--primary)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'white'}}>✓</div>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card" style={{padding:24}}>
+            <h3 style={{fontSize:15,fontWeight:700,marginBottom:6}}>👁️ Preview do Tema Atual</h3>
+            <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:16}}>Tema selecionado: <strong style={{color:'var(--primary)'}}>{THEMES.find(t=>t.id===theme)?.name}</strong></p>
+            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+              <div style={{padding:'8px 16px',background:'var(--primary)',borderRadius:8,color:'white',fontSize:13,fontWeight:600}}>Botão Primário</div>
+              <div style={{padding:'8px 16px',background:'var(--accent)',borderRadius:8,color:'white',fontSize:13,fontWeight:600}}>Destaque</div>
+              <div style={{padding:'8px 16px',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,fontSize:13}}>Card</div>
+              <div style={{padding:'8px 16px',background:'var(--success)',borderRadius:8,color:'white',fontSize:13,fontWeight:600}}>Sucesso</div>
+              <div style={{padding:'8px 16px',background:'var(--danger)',borderRadius:8,color:'white',fontSize:13,fontWeight:600}}>Erro</div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ── DADOS DA LOJA ── */}
       {tab === 'loja' && (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
