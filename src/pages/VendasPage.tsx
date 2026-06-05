@@ -15,6 +15,7 @@ const PAGAMENTOS = [
   { value: 'debito',        label: 'Débito',         icon: '🏧' },
   { value: 'crediario',     label: 'Crediário',      icon: '📋' },
   { value: 'transferencia', label: 'Transferência',  icon: '🏦' },
+  { value: 'boleto', label: 'Boleto', icon: '📄' },
 ];
 
 interface Product { id: string; name: string; sale_price: number; stock: number; category: string; brand?: string; code?: string; }
@@ -184,6 +185,27 @@ export default function VendasPage() {
     await supabase.from('sale_items').delete().eq('sale_id', v.id);
     await supabase.from('sales').delete().eq('id', v.id);
     toast.success('Venda excluída'); load();
+  };
+
+  const gerarBoleto = async () => {
+    if (cartItems.length === 0) { toast.error('Carrinho vazio!'); return; }
+    if (!customerName.trim()) { toast.error('Informe o cliente'); return; }
+    if (!selectedCustomer) { toast.error('Selecione um cliente cadastrado'); return; }
+    setSaving(true);
+    try {
+      const { data: cust } = await supabase.from('customers').select('name,cpf,email').eq('id', selectedCustomer).single();
+      if (!cust?.cpf) { toast.error('Cliente sem CPF cadastrado. Cadastre o CPF para gerar boleto.'); setSaving(false); return; }
+      const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 3);
+      const dueDateStr = dueDate.toISOString().split('T')[0];
+      const { data, error } = await supabase.functions.invoke('create-boleto', {
+        body: { customer_name: cust.name, customer_cpf: cust.cpf, customer_email: cust.email || '', amount: total, due_date: dueDateStr, description: 'Venda OptiFlow - ' + customerName }
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao gerar boleto');
+      toast.success('Boleto gerado com sucesso!');
+      if (data.boleto_url) window.open(data.boleto_url, '_blank');
+      else if (data.invoice_url) window.open(data.invoice_url, '_blank');
+    } catch(e: any) { toast.error(e.message || 'Erro ao gerar boleto'); }
+    finally { setSaving(false); }
   };
 
   const finalizeSale = async () => {
@@ -677,9 +699,15 @@ export default function VendasPage() {
               </div>
             </div>
 
+            {payment === 'boleto' ? (
+              <button onClick={gerarBoleto} disabled={saving || cartItems.length === 0} style={{ width: '100%', padding: '16px', borderRadius: 12, border: 'none', background: cartItems.length === 0 ? 'rgba(99,102,241,.3)' : '#f59e0b', color: 'white', fontSize: 15, fontWeight: 700, cursor: cartItems.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                📄 {saving ? 'Gerando boleto...' : 'Gerar Boleto — ' + formatBRL(saldo || total)}
+              </button>
+            ) : (
             <button onClick={finalizeSale} disabled={saving || cartItems.length === 0} style={{ width: '100%', padding: '16px', borderRadius: 12, border: 'none', background: cartItems.length === 0 ? 'rgba(99,102,241,.3)' : '#6366f1', color: 'white', fontSize: 15, fontWeight: 700, cursor: cartItems.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Receipt size={18} /> {saving ? 'Finalizando...' : 'Receber Pagamento — ' + formatBRL(saldo || total)}
             </button>
+            )}
             <button onClick={clearCart} style={{ width: '100%', padding: '10px', borderRadius: 10, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer' }}>🗑️ Limpar carrinho</button>
             <button onClick={() => setTab('lista')} style={{ width: '100%', padding: '10px', borderRadius: 10, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer' }}>← Voltar</button>
           </div>
