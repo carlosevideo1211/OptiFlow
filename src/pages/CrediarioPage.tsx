@@ -97,6 +97,36 @@ export default function CrediarioPage() {
   const totalVencido = parcelas.filter(p => p.status !== 'pago' && p.due_date && p.due_date < hoje).reduce((s, p) => s + p.amount, 0);
   const totalRecebidoMes = parcelas.filter(p => p.status === 'pago' && p.paid_at && p.paid_at.startsWith(new Date().toISOString().slice(0,7))).reduce((s, p) => s + (p.paid_amount || p.amount), 0);
 
+  const imprimirReciboParcial = (p: Parcela, pago: number, operador: string) => {
+    const saldo = Math.round((p.amount + calcJuros(p) - pago) * 100) / 100;
+    const dt = new Date().toLocaleDateString('pt-BR');
+    const hr = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const w = window.open('','_blank','width=400,height=600');
+    if (!w) return;
+    const html = '<html><head><meta charSet="UTF-8"><title>Recibo</title>'
+      + '<style>body{font-family:Arial;padding:24px;max-width:380px;margin:0 auto}'
+      + 'h2{text-align:center;font-size:16px}'
+      + '.val{text-align:center;font-size:32px;font-weight:bold;margin:16px 0}'
+      + '.box{border:1px solid #e5a500;background:#fffbea;border-radius:8px;padding:12px;margin:16px 0;font-size:13px}'
+      + '.row{display:flex;justify-content:space-between;padding:4px 0}'
+      + '.sd{color:#e5a500;font-weight:bold}'
+      + '@media print{button{display:none}}</style></head><body>'
+      + '<p style="text-align:right;font-size:11px;color:#777">Recebido em: ' + dt + ' as ' + hr + '</p>'
+      + '<h2>RECIBO DE PAGAMENTO</h2>'
+      + '<p style="text-align:center;font-size:13px">Recebemos de <strong>' + (p.customer_name||'') + '</strong>, a importancia de:</p>'
+      + '<div class="val">R$ ' + pago.toFixed(2).replace('.',',') + '</div>'
+      + '<div class="box">'
+      + '<div class="row"><span>Valor total da parcela</span><span>R$ ' + (p.amount+calcJuros(p)).toFixed(2).replace('.',',') + '</span></div>'
+      + '<div class="row"><span>Valor recebido</span><span>R$ ' + pago.toFixed(2).replace('.',',') + '</span></div>'
+      + '<div class="row"><span class="sd">Saldo restante</span><span class="sd">R$ ' + saldo.toFixed(2).replace('.',',') + '</span></div>'
+      + '</div>'
+      + '<p style="font-size:12px;color:#555">Referente a parcela n. ' + p.installment_number + ' de ' + (p.total_installments||'?') + '. Operador: ' + operador + '</p>'
+      + '<p style="font-size:12px;color:#555">Damos por paga a referida parcela (parcialmente).</p>'
+      + '<script>window.onload=function(){window.print();}<\/script></body></html>';
+    w.document.write(html);
+    w.document.close();
+  };
+
   const pagarParcela = (p: Parcela) => {
     setSelectedParcela(p);
     setPayForm({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '' });
@@ -143,8 +173,10 @@ export default function CrediarioPage() {
         }
       } else {
         toast.success('Pagamento parcial registrado!');
+        imprimirReciboParcial(p, pago, funcs[0].name);
       }
       setShowPayModal(false);
+      load();
       load();
     } catch(e: any) { toast.error(e.message || 'Erro'); }
     finally { setPayingSaving(false); }
@@ -287,6 +319,22 @@ export default function CrediarioPage() {
             <input className="form-input" placeholder="0,00" value={payForm.paid_amount} onChange={e=>setPayForm(f=>({...f,paid_amount:e.target.value}))} style={{marginBottom:10}}/>
             <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Vencimento do saldo *</label>
             <input className="form-input" type="date" value={payForm.partial_due_date} onChange={e=>setPayForm(f=>({...f,partial_due_date:e.target.value}))}/>
+            {payForm.paid_amount && parseFloat(payForm.paid_amount.replace(',','.')) > 0 && (
+              <div style={{marginTop:10,padding:10,background:'rgba(234,179,8,0.15)',borderRadius:8,fontSize:13}}>
+                <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <span>Valor total da parcela:</span>
+                  <span style={{fontWeight:600}}>{fmtM(selectedParcela.amount + calcJuros(selectedParcela))}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
+                  <span>Valor recebido:</span>
+                  <span style={{fontWeight:600,color:'#22c55e'}}>{fmtM(parseFloat(payForm.paid_amount.replace(',','.')))}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',marginTop:4,borderTop:'1px solid rgba(255,255,255,0.1)',paddingTop:6}}>
+                  <span style={{fontWeight:700}}>Saldo restante:</span>
+                  <span style={{fontWeight:700,color:'#f59e0b'}}>{fmtM(Math.max(0, selectedParcela.amount + calcJuros(selectedParcela) - parseFloat(payForm.paid_amount.replace(',','.'))))}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
         <div style={{borderTop:'1px solid rgba(255,255,255,0.1)',paddingTop:14,marginBottom:16}}>
