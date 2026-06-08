@@ -10,6 +10,13 @@ import {
 
 type Tab = 'clientes' | 'consultas' | 'vendas' | 'crediario';
 
+// Formatar CPF para o padrao 000.000.000-00
+function formatCPF(cpf: string): string {
+  const n = String(cpf).replace(/[^0-9]/g, '').padStart(11, '0');
+  if (n.replace(/0/g,'').length === 0) return '';
+  return n.slice(0,3)+'.'+n.slice(3,6)+'.'+n.slice(6,9)+'-'+n.slice(9,11);
+}
+
 interface ImportResult {
   success: number;
   errors: number;
@@ -99,7 +106,7 @@ export default function ImportacaoPage() {
               const nome = String(row['Nome'] || row['nome'] || '').trim();
               // Normalizar CPF - Excel converte para numero, recolocar zeros
               const cpfRaw = String(row['CPF'] || row['cpf'] || '').replace(/[^0-9]/g,'');
-              const cpfFmt = cpfRaw.length > 0 ? cpfRaw.padStart(11,'0') : '';
+              const cpfFmt = cpfRaw.length > 0 ? formatCPF(cpfRaw) : '';
               // Verificar se CPF ja existe para evitar duplicata
               if (cpfFmt && cpfFmt.replace(/0/g,'').length > 0) {
                 const { data: existe } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).eq('cpf', cpfFmt).maybeSingle();
@@ -164,7 +171,7 @@ export default function ImportacaoPage() {
             try {
               const nomeCliente = row['Nome_Cliente'] || '';
               let customerId = null;
-              const cpf = row['CPF_Cliente'] || '';
+              const cpf = formatCPF(String(row['CPF_Cliente'] || '').replace(/[^0-9]/g,''));
               if (cpf) {
                 const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).ilike('cpf', cpf.replace(/\D/g,'')).maybeSingle();
                 customerId = cust?.id;
@@ -203,7 +210,7 @@ export default function ImportacaoPage() {
             try {
               const nomeCliente = row['Nome_Cliente'] || '';
               let customerId = null;
-              const cpf = row['CPF_Cliente'] || '';
+              const cpf = formatCPF(String(row['CPF_Cliente'] || '').replace(/[^0-9]/g,''));
               if (cpf) {
                 const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).ilike('cpf', cpf.replace(/\D/g,'')).maybeSingle();
                 customerId = cust?.id;
