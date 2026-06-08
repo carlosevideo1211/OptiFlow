@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import * as XLSX from 'xlsx';
+import { formatCPF } from '../utils/format';
 import toast from 'react-hot-toast';
 import {
   Upload, Download, CheckCircle, XCircle, AlertTriangle,
@@ -9,13 +10,6 @@ import {
 } from 'lucide-react';
 
 type Tab = 'clientes' | 'consultas' | 'vendas' | 'crediario';
-
-// Formatar CPF para o padrao 000.000.000-00
-function formatCPF(cpf: string): string {
-  const n = String(cpf).replace(/[^0-9]/g, '').padStart(11, '0');
-  if (n.replace(/0/g,'').length === 0) return '';
-  return n.slice(0,3)+'.'+n.slice(3,6)+'.'+n.slice(6,9)+'-'+n.slice(9,11);
-}
 
 interface ImportResult {
   success: number;

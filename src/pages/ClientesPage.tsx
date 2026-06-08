@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
+import { formatCPF } from '../utils/format';
 import type { Customer } from '../types/index';
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -471,7 +472,7 @@ export default function ClientesPage() {
                       <label className="form-label">Nome completo *</label>
                       <input className="form-input" value={form.name} onChange={e=>set('name',e.target.value)} required/>
                     </div>
-                    <div><label className="form-label">CPF</label><input className="form-input" value={form.cpf} onChange={e=>set('cpf',e.target.value)} placeholder="000.000.000-00"/></div>
+                    <div><label className="form-label">CPF</label><input className="form-input" value={form.cpf} onChange={e=>set('cpf',formatCPF(e.target.value))} placeholder="000.000.000-00"/></div>
                     <div><label className="form-label">Data de nascimento</label><input className="form-input" type="date" value={form.birth_date} onChange={e=>set('birth_date',e.target.value)}/></div>
                     <div><label className="form-label">Telefone</label><input className="form-input" value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="(92) 99999-0000"/></div>
                     <div><label className="form-label">WhatsApp</label><input className="form-input" value={form.whatsapp} onChange={e=>set('whatsapp',e.target.value)} placeholder="(92) 99999-0000"/></div>
