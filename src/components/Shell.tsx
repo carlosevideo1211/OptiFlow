@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Eye, ClipboardList, ShoppingCart, Calendar,
   Package, Boxes, CreditCard, TrendingUp, BarChart3, FileText,
-  BookUser, Settings, LogOut, Menu, X, Bell, ChevronRight
+  BookUser, Settings, LogOut, Menu, X, Bell, Upload, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -43,6 +43,7 @@ const ALL_NAV_SECTIONS = [
     label: 'Sistema',
     items: [
       { to: '/cadastros',    label: 'Cadastros',    icon: BookUser, sub: false, roles: ['master','Gerente'] },
+      { to: '/importacao',   label: 'Importar Dados', icon: Upload, sub: false, roles: ['master','Gerente'] },
       { to: '/configuracao', label: 'Configuração', icon: Settings, sub: false, roles: ['master','Gerente'] },
     ]
   }

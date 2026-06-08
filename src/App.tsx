@@ -23,6 +23,7 @@ import FinanceiroPage from './pages/FinanceiroPage';
 import RelatoriosPage from './pages/RelatoriosPage';
 import CadastrosPage from './pages/CadastrosPage';
 import ConfiguracaoPage from './pages/ConfiguracaoPage';
+import ImportacaoPage from './pages/ImportacaoPage';
 
 import NfePage from './pages/NfePage';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
@@ -89,6 +90,7 @@ function AppRoutes() {
             <Route path="/relatorios"   element={<RelatoriosPage />} />
             <Route path="/cadastros"    element={<CadastrosPage />} />
             <Route path="/configuracao" element={<ConfiguracaoPage />} />
+            <Route path="/importacao"  element={<ImportacaoPage />} />
             <Route path="/nfe"          element={<NfePage />} />
             <Route path="*"             element={<Navigate to="/dashboard" />} />
           </Routes>
