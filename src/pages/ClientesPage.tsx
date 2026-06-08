@@ -33,6 +33,8 @@ export default function ClientesPage() {
   const [saving, setSaving]       = useState(false);
 
   const [rankings, setRankings] = useState<Record<string, string|null>>({});
+  const [viewTab, setViewTab] = useState('dados');
+  const [viewHist, setViewHist] = useState<any>({v:[],o:[],c:[],cr:[]});
 
   // Calcular ranking de cada cliente baseado no historico de parcelas
   const calcRankings = async (ids: string[], tid: string) => {
@@ -369,7 +371,13 @@ export default function ClientesPage() {
             </div>
 
             {viewing ? (
-              <div className="modal-body" style={{ display:'flex', gap:24, alignItems:'flex-start' }}>
+              <div className="modal-body">
+                <div style={{display:'flex',gap:0,marginBottom:16,borderBottom:'1px solid var(--border)'}}>
+                  {[['dados','👤 Dados'],['vendas','🛒 Vendas ('+viewHist.v.length+')'],['os','📋 OS ('+viewHist.o.length+')'],['consultas','👁️ Consultas ('+viewHist.c.length+')'],['crediario','💳 Crediário ('+viewHist.cr.length+')']].map(([k,l])=>(
+                    <button key={k} onClick={()=>setViewTab(k as string)} style={{padding:'8px 12px',background:'none',border:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:viewTab===k?'var(--primary)':'var(--text-muted)',borderBottom:viewTab===k?'2px solid var(--primary)':'2px solid transparent',marginBottom:-1,whiteSpace:'nowrap'}}>{l}</button>
+                  ))}
+                </div>
+                {viewTab==='dados' && <div style={{ display:'flex', gap:24, alignItems:'flex-start' }}>
                 {/* Dados lado esquerdo */}
                 <div style={{ flex:1 }}>
                   <div style={{ marginBottom:16 }}>
@@ -417,6 +425,19 @@ export default function ClientesPage() {
                   )}
                   <div style={{ fontSize:12, color:'var(--text-muted)', textAlign:'center' }}>Foto do cliente</div>
                 </div>
+              </div>}
+              {viewTab==='vendas' && <div style={{overflowX:'auto'}}>
+                {viewHist.v.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma venda encontrada</p>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Venda</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Data</th><th style={{padding:'6px 8px',textAlign:'right',color:'var(--text-muted)'}}>Total</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Forma</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Status</th></tr></thead><tbody>{viewHist.v.map((v:any,i:number)=><tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'6px 8px',fontWeight:600}}>#{String(v.sale_number||'').padStart(4,'0')}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{v.created_at?new Date(v.created_at).toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'6px 8px',textAlign:'right',color:'#22c55e',fontWeight:700}}>{Number(v.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{v.payment_method||'--'}</td><td style={{padding:'6px 8px'}}>{v.status||'--'}</td></tr>)}</tbody></table>}
+              </div>}
+              {viewTab==='os' && <div style={{overflowX:'auto'}}>
+                {viewHist.o.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma OS encontrada</p>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>OS</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Data</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Armação</th><th style={{padding:'6px 8px',textAlign:'right',color:'var(--text-muted)'}}>Total</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Status</th></tr></thead><tbody>{viewHist.o.map((o:any,i:number)=><tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'6px 8px',fontWeight:600}}>#{String(o.os_number||'').padStart(4,'0')}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{o.created_at?new Date(o.created_at).toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{o.frame_brand||'--'}</td><td style={{padding:'6px 8px',textAlign:'right',fontWeight:700}}>{Number(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'6px 8px'}}>{o.status||'--'}</td></tr>)}</tbody></table>}
+              </div>}
+              {viewTab==='consultas' && <div style={{overflowX:'auto'}}>
+                {viewHist.c.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma consulta encontrada</p>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Data</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Profissional</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Notas</th></tr></thead><tbody>{viewHist.c.map((co:any,i:number)=><tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'6px 8px',fontWeight:600}}>{co.date?new Date(co.date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{co.professional_name||'--'}</td><td style={{padding:'6px 8px',color:'var(--text-muted)',fontSize:12}}>{co.notes||'--'}</td></tr>)}</tbody></table>}
+              </div>}
+              {viewTab==='crediario' && <div>
+                {viewHist.cr.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhum crediário encontrado</p>:<div>{viewHist.cr.map((cr:any,i:number)=><div key={i} style={{marginBottom:10,padding:12,background:'var(--bg3)',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontWeight:700,fontSize:13}}>{new Date(cr.created_at).toLocaleDateString('pt-BR')} — {cr.installments}x</div><div style={{fontSize:12,color:'var(--text-muted)'}}>Total: {Number(cr.total_amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div></div><span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:cr.status==='quitado'?'rgba(34,197,94,.15)':'rgba(248,113,113,.15)',color:cr.status==='quitado'?'#22c55e':'#f87171'}}>{cr.status}</span></div>)}</div>}
+              </div>}
               </div>
             ) : (
               <form onSubmit={handleSave}>
