@@ -156,7 +156,7 @@ export default function ClientesPage() {
     setViewTab('dados');
     setViewHist({v:[],o:[],c:[],cr:[]});
     if (tenantId) Promise.all([
-      supabase.from('sales').select('sale_number,total,payment_method,created_at,status').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
+      supabase.from('sales').select('sale_number,total,subtotal,discount,payment_method,installments,created_at,status,entrada,sale_items(description,quantity,unit_price,total)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('service_orders').select('os_number,status,total,created_at,delivery_date,frame_brand,frame_model,lens_type,lens_brand,od_esf,od_cil,od_eixo,od_adicao,od_dnp,oe_esf,oe_cil,oe_eixo,oe_adicao,oe_dnp,entrada,notes,sales(id,sale_items(description,quantity,unit_price,total))').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('consultations').select('id,date,professional_name,notes,rx_re_esf,rx_re_cil,rx_re_eixo,rx_re_dnp,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_dnp,rx_adicao').eq('tenant_id',tenantId).eq('customer_id',c.id).order('date',{ascending:false}).limit(15),
       supabase.from('crediario').select('total_amount,installments,status,created_at').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
@@ -448,7 +448,30 @@ export default function ClientesPage() {
                 </div>
               </div>}
               {viewTab==='vendas' && <div style={{overflowX:'auto'}}>
-                {viewHist.v.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma venda encontrada</p>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Venda</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Data</th><th style={{padding:'6px 8px',textAlign:'right',color:'var(--text-muted)'}}>Total</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Forma</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Status</th></tr></thead><tbody>{viewHist.v.map((v:any,i:number)=><tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'6px 8px',fontWeight:600}}>#{String(v.sale_number||'').padStart(4,'0')}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{v.created_at?new Date(v.created_at).toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'6px 8px',textAlign:'right',color:'#22c55e',fontWeight:700}}>{Number(v.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{v.payment_method||'--'}</td><td style={{padding:'6px 8px'}}>{v.status||'--'}</td></tr>)}</tbody></table>}
+                {viewHist.v.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma venda encontrada</p>:<div>{viewHist.v.map((v:any,i:number)=>(
+                  <div key={i} style={{marginBottom:16,padding:14,background:'var(--bg3)',borderRadius:10,border:'1px solid var(--border)'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                      <div style={{fontWeight:700,fontSize:14}}>Venda #{String(v.sale_number||'').padStart(4,'0')}</div>
+                      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                        <span style={{fontSize:12,color:'var(--text-muted)'}}>{v.created_at?new Date(v.created_at).toLocaleDateString('pt-BR'):'--'}</span>
+                        <span style={{padding:'2px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:'rgba(34,197,94,.15)',color:'#22c55e'}}>{v.payment_method||'--'}{v.installments>1?' ('+v.installments+'x)':''}</span>
+                      </div>
+                    </div>
+                    {v.sale_items && v.sale_items.length > 0 && (
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,marginBottom:8}}>
+                        <thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'3px 6px',textAlign:'left',color:'var(--text-muted)'}}>Produto</th><th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Qtde</th><th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Unit.</th><th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Total</th></tr></thead>
+                        <tbody>{v.sale_items.map((it:any,j:number)=>(
+                          <tr key={j} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'3px 6px'}}>{it.description}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{it.quantity}</td><td style={{padding:'3px 6px',textAlign:'right'}}>{Number(it.unit_price||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'3px 6px',textAlign:'right',fontWeight:700,color:'#22c55e'}}>{Number(it.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    )}
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:12,borderTop:'1px solid var(--border)',paddingTop:6}}>
+                      {v.discount>0 && <span style={{color:'#f87171'}}>Desconto: {Number(v.discount).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>}
+                      {v.entrada>0 && <span style={{color:'var(--text-muted)'}}>Entrada: {Number(v.entrada).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>}
+                      <span style={{fontWeight:700,color:'#22c55e',marginLeft:'auto'}}>Total: {Number(v.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                    </div>
+                  </div>
+                ))}</div>}
               </div>}
               {viewTab==='os' && <div style={{overflowX:'auto'}}>
                 {viewHist.o.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma OS encontrada</p>:<div>{viewHist.o.map((o:any,i:number)=>(
