@@ -159,7 +159,7 @@ export default function ClientesPage() {
       supabase.from('sales').select('sale_number,total,subtotal,discount,payment_method,installments,created_at,status,entrada,sale_items(description,quantity,unit_price,total)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('service_orders').select('os_number,status,total,created_at,delivery_date,frame_brand,frame_model,lens_type,lens_brand,od_esf,od_cil,od_eixo,od_adicao,od_dnp,oe_esf,oe_cil,oe_eixo,oe_adicao,oe_dnp,entrada,notes,sales(id,sale_items(description,quantity,unit_price,total))').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('consultations').select('id,date,professional_name,notes,rx_re_esf,rx_re_cil,rx_re_eixo,rx_re_dnp,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_dnp,rx_adicao').eq('tenant_id',tenantId).eq('customer_id',c.id).order('date',{ascending:false}).limit(15),
-      supabase.from('crediario').select('total_amount,installments,status,created_at').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
+      supabase.from('crediario').select('total_amount,installments,status,created_at,crediario_parcelas(installment_number,due_date,amount,paid_amount,status)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
     ]).then(([v,o,co,cr])=>setViewHist({v:v.data||[],o:o.data||[],c:co.data||[],cr:cr.data||[]}));
     setShowModal(true);
   };
@@ -554,7 +554,32 @@ export default function ClientesPage() {
                 ))}</div>}
               </div>}
               {viewTab==='crediario' && <div>
-                {viewHist.cr.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhum crediário encontrado</p>:<div>{viewHist.cr.map((cr:any,i:number)=><div key={i} style={{marginBottom:10,padding:12,background:'var(--bg3)',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontWeight:700,fontSize:13}}>{new Date(cr.created_at).toLocaleDateString('pt-BR')} — {cr.installments}x</div><div style={{fontSize:12,color:'var(--text-muted)'}}>Total: {Number(cr.total_amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div></div><span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:cr.status==='quitado'?'rgba(34,197,94,.15)':'rgba(248,113,113,.15)',color:cr.status==='quitado'?'#22c55e':'#f87171'}}>{cr.status}</span></div>)}</div>}
+                {viewHist.cr.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhum crediário encontrado</p>:<div>{viewHist.cr.map((cr:any,i:number)=>{
+                  const parcelas = cr.crediario_parcelas || [];
+                  const abertas = parcelas.filter((p:any)=>p.status!=='pago');
+                  const totalAberto = abertas.reduce((s:number,p:any)=>s+(p.amount||0),0);
+                  const hoje = new Date();
+                  return <div key={i} style={{marginBottom:16,padding:14,background:'var(--bg3)',borderRadius:10,border:'1px solid var(--border)'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:14}}>{cr.installments}x de {Number((cr.total_amount||0)/cr.installments).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+                        <div style={{fontSize:12,color:'var(--text-muted)'}}>{new Date(cr.created_at).toLocaleDateString('pt-BR')} — Total: {Number(cr.total_amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+                      </div>
+                      <div style={{textAlign:'right'}}>
+                        <span style={{padding:'2px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:cr.status==='quitado'?'rgba(34,197,94,.15)':'rgba(248,113,113,.15)',color:cr.status==='quitado'?'#22c55e':'#f87171'}}>{cr.status}</span>
+                        {totalAberto>0 && <div style={{fontSize:12,color:'#f87171',marginTop:4,fontWeight:700}}>Em aberto: {Number(totalAberto).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>}
+                      </div>
+                    </div>
+                    {parcelas.length>0 && <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                      <thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Parc.</th><th style={{padding:'3px 6px',textAlign:'left',color:'var(--text-muted)'}}>Vencimento</th><th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Valor</th><th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Status</th></tr></thead>
+                      <tbody>{parcelas.sort((a:any,b:any)=>a.installment_number-b.installment_number).map((p:any,j:number)=>{
+                        const venc = new Date(p.due_date+'T00:00:00');
+                        const atrasada = p.status!=='pago' && venc < hoje;
+                        return <tr key={j} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'3px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{cr.installments}</td><td style={{padding:'3px 6px',color:atrasada?'#f87171':'var(--text-muted)'}}>{venc.toLocaleDateString('pt-BR')}{atrasada?' ⚠️':''}</td><td style={{padding:'3px 6px',textAlign:'right'}}>{Number(p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'3px 6px',textAlign:'center'}}><span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(251,191,36,.15)',color:p.status==='pago'?'#22c55e':atrasada?'#f87171':'#fbbf24'}}>{p.status==='pago'?'Pago':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
+                      })}</tbody>
+                    </table>}
+                  </div>;
+                })}</div>}
               </div>}
               </div>
             ) : (
