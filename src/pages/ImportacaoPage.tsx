@@ -44,7 +44,9 @@ const MODELS: Record<Tab, { headers: string[]; example: any[] }> = {
 };
 
 export default function ImportacaoPage() {
-  const { tenantId } = useAuth();
+  const { tenantId: authTenantId } = useAuth();
+  const tenantId = authTenantId || '2ca58112-4498-4dfa-b6d1-550630d5c4a4';
+  console.log('TENANT ID NA IMPORTACAO:', tenantId);
   const [tab, setTab] = useState<Tab>('clientes');
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -143,18 +145,28 @@ export default function ImportacaoPage() {
                 const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).ilike('name', nomeCliente.trim()).maybeSingle();
                 customerId = cust?.id;
               }
-              await supabase.from('consultations').insert([{
+              const { error: consErr } = await supabase.from('consultations').insert([{
                 tenant_id: tenantId,
                 customer_id: customerId,
                 customer_name: (nomeCliente.trim() || cpf || 'Importado'),
-                professional_name: row['Medico'] || 'Importado',
+                professional_name: row['Medico'] || row['medico'] || 'Importado',
                 procedure_type: 'Consulta',
-                date: (() => { const d = row['Data_Consulta']; if (!d) return new Date().toISOString().split('T')[0]; const s = String(d).trim(); if (s.includes('/')) { const p = s.split('/'); return p.length===3 ? p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0') : s; } return s; })(),
+                date: (() => { const d = row['Data_Consulta']; if (!d) return new Date().toISOString().split('T')[0]; const s = String(d).trim(); if (s.includes('/')) { const p = s.split('/'); return p.length===3 ? p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0') : s; } if (typeof d === 'number') { const dt = new Date(Math.round((d-25569)*86400*1000)); return dt.toISOString().split('T')[0]; } return s; })(),
                 time: '08:00',
                 time_end: '08:30',
                 status: 'concluida',
-                notes: [row['OD_ESF'] ? 'OD: esf '+row['OD_ESF']+(row['OD_CIL'] ? ' cil '+row['OD_CIL'] : '')+(row['OD_EIXO'] ? ' eixo '+row['OD_EIXO'] : '') : '', row['OE_ESF'] ? 'OE: esf '+row['OE_ESF']+(row['OE_CIL'] ? ' cil '+row['OE_CIL'] : '')+(row['OE_EIXO'] ? ' eixo '+row['OE_EIXO'] : '') : '', row['ADD'] ? 'ADD: '+row['ADD'] : '', row['DP'] ? 'DP: '+row['DP'] : '', row['Observacoes'] || ''].filter(Boolean).join(' | ') || null,
+                rx_re_esf: parseFloat(row['OD_ESF']) || null,
+                rx_re_cil: parseFloat(row['OD_CIL']) || null,
+                rx_re_eixo: parseInt(row['OD_EIXO']) || null,
+                rx_re_dnp: parseFloat(row['OD_DNP']) || null,
+                rx_le_esf: parseFloat(row['OE_ESF']) || null,
+                rx_le_cil: parseFloat(row['OE_CIL']) || null,
+                rx_le_eixo: parseInt(row['OE_EIXO']) || null,
+                rx_le_dnp: parseFloat(row['OE_DNP']) || null,
+                rx_adicao: parseFloat(row['ADD'] || row['Adicao'] || row['adicao']) || null,
+                notes: row['Observacoes'] || row['observações'] || null,
               }]);
+              console.log("CONS ERR:", consErr, "tenant:", tenantId);
               success++;
             } catch (e: any) { errors++; messages.push(`Erro: ${e.message}`); }
           }

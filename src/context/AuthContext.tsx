@@ -12,15 +12,15 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx | null>(null);
 export const useAuth = () => { const c = useContext(Ctx); if (!c) throw new Error('useAuth'); return c; };
 const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || 'carlosevideo28@gmail.com';
-let profileLoaded = false;
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const profileLoadedRef = React.useRef(false);
 
   const loadProfile = async (uid: string, email?: string) => {
-    if (profileLoaded) return;
-    profileLoaded = true;
-    if (email === ADMIN_EMAIL) { setLoading(false); return; }
+    if (profileLoadedRef.current) return;
+    profileLoadedRef.current = true;
+    // Admin also loads profile to get tenant_id
     try {
       const { data } = await supabase.from('user_profiles').select('*').eq('id', uid).maybeSingle();
       if (data) {
@@ -55,14 +55,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       else setLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') { profileLoaded = false; setUser(null); setLoading(false); }
+      if (event === 'SIGNED_OUT') { setUser(null); setLoading(false); }
       else if (event === 'SIGNED_IN' && session?.user) loadProfile(session.user.id, session.user.email);
     });
     return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    profileLoaded = false;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       // Tentar login como funcionario
@@ -99,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name, company_name: company || name, role: 'master' } } });
     if (error) throw error;
   };
-  const signOut = async () => { profileLoaded = false; await supabase.auth.signOut(); setUser(null); };
+  const signOut = async () => { await supabase.auth.signOut(); setUser(null); };
 
   const adminViewingTenant = localStorage.getItem('admin_viewing_tenant');
   const effectiveTenantId = adminViewingTenant || user?.tenant_id || null;
