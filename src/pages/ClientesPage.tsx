@@ -17,6 +17,14 @@ function emptyForm() {
   return { name:'', cpf:'', phone:'', whatsapp:'', email:'', birth_date:'', address:'', city:'', state:'', notes:'', active:true, photo_url:'' };
 }
 
+function fmtGrau(v: any): string {
+  if (v === null || v === undefined || v === '') return '--';
+  const n = parseFloat(v);
+  if (isNaN(n)) return '--';
+  const s = n >= 0 ? '+' : '';
+  return s + n.toFixed(2).replace('.', ',');
+}
+
 export default function ClientesPage() {
   const { tenantId } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -142,7 +150,19 @@ export default function ClientesPage() {
               photo_url:(c as any).photo_url||'' });
     setShowModal(true);
   };
-  const openView = (c: Customer) => { setEditing(null); setViewing(c); setShowModal(true); };
+  const openView = (c: Customer) => {
+    setEditing(null);
+    setViewing(c);
+    setViewTab('dados');
+    setViewHist({v:[],o:[],c:[],cr:[]});
+    if (tenantId) Promise.all([
+      supabase.from('sales').select('sale_number,total,payment_method,created_at,status').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
+      supabase.from('service_orders').select('os_number,status,total,created_at,frame_brand').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
+      supabase.from('consultations').select('id,date,professional_name,notes,rx_re_esf,rx_re_cil,rx_re_eixo,rx_re_dnp,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_dnp,rx_adicao').eq('tenant_id',tenantId).eq('customer_id',c.id).order('date',{ascending:false}).limit(15),
+      supabase.from('crediario').select('total_amount,installments,status,created_at').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
+    ]).then(([v,o,co,cr])=>setViewHist({v:v.data||[],o:o.data||[],c:co.data||[],cr:cr.data||[]}));
+    setShowModal(true);
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -434,7 +454,41 @@ export default function ClientesPage() {
                 {viewHist.o.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma OS encontrada</p>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>OS</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Data</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Armação</th><th style={{padding:'6px 8px',textAlign:'right',color:'var(--text-muted)'}}>Total</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Status</th></tr></thead><tbody>{viewHist.o.map((o:any,i:number)=><tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'6px 8px',fontWeight:600}}>#{String(o.os_number||'').padStart(4,'0')}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{o.created_at?new Date(o.created_at).toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{o.frame_brand||'--'}</td><td style={{padding:'6px 8px',textAlign:'right',fontWeight:700}}>{Number(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'6px 8px'}}>{o.status||'--'}</td></tr>)}</tbody></table>}
               </div>}
               {viewTab==='consultas' && <div style={{overflowX:'auto'}}>
-                {viewHist.c.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma consulta encontrada</p>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Data</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Profissional</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Notas</th></tr></thead><tbody>{viewHist.c.map((co:any,i:number)=><tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'6px 8px',fontWeight:600}}>{co.date?new Date(co.date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{co.professional_name||'--'}</td><td style={{padding:'6px 8px',color:'var(--text-muted)',fontSize:12}}>{co.notes||'--'}</td></tr>)}</tbody></table>}
+                {viewHist.c.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma consulta encontrada</p>:<div>{viewHist.c.map((co:any,i:number)=>(
+                  <div key={i} style={{marginBottom:16,padding:14,background:'var(--bg3)',borderRadius:10,border:'1px solid var(--border)'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                      <div style={{fontWeight:700,fontSize:14}}>{co.date?new Date(co.date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</div>
+                      <div style={{fontSize:12,color:'var(--text-muted)'}}>{co.professional_name||'--'}</div>
+                    </div>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                      <thead><tr style={{background:'rgba(99,102,241,0.1)'}}>
+                        <th style={{padding:'4px 8px',textAlign:'center',color:'var(--text-muted)',fontWeight:600}}></th>
+                        <th style={{padding:'4px 8px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>ESF</th>
+                        <th style={{padding:'4px 8px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>CIL</th>
+                        <th style={{padding:'4px 8px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>EIXO</th>
+                        <th style={{padding:'4px 8px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>DNP</th>
+                      </tr></thead>
+                      <tbody>
+                        <tr style={{borderBottom:'1px solid var(--border)'}}>
+                          <td style={{padding:'4px 8px',fontWeight:700,color:'#06b6d4'}}>OD</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_re_esf)}</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_re_cil)}</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_re_eixo)}</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_re_dnp)}</td>
+                        </tr>
+                        <tr style={{borderBottom:'1px solid var(--border)'}}>
+                          <td style={{padding:'4px 8px',fontWeight:700,color:'#f87171'}}>OE</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_le_esf)}</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_le_cil)}</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_le_eixo)}</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_le_dnp)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    {co.rx_adicao && <div style={{marginTop:6,fontSize:12,color:'var(--text-muted)'}}>Adição: <span style={{fontWeight:700,color:'var(--primary)'}}>{fmtGrau(co.rx_adicao)}</span></div>}
+                    {co.notes && <div style={{marginTop:6,fontSize:12,color:'var(--text-muted)',fontStyle:'italic'}}>{co.notes}</div>}
+                  </div>
+                ))}</div>}
               </div>}
               {viewTab==='crediario' && <div>
                 {viewHist.cr.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhum crediário encontrado</p>:<div>{viewHist.cr.map((cr:any,i:number)=><div key={i} style={{marginBottom:10,padding:12,background:'var(--bg3)',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontWeight:700,fontSize:13}}>{new Date(cr.created_at).toLocaleDateString('pt-BR')} — {cr.installments}x</div><div style={{fontSize:12,color:'var(--text-muted)'}}>Total: {Number(cr.total_amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div></div><span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:cr.status==='quitado'?'rgba(34,197,94,.15)':'rgba(248,113,113,.15)',color:cr.status==='quitado'?'#22c55e':'#f87171'}}>{cr.status}</span></div>)}</div>}

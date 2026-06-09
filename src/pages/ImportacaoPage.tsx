@@ -136,7 +136,7 @@ export default function ImportacaoPage() {
               // Buscar ou criar cliente
               let customerId = null;
               if (cpf) {
-                const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).ilike('cpf', cpf.replace(/\D/g,'')).maybeSingle();
+                const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).eq('cpf', cpf).maybeSingle();
                 customerId = cust?.id;
               }
               if (!customerId && nomeCliente) {
@@ -167,7 +167,7 @@ export default function ImportacaoPage() {
               let customerId = null;
               const cpf = formatCPF(String(row['CPF_Cliente'] || '').replace(/[^0-9]/g,''));
               if (cpf) {
-                const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).ilike('cpf', cpf.replace(/\D/g,'')).maybeSingle();
+                const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).eq('cpf', cpf).maybeSingle();
                 customerId = cust?.id;
               }
               const total = parseFloat(row['Valor_Unitario'] || 0) * parseFloat(row['Quantidade'] || 1) - parseFloat(row['Desconto'] || 0);
@@ -206,13 +206,14 @@ export default function ImportacaoPage() {
               let customerId = null;
               const cpf = formatCPF(String(row['CPF_Cliente'] || '').replace(/[^0-9]/g,''));
               if (cpf) {
-                const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).ilike('cpf', cpf.replace(/\D/g,'')).maybeSingle();
+                const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).eq('cpf', cpf).maybeSingle();
                 customerId = cust?.id;
               }
               const totalAmount = parseFloat(row['Valor_Total'] || 0);
               const numParcelas = parseInt(row['Num_Parcelas'] || 1);
               const valorParcela = parseFloat(row['Valor_Parcela'] || totalAmount / numParcelas);
-              const { data: credData } = await supabase.from('crediario').insert([{
+              console.log('crediario cpf:', cpf, 'customerId:', customerId, 'total:', totalAmount, 'parcelas:', numParcelas);
+              const { data: credData, error: credErr } = await supabase.from('crediario').insert([{
                 tenant_id: tenantId,
                 customer_id: customerId,
                 customer_name: nomeCliente.trim(),
@@ -221,10 +222,25 @@ export default function ImportacaoPage() {
                 status: row['Status'] === 'quitado' ? 'quitado' : 'ativo',
                 notes: row['Observacoes'] || 'Importado de sistema anterior',
               }]).select().single();
+              console.log('credData:', credData, 'credErr:', credErr);
+              if (credErr) throw new Error(credErr.message);
               if (credData) {
                 const parcelas = [];
                 for (let i = 0; i < numParcelas; i++) {
-                  const venc = row['Data_Vencimento_1a'] ? new Date(row['Data_Vencimento_1a']) : new Date();
+                  const rawDate = row['Data_Vencimento_1a'];
+                  let venc = new Date();
+                  if (rawDate) {
+                    const s = String(rawDate).trim();
+                    if (s.includes('/')) {
+                      const p = s.split('/');
+                      venc = new Date(parseInt(p[2]), parseInt(p[1])-1, parseInt(p[0]));
+                    } else if (typeof rawDate === 'number') {
+                      venc = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+                    } else {
+                      venc = new Date(s);
+                    }
+                  }
+                  venc = new Date(venc);
                   venc.setMonth(venc.getMonth() + i);
                   parcelas.push({
                     crediario_id: credData.id,
