@@ -157,7 +157,7 @@ export default function ClientesPage() {
     setViewHist({v:[],o:[],c:[],cr:[]});
     if (tenantId) Promise.all([
       supabase.from('sales').select('sale_number,total,payment_method,created_at,status').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
-      supabase.from('service_orders').select('os_number,status,total,created_at,frame_brand').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
+      supabase.from('service_orders').select('os_number,status,total,created_at,delivery_date,frame_brand,frame_model,lens_type,lens_brand,od_esf,od_cil,od_eixo,od_adicao,od_dnp,oe_esf,oe_cil,oe_eixo,oe_adicao,oe_dnp,entrada,notes,sales(id,sale_items(description,quantity,unit_price,total))').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('consultations').select('id,date,professional_name,notes,rx_re_esf,rx_re_cil,rx_re_eixo,rx_re_dnp,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_dnp,rx_adicao').eq('tenant_id',tenantId).eq('customer_id',c.id).order('date',{ascending:false}).limit(15),
       supabase.from('crediario').select('total_amount,installments,status,created_at').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
     ]).then(([v,o,co,cr])=>setViewHist({v:v.data||[],o:o.data||[],c:co.data||[],cr:cr.data||[]}));
@@ -451,7 +451,47 @@ export default function ClientesPage() {
                 {viewHist.v.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma venda encontrada</p>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Venda</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Data</th><th style={{padding:'6px 8px',textAlign:'right',color:'var(--text-muted)'}}>Total</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Forma</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Status</th></tr></thead><tbody>{viewHist.v.map((v:any,i:number)=><tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'6px 8px',fontWeight:600}}>#{String(v.sale_number||'').padStart(4,'0')}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{v.created_at?new Date(v.created_at).toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'6px 8px',textAlign:'right',color:'#22c55e',fontWeight:700}}>{Number(v.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{v.payment_method||'--'}</td><td style={{padding:'6px 8px'}}>{v.status||'--'}</td></tr>)}</tbody></table>}
               </div>}
               {viewTab==='os' && <div style={{overflowX:'auto'}}>
-                {viewHist.o.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma OS encontrada</p>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>OS</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Data</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Armação</th><th style={{padding:'6px 8px',textAlign:'right',color:'var(--text-muted)'}}>Total</th><th style={{padding:'6px 8px',textAlign:'left',color:'var(--text-muted)'}}>Status</th></tr></thead><tbody>{viewHist.o.map((o:any,i:number)=><tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'6px 8px',fontWeight:600}}>#{String(o.os_number||'').padStart(4,'0')}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{o.created_at?new Date(o.created_at).toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{o.frame_brand||'--'}</td><td style={{padding:'6px 8px',textAlign:'right',fontWeight:700}}>{Number(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'6px 8px'}}>{o.status||'--'}</td></tr>)}</tbody></table>}
+                {viewHist.o.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma OS encontrada</p>:<div>{viewHist.o.map((o:any,i:number)=>(
+                  <div key={i} style={{marginBottom:16,padding:14,background:'var(--bg3)',borderRadius:10,border:'1px solid var(--border)'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                      <div style={{fontWeight:700,fontSize:14}}>OS #{String(o.os_number||'').padStart(4,'0')}</div>
+                      <span style={{padding:'2px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:o.status==='entregue'?'rgba(34,197,94,.15)':o.status==='pronta'?'rgba(99,102,241,.15)':'rgba(251,191,36,.15)',color:o.status==='entregue'?'#22c55e':o.status==='pronta'?'#6366f1':'#fbbf24'}}>{o.status||'--'}</span>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10,fontSize:12}}>
+                      {o.frame_brand && <div><span style={{color:'var(--text-muted)'}}>Armação: </span><b>{o.frame_brand}{o.frame_model?' — '+o.frame_model:''}</b></div>}
+                      {o.lens_type && <div><span style={{color:'var(--text-muted)'}}>Lente: </span><b>{o.lens_type}{o.lens_brand?' — '+o.lens_brand:''}</b></div>}
+                      {o.delivery_date && <div><span style={{color:'var(--text-muted)'}}>Entrega: </span><b>{new Date(o.delivery_date+'T00:00:00').toLocaleDateString('pt-BR')}</b></div>}
+                      <div><span style={{color:'var(--text-muted)'}}>Total: </span><b style={{color:'#22c55e'}}>{Number(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></div>
+                    </div>
+                    {(o.od_esf||o.oe_esf) && <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                      <thead><tr style={{background:'rgba(99,102,241,0.1)'}}>
+                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)',fontWeight:600}}></th>
+                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>ESF</th>
+                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>CIL</th>
+                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>EIXO</th>
+                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>AD</th>
+                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>DNP</th>
+                      </tr></thead>
+                      <tbody>
+                        <tr style={{borderBottom:'1px solid var(--border)'}}><td style={{padding:'3px 6px',fontWeight:700,color:'#06b6d4'}}>OD</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.od_esf)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.od_cil)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{o.od_eixo||'--'}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.od_adicao)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.od_dnp)}</td></tr>
+                        <tr><td style={{padding:'3px 6px',fontWeight:700,color:'#f87171'}}>OE</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.oe_esf)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.oe_cil)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{o.oe_eixo||'--'}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.oe_adicao)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.oe_dnp)}</td></tr>
+                      </tbody>
+                    </table>}
+                    {o.notes && <div style={{marginTop:6,fontSize:12,color:'var(--text-muted)',fontStyle:'italic'}}>{o.notes}</div>}
+                    {o.sales && o.sales.length > 0 && o.sales[0].sale_items && o.sales[0].sale_items.length > 0 && (
+                      <div style={{marginTop:8}}>
+                        <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4,fontWeight:600}}>PRODUTOS/SERVIÇOS</div>
+                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                          <thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'3px 6px',textAlign:'left',color:'var(--text-muted)'}}>Produto</th><th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Qtde</th><th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Unit.</th><th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Total</th></tr></thead>
+                          <tbody>{o.sales[0].sale_items.map((it:any,j:number)=>(
+                            <tr key={j} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'3px 6px'}}>{it.description}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{it.quantity}</td><td style={{padding:'3px 6px',textAlign:'right'}}>{Number(it.unit_price||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'3px 6px',textAlign:'right',fontWeight:700,color:'#22c55e'}}>{Number(it.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td></tr>
+                          ))}</tbody>
+                        </table>
+                        {o.entrada > 0 && <div style={{marginTop:4,fontSize:12,textAlign:'right',color:'var(--text-muted)'}}>Entrada: <b>{Number(o.entrada).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></div>}
+                      </div>
+                    )}
+                  </div>
+                ))}</div>}
               </div>}
               {viewTab==='consultas' && <div style={{overflowX:'auto'}}>
                 {viewHist.c.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhuma consulta encontrada</p>:<div>{viewHist.c.map((co:any,i:number)=>(
