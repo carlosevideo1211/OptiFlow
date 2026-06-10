@@ -194,7 +194,7 @@ export default function ImportacaoPage() {
                 total: total,
                 status: 'concluida',
                 notes: row['Observacoes'] || 'Importado de sistema anterior',
-                created_at: row['Data_Venda'] ? new Date(row['Data_Venda']).toISOString() : new Date().toISOString(),
+                created_at: (() => { const d = row['Data_Venda']; if (!d) return new Date().toISOString(); const s = String(d).trim(); if (s.includes('/')) { const p = s.split('/'); return new Date(parseInt(p[2]), parseInt(p[1])-1, parseInt(p[0])).toISOString(); } if (typeof d === 'number' || (!isNaN(Number(s)) && s.length < 6)) { return new Date(Math.round((Number(s)-25569)*86400*1000)).toISOString(); } return new Date(s).toISOString(); })(),
               }]).select().single();
               if (saleData) {
                 await supabase.from('sale_items').insert([{
