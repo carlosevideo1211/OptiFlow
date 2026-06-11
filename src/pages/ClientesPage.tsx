@@ -157,7 +157,7 @@ export default function ClientesPage() {
     setViewHist({v:[],o:[],c:[],cr:[]});
     if (tenantId) Promise.all([
       supabase.from('sales').select('sale_number,total,subtotal,discount,payment_method,installments,created_at,status,entrada,sale_items(description,quantity,unit_price,total)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
-      supabase.from('service_orders').select('os_number,status,total,created_at,delivery_date,frame_brand,frame_model,lens_type,lens_brand,od_esf,od_cil,od_eixo,od_adicao,od_dnp,oe_esf,oe_cil,oe_eixo,oe_adicao,oe_dnp,entrada,notes,sales(id,sale_items(description,quantity,unit_price,total))').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
+      supabase.from('service_orders').select('os_number,status,total,discount,created_at,delivery_date,frame_brand,frame_model,lens_type,lens_brand,od_esf,od_cil,od_eixo,od_adicao,od_dnp,oe_esf,oe_cil,oe_eixo,oe_adicao,oe_dnp,entrada,notes,sales(id,sale_items(description,quantity,unit_price,total))').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('consultations').select('id,date,professional_name,notes,rx_re_esf,rx_re_cil,rx_re_eixo,rx_re_dnp,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_dnp,rx_adicao').eq('tenant_id',tenantId).eq('customer_id',c.id).order('date',{ascending:false}).limit(15),
       supabase.from('crediario').select('total_amount,installments,status,created_at,crediario_parcelas(installment_number,due_date,amount,paid_amount,status)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
     ]).then(([v,o,co,cr])=>setViewHist({v:v.data||[],o:o.data||[],c:co.data||[],cr:cr.data||[]}));
@@ -465,10 +465,11 @@ export default function ClientesPage() {
                         ))}</tbody>
                       </table>
                     )}
-                    <div style={{display:'flex',justifyContent:'space-between',fontSize:12,borderTop:'1px solid var(--border)',paddingTop:6}}>
-                      {v.discount>0 && <span style={{color:'#f87171'}}>Desconto: {Number(v.discount).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>}
-                      {v.entrada>0 && <span style={{color:'var(--text-muted)'}}>Entrada: {Number(v.entrada).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>}
-                      <span style={{fontWeight:700,color:'#22c55e',marginLeft:'auto'}}>Total: {Number(v.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                    <div style={{display:'flex',flexDirection:'column',fontSize:12,borderTop:'1px solid var(--border)',paddingTop:6}}>
+                      {v.discount>0 && <div style={{display:'flex',justifyContent:'space-between',color:'#f87171',fontSize:12}}><span>Desconto:</span><span>-{Number(v.discount).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>}
+                      {v.entrada>0 && <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-muted)',fontSize:12}}><span>Entrada:</span><span>-{Number(v.entrada).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>}
+                      <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,fontSize:13,marginTop:4,borderTop:'1px solid var(--border)',paddingTop:4}}><span>Total:</span><span style={{color:'#22c55e'}}>{Number(v.total).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>
+                      
                     </div>
                   </div>
                 ))}</div>}
@@ -484,22 +485,9 @@ export default function ClientesPage() {
                       {o.frame_brand && <div><span style={{color:'var(--text-muted)'}}>Armação: </span><b>{o.frame_brand}{o.frame_model?' — '+o.frame_model:''}</b></div>}
                       {o.lens_type && <div><span style={{color:'var(--text-muted)'}}>Lente: </span><b>{o.lens_type}{o.lens_brand?' — '+o.lens_brand:''}</b></div>}
                       {o.delivery_date && <div><span style={{color:'var(--text-muted)'}}>Entrega: </span><b>{new Date(o.delivery_date+'T00:00:00').toLocaleDateString('pt-BR')}</b></div>}
-                      <div><span style={{color:'var(--text-muted)'}}>Total: </span><b style={{color:'#22c55e'}}>{Number(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></div>
+                      
                     </div>
-                    {(o.od_esf||o.oe_esf) && <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                      <thead><tr style={{background:'rgba(99,102,241,0.1)'}}>
-                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)',fontWeight:600}}></th>
-                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>ESF</th>
-                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>CIL</th>
-                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>EIXO</th>
-                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>AD</th>
-                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--primary)',fontWeight:600}}>DNP</th>
-                      </tr></thead>
-                      <tbody>
-                        <tr style={{borderBottom:'1px solid var(--border)'}}><td style={{padding:'3px 6px',fontWeight:700,color:'#06b6d4'}}>OD</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.od_esf)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.od_cil)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{o.od_eixo||'--'}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.od_adicao)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.od_dnp)}</td></tr>
-                        <tr><td style={{padding:'3px 6px',fontWeight:700,color:'#f87171'}}>OE</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.oe_esf)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.oe_cil)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{o.oe_eixo||'--'}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.oe_adicao)}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{fmtGrau(o.oe_dnp)}</td></tr>
-                      </tbody>
-                    </table>}
+                    
                     {o.notes && <div style={{marginTop:6,fontSize:12,color:'var(--text-muted)',fontStyle:'italic'}}>{o.notes}</div>}
                     {o.sales && o.sales.length > 0 && o.sales[0].sale_items && o.sales[0].sale_items.length > 0 && (
                       <div style={{marginTop:8}}>
@@ -510,7 +498,12 @@ export default function ClientesPage() {
                             <tr key={j} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}><td style={{padding:'3px 6px'}}>{it.description}</td><td style={{padding:'3px 6px',textAlign:'center'}}>{it.quantity}</td><td style={{padding:'3px 6px',textAlign:'right'}}>{Number(it.unit_price||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'3px 6px',textAlign:'right',fontWeight:700,color:'#22c55e'}}>{Number(it.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td></tr>
                           ))}</tbody>
                         </table>
-                        {o.entrada > 0 && <div style={{marginTop:4,fontSize:12,textAlign:'right',color:'var(--text-muted)'}}>Entrada: <b>{Number(o.entrada).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></div>}
+                        <div style={{display:'flex',flexDirection:'column',fontSize:12,borderTop:'1px solid var(--border)',paddingTop:6,marginTop:6}}>
+
+{o.discount>0 && <div style={{display:'flex',justifyContent:'space-between',color:'#f87171',fontSize:12}}><span>Desconto:</span><span>-{Number(o.discount).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>}
+{o.entrada>0 && <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-muted)',fontSize:12}}><span>Entrada:</span><span>-{Number(o.entrada).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>}
+<div style={{display:'flex',justifyContent:'space-between',fontWeight:700,fontSize:13,marginTop:4,borderTop:'1px solid var(--border)',paddingTop:4}}><span>Total:</span><span style={{color:'#22c55e'}}>{Number(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>
+</div>
                       </div>
                     )}
                   </div>

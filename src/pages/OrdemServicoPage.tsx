@@ -230,7 +230,7 @@ export default function OrdemServicoPage() {
     if (!form.customer_name.trim()) { toast.error('Informe o cliente'); return; }
     setSaving(true);
     try {
-      const totalCalculado = Math.max(0, totalItens - (form.discount || 0));
+      const totalCalculado = Math.max(0, totalItens - (form.discount || 0) - (form.entrada || 0));
       const payload: any = {
         tenant_id: tenantId,
         customer_id: form.customer_id || null,
