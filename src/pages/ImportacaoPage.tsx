@@ -107,7 +107,7 @@ export default function ImportacaoPage() {
                 const { data: existe } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).eq('cpf', cpfFmt).maybeSingle();
                 if (existe) { errors++; messages.push('Pulado - CPF ja existe: ' + nome); continue; }
               }
-              await supabase.from('customers').upsert([{
+              const { error: insErr } = await supabase.from('customers').insert([{
                 tenant_id: tenantId,
                 name: nome.trim(),
                 cpf: cpfFmt,
@@ -120,7 +120,7 @@ export default function ImportacaoPage() {
                 state: row['Estado'] || row['estado'] || '',
                 notes: row['Observacoes'] || row['observações'] || '',
                 active: true,
-              }], { onConflict: 'tenant_id,cpf', ignoreDuplicates: true });
+              }]);
 
 
 
