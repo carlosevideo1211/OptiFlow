@@ -235,7 +235,30 @@ export default function VendasPage() {
           await supabase.from('crediario_parcelas').insert(parcelas.map((p, i) => ({ crediario_id: credData.id, tenant_id: tenantId, installment_number: i+1, due_date: p.due_date, amount: p.amount, status: 'pendente' })));
         }
       }
-      try { await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Venda #' + saleData.sale_number + (customerName ? ' — ' + customerName : ''), category: 'Vendas', amount: (payment === 'crediario' ? entrada : total - discount), due_date: new Date().toISOString().split('T')[0], paid_at: new Date().toISOString(), status: 'pago', payment_method: payment }]); } catch (_) {}
+      try {
+        // Lançamento da entrada ou pagamento à vista
+        const entradaAmount = payment === 'crediario' ? (entrada||0) : Math.max(0, total - (discount||0));
+        if (entradaAmount > 0) {
+          await supabase.from('financial_transactions').insert([{
+            tenant_id: tenantId, type: 'receita',
+            description: 'Venda #' + saleData.sale_number + (customerName ? ' — ' + customerName : ''),
+            category: 'Vendas', amount: entradaAmount,
+            due_date: new Date().toISOString().split('T')[0],
+            paid_at: new Date().toISOString(), status: 'pago', payment_method: payment
+          }]);
+        }
+        // Lançar parcelas do crediário como contas a receber
+        const parcelasFinanceiro = parcelasEdit.length > 0 ? parcelasEdit : Array.from({length: installments||1}, (_,i) => { const due = dueDate ? new Date(dueDate+'T12:00:00') : new Date(); due.setMonth(due.getMonth()+i); return {amount: Math.max(0,total-(discount||0)-(entrada||0))/(installments||1), due_date: due.toISOString().split('T')[0]}; });
+        if (payment === 'crediario' && parcelasFinanceiro.length > 0) {
+          const parcelasTransactions = parcelasFinanceiro.map((p: any, i: number) => ({
+            tenant_id: tenantId, type: 'receita',
+            description: 'Crediário Venda #' + saleData.sale_number + ' — Parcela ' + (i+1) + '/' + parcelasFinanceiro.length + (customerName ? ' — ' + customerName : ''),
+            category: 'Crediário', amount: p.amount,
+            due_date: p.due_date, paid_at: null, status: 'pendente', payment_method: 'crediario'
+          }));
+          await supabase.from('financial_transactions').insert(parcelasTransactions);
+        }
+      } catch (finErr) { console.error('FINANCEIRO ERRO:', finErr); }
       toast.success('✅ Venda #' + saleData.sale_number + ' finalizada!');
       clearCart(); setTab('lista'); load();
     } catch (err: any) { toast.error(err.message || 'Erro ao finalizar venda'); }
