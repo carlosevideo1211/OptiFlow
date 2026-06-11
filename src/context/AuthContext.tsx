@@ -100,7 +100,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
   const signOut = async () => { await supabase.auth.signOut(); setUser(null); };
 
-  const adminViewingTenant = localStorage.getItem('admin_viewing_tenant');
+  const adminViewingTenant = user?.role === 'system_admin' ? localStorage.getItem('admin_viewing_tenant') : null;
+  if (user && user.role !== 'system_admin') localStorage.removeItem('admin_viewing_tenant');
   const effectiveTenantId = adminViewingTenant || user?.tenant_id || null;
 
   return (

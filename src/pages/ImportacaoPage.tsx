@@ -44,8 +44,7 @@ const MODELS: Record<Tab, { headers: string[]; example: any[] }> = {
 };
 
 export default function ImportacaoPage() {
-  const { tenantId: authTenantId } = useAuth();
-  const tenantId = authTenantId || '2ca58112-4498-4dfa-b6d1-550630d5c4a4';
+  const { tenantId } = useAuth();
   console.log('TENANT ID NA IMPORTACAO:', tenantId);
   const [tab, setTab] = useState<Tab>('clientes');
   const [importing, setImporting] = useState(false);
