@@ -53,6 +53,8 @@ body {
 
 /* ── Layout ─────────────────────────────────────────────── */
 .app-layout { display: flex; height: 100vh; overflow: hidden; }
+.app-layout.modal-open { overflow: visible !important; }
+.app-layout-noscroll { overflow: hidden !important; }
 .sidebar {
   width: 230px; flex-shrink: 0;
   background: var(--bg2);

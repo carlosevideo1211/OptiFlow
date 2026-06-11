@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
   Plus, Search, Edit2, Phone, Download, Upload, Camera,
   Trash2, Users, Gift, DollarSign, Wifi, X, Save,
-  Eye, MessageCircle
+  Eye, MessageCircle, Paperclip
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
@@ -189,6 +190,10 @@ export default function ClientesPage() {
     toast.success(c.active ? 'Cliente inativado' : 'Cliente reativado'); load();
   };
 
+  const [anexoCliente,setAnexoCliente]=useState<any>(null);
+  const [anexos,setAnexos]=useState<any[]>([]);
+  const [uploadingAnexo,setUploadingAnexo]=useState(false);
+  const openAnexos=async(cli:any)=>{setAnexoCliente(cli);document.body.style.overflow='hidden';document.documentElement.style.overflow='hidden';const al=document.querySelector('.app-layout') as HTMLElement;if(al){al.style.overflow='visible';al.classList.add('modal-open');}document.documentElement.style.overflow='hidden';const{data}=await supabase.from('customer_attachments').select('*').eq('customer_id',cli.id).order('created_at',{ascending:false});setAnexos(data||[]);};
   const openWhatsApp = (c: Customer) => {
     const num = (c.whatsapp||c.phone||'').replace(/\D/g,'');
     if (!num) { toast.error('Sem número cadastrado'); return; }
@@ -365,7 +370,8 @@ export default function ClientesPage() {
                       <div style={{ display:'flex', gap:5 }}>
                         <IconBtn onClick={() => openView(c)} title="Ver detalhes" color="#6366f1"><Eye size={14}/></IconBtn>
                         <IconBtn onClick={() => openEdit(c)} title="Editar" color="#06b6d4"><Edit2 size={14}/></IconBtn>
-                        <IconBtn onClick={() => openWhatsApp(c)} title="WhatsApp" color="#22c55e"><MessageCircle size={14}/></IconBtn>
+                        <IconBtn onClick={() => openAnexos(c)} title="Receitas" color="#f59e0b"><Paperclip size={14}/></IconBtn>
+            <IconBtn onClick={() => openWhatsApp(c)} title="WhatsApp" color="#22c55e"><MessageCircle size={14}/></IconBtn>
                         <IconBtn onClick={() => toggleActive(c)} title={c.active?'Inativar':'Reativar'} color="#f87171"><Trash2 size={14}/></IconBtn>
                       </div>
                     </td>
@@ -638,6 +644,7 @@ export default function ClientesPage() {
           </div>
         </div>
       )}
+    {anexoCliente && ReactDOM.createPortal(<div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.97)',zIndex:999999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => {setAnexoCliente(null);document.body.style.overflow='';document.documentElement.style.overflow='';const al=document.querySelector('.app-layout') as HTMLElement;if(al){al.style.overflow='hidden';al.classList.remove('modal-open');}}}><div style={{background:'var(--bg-card)',borderRadius:16,padding:32,width:'100%',maxWidth:560,maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.5)'}} onClick={e => e.stopPropagation()}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24,paddingBottom:16,borderBottom:'1px solid var(--border)'}}><div style={{display:'flex',alignItems:'center',gap:12}}><div style={{background:'rgba(245,158,11,0.15)',borderRadius:10,padding:10}}><Paperclip size={22} color='#f59e0b'/></div><div><h3 style={{margin:0,fontSize:18}}>Receitas Médicas</h3><p style={{margin:0,fontSize:13,color:'var(--text-muted)',marginTop:2}}>{anexoCliente.name}</p></div></div><button onClick={() => setAnexoCliente(null)} style={{background:'var(--bg)',border:'1px solid var(--border)',cursor:'pointer',color:'var(--text-muted)',borderRadius:8,padding:'6px 10px'}}><X size={18}/></button></div><div style={{marginBottom:24}}><p style={{margin:'0 0 12px',fontSize:13,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Anexar nova receita</p><label style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,padding:24,border:'2px dashed var(--border)',borderRadius:12,cursor:'pointer',background:'var(--bg)',transition:'all 0.2s'}}><Paperclip size={28} color='#f59e0b'/><span style={{fontSize:14,color:'var(--text-muted)'}}>Clique para selecionar PDF ou imagem</span><input type='file' accept='image/*,.pdf' disabled={uploadingAnexo} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingAnexo(true); const path = 'receitas/'+anexoCliente.id+'/'+Date.now()+'_'+file.name; const {error:upErr} = await supabase.storage.from('attachments').upload(path,file); if (!upErr) { await supabase.from('customer_attachments').insert([{customer_id:anexoCliente.id,tenant_id:tenantId,file_name:file.name,file_path:path}]); const {data} = await supabase.from('customer_attachments').select('*').eq('customer_id',anexoCliente.id).order('created_at',{ascending:false}); setAnexos(data||[]); } setUploadingAnexo(false); }} style={{display:'none'}}/></label>{uploadingAnexo && <p style={{color:'var(--primary)',fontSize:13,marginTop:8,textAlign:'center'}}>Enviando arquivo...</p>}</div><div><p style={{margin:'0 0 12px',fontSize:13,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Receitas anexadas</p>{anexos.length===0 ? <div style={{textAlign:'center',padding:32,color:'var(--text-muted)',fontSize:14,background:'var(--bg)',borderRadius:12,border:'1px solid var(--border)'}}><Paperclip size={32} style={{marginBottom:8,opacity:0.3}}/><p style={{margin:0}}>Nenhuma receita anexada</p></div> : <div style={{display:'flex',flexDirection:'column',gap:8}}>{anexos.map((a:any) => (<div key={a.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',background:'var(--bg)',borderRadius:10,border:'1px solid var(--border)'}}><div style={{display:'flex',alignItems:'center',gap:10}}><Paperclip size={16} color='#f59e0b'/><span style={{fontSize:14}}>{a.file_name}</span></div><div style={{display:'flex',gap:8}}><button onClick={async () => { const {data}=await supabase.storage.from('attachments').createSignedUrl(a.file_path,60); if(data) window.open(data.signedUrl,'_blank'); }} style={{background:'var(--primary)',color:'#fff',border:'none',borderRadius:8,padding:'6px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>Ver</button><button onClick={async () => { await supabase.storage.from('attachments').remove([a.file_path]); await supabase.from('customer_attachments').delete().eq('id',a.id); setAnexos(prev=>prev.filter((x:any)=>x.id!==a.id)); }} style={{background:'rgba(248,113,113,0.15)',color:'#f87171',border:'1px solid #f87171',borderRadius:8,padding:'6px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>Excluir</button></div></div>))}</div>}</div></div></div>, document.getElementById('modal-root')||document.body)}
     </div>
   );
 }
