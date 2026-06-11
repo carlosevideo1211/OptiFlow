@@ -199,7 +199,7 @@ export default function VendasPage() {
       const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 3);
       const dueDateStr = dueDate.toISOString().split('T')[0];
       const { data, error } = await supabase.functions.invoke('create-boleto', {
-        body: { customer_name: cust.name, customer_cpf: cust.cpf, customer_email: cust.email || '', amount: total, due_date: dueDateStr, description: 'Venda OptiFlow - ' + customerName }
+        body: { customer_name: cust.name, customer_cpf: cust.cpf, customer_email: cust.email || '', amount: total, due_date: dueDateStr, description: 'Venda OptiFlow - ' + customerName, asaas_key: (storeSettings as any)?.asaas_key || '', asaas_env: (storeSettings as any)?.asaas_env || 'sandbox' }
       });
       if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao gerar boleto');
       toast.success('Boleto gerado com sucesso!');

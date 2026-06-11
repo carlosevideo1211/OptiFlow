@@ -12,6 +12,7 @@ interface StoreSettings {
   id?: string; tenant_id: string; name: string; cnpj: string;
   phone: string; email: string; address: string; city: string; state: string;
   logo_url: string; pix_key: string; wa_token: string; wa_phone_id: string; wa_number: string;
+  asaas_key: string; asaas_env: string; asaas_enabled: boolean;
 }
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -26,7 +27,8 @@ export default function ConfiguracaoPage() {
   const [form, setForm] = useState<StoreSettings>({
     tenant_id: tenantId||'', name:'', cnpj:'', phone:'', email:'',
     address:'', city:'', state:'', logo_url:'',
-    pix_key:'', wa_token:'', wa_phone_id:'', wa_number:''
+    pix_key:'', wa_token:'', wa_phone_id:'', wa_number:'',
+    asaas_key:'', asaas_env:'sandbox', asaas_enabled:false
   });
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export default function ConfiguracaoPage() {
     setForm(f => ({...f, tenant_id: tenantId}));
     supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single()
       .then(({ data }) => {
-        if (data) setForm(data as StoreSettings);
+        if (data) setForm({...data, asaas_key: (data as any).asaas_key||'', asaas_env: (data as any).asaas_env||'sandbox', asaas_enabled: (data as any).asaas_enabled||false} as StoreSettings);
         setLoading(false);
       });
   }, [tenantId]);
@@ -329,6 +331,49 @@ export default function ConfiguracaoPage() {
               💡 Acesse <strong>developers.facebook.com</strong> e crie um app com o produto WhatsApp para obter as credenciais.
             </div>
           </div>
+
+          {/* Asaas */}
+          <div className="card" style={{ padding:24, gridColumn:'1/-1' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+              <h3 style={{ fontSize:15, fontWeight:700, display:'flex', alignItems:'center', gap:8 }}>
+                <Key size={16} style={{color:'#f59e0b'}}/> Asaas — Cobrança Automática
+              </h3>
+              <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                <span style={{ fontSize:13, color:'var(--text-muted)' }}>{form.asaas_enabled ? 'Ativado' : 'Desativado'}</span>
+                <div onClick={() => setForm(p=>({...p, asaas_enabled:!p.asaas_enabled}))}
+                  style={{ width:44, height:24, borderRadius:12, background:form.asaas_enabled?'#22c55e':'var(--border)',
+                    cursor:'pointer', position:'relative', transition:'all 0.2s' }}>
+                  <div style={{ position:'absolute', top:2, left:form.asaas_enabled?20:2, width:20, height:20,
+                    borderRadius:'50%', background:'#fff', transition:'all 0.2s' }}/>
+                </div>
+              </label>
+            </div>
+            <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:16 }}>
+              Configure sua chave do Asaas para gerar boletos e PIX. Os pagamentos cairão direto na sua conta.
+            </p>
+            {form.asaas_enabled && (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                <div>
+                  <label className="form-label">Chave de API do Asaas</label>
+                  <input className="form-input" value={form.asaas_key} onChange={e=>set('asaas_key',e.target.value)} placeholder="..."/>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>Encontre em Minha Conta → Integrações no Asaas</div>
+                </div>
+                <div>
+                  <label className="form-label">Ambiente</label>
+                  <select className="form-input" value={form.asaas_env} onChange={e=>set('asaas_env',e.target.value)}>
+                    <option value="sandbox">Sandbox (Testes)</option>
+                    <option value="production">Produção</option>
+                  </select>
+                </div>
+              </div>
+            )}
+            {!form.asaas_enabled && (
+              <div style={{ padding:'12px 16px', borderRadius:8, background:'rgba(245,158,11,.08)', fontSize:13, color:'var(--text-muted)' }}>
+                ⚠️ Cobrança automática desativada. Ative para gerar boletos e PIX pelo Asaas.
+              </div>
+            )}
+          </div>
+
         </div>
       )}
     </div>

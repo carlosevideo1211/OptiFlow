@@ -7,13 +7,15 @@ serve(async (req) => {
   };
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
-    const ASAAS_KEY = Deno.env.get('ASAAS_API_KEY') || '';
-    const ASAAS_ENV = Deno.env.get('ASAAS_ENV') || 'sandbox';
+    const body = await req.json();
+    const ASAAS_KEY = body.asaas_key || Deno.env.get('ASAAS_API_KEY') || '';
+    const ASAAS_ENV = body.asaas_env || Deno.env.get('ASAAS_ENV') || 'sandbox';
+    if (!ASAAS_KEY) throw new Error('Chave Asaas nao configurada. Va em Configuracoes > Integracoes.');
     const BASE = ASAAS_ENV === 'production'
       ? 'https://api.asaas.com/v3'
       : 'https://sandbox.asaas.com/api/v3';
 
-    const { customer_name, customer_cpf, customer_email, amount, due_date, description } = await req.json();
+    const { customer_name, customer_cpf, customer_email, amount, due_date, description } = body;
 
     // 1. Criar ou buscar cliente no Asaas
     const searchRes = await fetch(BASE + '/customers?cpfCnpj=' + customer_cpf, {
