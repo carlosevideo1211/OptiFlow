@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import {
   CreditCard, Search, CheckCircle, Trash2,
   AlertTriangle, Download, MessageCircle, Calendar, Printer, Lock, User, X
@@ -43,15 +44,17 @@ export default function CrediarioPage() {
 
   const load = async () => {
     setLoading(true);
-    const { data: creds } = await supabase
+    const creds = await fetchAllRows<any>((from, to) => supabase
       .from('crediario')
       .select('id, customer_id, customer_name, total_amount, installments, sale_id, status, parcelas:crediario_parcelas(*)')
       .eq('tenant_id', tenantId)
-      .neq('status', 'cancelado');
-    const { data: custs } = await supabase
+      .neq('status', 'cancelado')
+      .range(from, to));
+    const custs = await fetchAllRows<any>((from, to) => supabase
       .from('customers')
       .select('id, whatsapp, phone')
-      .eq('tenant_id', tenantId);
+      .eq('tenant_id', tenantId)
+      .range(from, to));
     const custMap: Record<string, any> = {};
     (custs || []).forEach((c: any) => { custMap[c.id] = c; });
     const lista: Parcela[] = [];

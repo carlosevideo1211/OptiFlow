@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, X, Save, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -78,8 +79,8 @@ export default function AgendaPage() {
     loadConsultas();
     supabase.from('professionals').select('id,name,specialty').eq('tenant_id', tenantId).eq('active', true).order('name')
       .then(({ data }) => setProfessionals(data || []));
-    supabase.from('customers').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name')
-      .then(({ data }) => setCustomers(data || []));
+    fetchAllRows<{id:string;name:string}>((from, to) => supabase.from('customers').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to))
+      .then(data => setCustomers(data || []));
   }, [tenantId, weekStart, weekEnd]);
 
   const prevWeek = () => { const d = new Date(baseDate); d.setDate(d.getDate()-7); setBaseDate(d); };

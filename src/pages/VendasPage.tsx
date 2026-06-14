@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import {
   Plus, Search, ShoppingCart, X, Eye, Trash2, Download, Receipt,
   Users, FileText, Printer, Save
@@ -91,15 +92,17 @@ export default function VendasPage() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: s }, { data: p }, { data: c }, { data: o }] = await Promise.all([
+    const [{ data: s }, { data: o }] = await Promise.all([
       supabase.from('sales').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(200),
-      supabase.from('products').select('id,name,sale_price,stock,category,brand,code').eq('tenant_id', tenantId).eq('active', true).order('name'),
-      supabase.from('customers').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name'),
       supabase.from('service_orders').select('id,os_number,customer_name,customer_id,frame_brand,frame_model,frame_color,frame_price,lens_type,lens_brand,lens_price,total,discount,entrada,od_esf,od_cil,od_eixo,oe_esf,oe_cil,oe_eixo,medico,obs_cliente,status').eq('tenant_id', tenantId).neq('status','entregue').neq('status','cancelada').order('created_at', { ascending: false }).limit(100),
     ]);
+    const [pAll, cAll] = await Promise.all([
+      fetchAllRows<Product>((from, to) => supabase.from('products').select('id,name,sale_price,stock,category,brand,code').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to)),
+      fetchAllRows<Customer>((from, to) => supabase.from('customers').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to)),
+    ]);
     setSales((s as Sale[]) || []);
-    setProducts((p as Product[]) || []);
-    setCustomers((c as Customer[]) || []);
+    setProducts(pAll);
+    setCustomers(cAll);
     setOrders((o as OS[]) || []);
     setLoading(false);
   };

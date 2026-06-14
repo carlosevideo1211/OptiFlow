@@ -107,11 +107,19 @@ export default function ClientesPage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('customers').select('*').eq('tenant_id', tenantId).order('name');
-    const list = (data as Customer[]) || [];
-    setCustomers(list);
+    let all: Customer[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data } = await supabase.from('customers').select('*').eq('tenant_id', tenantId).order('name').range(from, from + pageSize - 1);
+      const chunk = (data as Customer[]) || [];
+      all = all.concat(chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+    }
+    setCustomers(all);
     setLoading(false);
-    if (list.length && tenantId) calcRankings(list.map(c => c.id), tenantId);
+    if (all.length && tenantId) calcRankings(all.map(c => c.id), tenantId);
   };
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);

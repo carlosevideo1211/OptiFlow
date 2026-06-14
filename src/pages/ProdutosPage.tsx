@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import {
   Plus, Search, Edit2, Package, AlertTriangle,
   Download, Upload, Trash2, Layers, DollarSign, X, Save, CheckCircle
@@ -35,8 +36,8 @@ export default function ProdutosPage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('products').select('*').eq('tenant_id', tenantId).order('name');
-    setProducts((data as Product[]) || []);
+    const data = await fetchAllRows<Product>((from, to) => supabase.from('products').select('*').eq('tenant_id', tenantId).order('name').range(from, to));
+    setProducts(data || []);
     setLoading(false);
   };
 

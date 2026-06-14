@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAll';
 import { useNavigate } from 'react-router-dom';
 import type { Customer } from '../../types/index';
 import { Search, X } from 'lucide-react';
@@ -19,9 +20,9 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
   const [professionalName, setProfessionalName] = useState(user?.full_name || '');
 
   useEffect(() => {
-    supabase.from('customers').select('id, name, phone')
-      .eq('tenant_id', tenantId).eq('active', true).order('name')
-      .then(({ data }) => setCustomers((data as Customer[]) ?? []));
+    fetchAllRows<Customer>((from, to) => supabase.from('customers').select('id, name, phone')
+      .eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to))
+      .then((data) => setCustomers((data as Customer[]) ?? []));
   }, [tenantId]);
 
   const filtered = customers.filter(c =>

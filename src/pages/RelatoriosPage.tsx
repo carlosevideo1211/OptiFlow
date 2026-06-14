@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import {
   BarChart3, TrendingUp, TrendingDown, Users, ShoppingCart,
   CreditCard, Package, Download, Calendar, DollarSign,
@@ -48,18 +49,12 @@ export default function RelatoriosPage() {
   const loadData = async () => {
     setLoading(true);
     const { from, to } = getRange();
-    const [
-      { data: vendas },
-      { data: clientes },
-      { data: os },
-      { data: financeiro },
-      { data: saleItems },
-    ] = await Promise.all([
-      supabase.from('sales').select('*').eq('tenant_id', tenantId).eq('status','concluida').gte('created_at', from).lte('created_at', to+'T23:59:59'),
-      supabase.from('customers').select('created_at').eq('tenant_id', tenantId).eq('active', true),
-      supabase.from('service_orders').select('status').eq('tenant_id', tenantId),
-      supabase.from('financial_transactions').select('type,amount,status').eq('tenant_id', tenantId),
-      supabase.from('sale_items').select('description,quantity,total,sale_id').eq('tenant_id', tenantId),
+    const [vendas, clientes, os, financeiro, saleItems] = await Promise.all([
+      fetchAllRows<any>((rf, rt) => supabase.from('sales').select('*').eq('tenant_id', tenantId).eq('status','concluida').gte('created_at', from).lte('created_at', to+'T23:59:59').range(rf, rt)),
+      fetchAllRows<any>((rf, rt) => supabase.from('customers').select('created_at').eq('tenant_id', tenantId).eq('active', true).range(rf, rt)),
+      fetchAllRows<any>((rf, rt) => supabase.from('service_orders').select('status').eq('tenant_id', tenantId).range(rf, rt)),
+      fetchAllRows<any>((rf, rt) => supabase.from('financial_transactions').select('type,amount,status').eq('tenant_id', tenantId).range(rf, rt)),
+      fetchAllRows<any>((rf, rt) => supabase.from('sale_items').select('description,quantity,total,sale_id').eq('tenant_id', tenantId).range(rf, rt)),
     ]);
 
     const totalVendas  = (vendas||[]).reduce((s,v)=>s+v.total,0);

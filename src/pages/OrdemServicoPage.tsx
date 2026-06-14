@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import {
   Plus, Search, Edit2, Eye, ClipboardList,
   Clock, CheckCircle, Truck, Package, X, Save,
@@ -95,14 +96,14 @@ export default function OrdemServicoPage() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: os }, { data: prods }, { data: cust }] = await Promise.all([
-      supabase.from('service_orders').select('*').eq('tenant_id', tenantId).order('os_number', { ascending: false }),
-      supabase.from('products').select('*').eq('tenant_id', tenantId).eq('active', true).order('name'),
-      supabase.from('customers').select('id,name,phone').eq('tenant_id', tenantId).eq('active', true).order('name'),
+    const [os, prods, cust] = await Promise.all([
+      fetchAllRows<OS>((from, to) => supabase.from('service_orders').select('*').eq('tenant_id', tenantId).order('os_number', { ascending: false }).range(from, to)),
+      fetchAllRows<Product>((from, to) => supabase.from('products').select('*').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to)),
+      fetchAllRows<Customer>((from, to) => supabase.from('customers').select('id,name,phone').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to)),
     ]);
-    setOrders((os as OS[]) || []);
-    setProducts((prods as Product[]) || []);
-    setCustomers((cust as Customer[]) || []);
+    setOrders(os || []);
+    setProducts(prods || []);
+    setCustomers(cust || []);
     setLoading(false);
   };
 
