@@ -23,26 +23,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Admin also loads profile to get tenant_id
     try {
       const { data } = await supabase.from('user_profiles').select('*').eq('id', uid).maybeSingle();
-      if (data) {
-        // Se perfil nao tem tenant_id, buscar pelo email na tabela tenants
-        if (!data.tenant_id && email) {
-          const { data: tenant } = await supabase
-            .from('tenants')
-            .select('id, company_name')
-            .eq('email', email)
-            .maybeSingle();
-          if (tenant?.id) {
-            // Vincular tenant ao perfil
-            await supabase.from('user_profiles')
-              .update({ tenant_id: tenant.id, full_name: data.full_name || email })
-              .eq('id', uid);
-            setUser({ ...data, tenant_id: tenant.id } as UserProfile);
-          } else {
-            setUser(data as UserProfile);
-          }
-        } else {
-          setUser(data as UserProfile);
-        }
+      if (data && data.tenant_id) {
+        setUser(data as UserProfile);
+      } else {
+        // Perfil sem tenant_id ou inexistente: fazer logout silencioso
+        await supabase.auth.signOut();
+        setUser(null);
       }
     } finally {
       setLoading(false);
@@ -63,6 +49,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (!error) {
+      const uid = (await supabase.auth.getUser()).data.user?.id;
+      if (uid) {
+        const { data: profile } = await supabase.from('user_profiles').select('id, tenant_id').eq('id', uid).maybeSingle();
+        if (!profile || !profile.tenant_id) {
+          await supabase.auth.signOut();
+          throw new Error('Conta sem acesso ao sistema. Use o painel administrativo.');
+        }
+      }
+    }
     if (error) {
       // Tentar login como funcionario
       const { data: func } = await supabase
