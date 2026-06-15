@@ -9,7 +9,7 @@ import {
   Users, Eye, FileText, CreditCard, ShoppingBag, RefreshCw
 } from 'lucide-react';
 
-type Tab = 'clientes' | 'consultas' | 'vendas' | 'crediario';
+type Tab = 'clientes' | 'consultas' | 'vendas' | 'crediario' | 'os' | 'produtos';
 
 interface ImportResult {
   success: number;
@@ -22,6 +22,9 @@ const TABS = [
   { id: 'consultas', label: 'Consultas',  icon: '👁️', desc: 'Histórico de receitas' },
   { id: 'vendas',    label: 'Vendas',     icon: '🛒', desc: 'Histórico de compras' },
   { id: 'crediario', label: 'Crediário',  icon: '💳', desc: 'Histórico de débitos' },
+
+  { id: 'os', label: 'OS', icon: '🛠️', desc: 'Ordens de servico' },
+  { id: 'produtos', label: 'Produtos', icon: '📦', desc: 'Estoque' },
 ];
 
 const MODELS: Record<Tab, { headers: string[]; example: any[] }> = {
@@ -40,6 +43,14 @@ const MODELS: Record<Tab, { headers: string[]; example: any[] }> = {
   crediario: {
     headers: ['Nome_Cliente', 'CPF_Cliente', 'Data_Venda', 'Valor_Total', 'Num_Parcelas', 'Valor_Parcela', 'Data_Vencimento_1a', 'Status', 'Observacoes'],
     example: [['João da Silva', '123.456.789-00', '2024-03-01', '600.00', '3', '200.00', '2024-04-01', 'aberto', 'Crediário loja anterior']]
+  },
+  os: {
+    headers: ['Nome_Cliente', 'CPF_Cliente', 'Status', 'Descricao', 'Valor_Total', 'Desconto', 'Entrada', 'Data_Entrega', 'Medico', 'Observacoes'],
+    example: [['Joao da Silva', '123.456.789-00', 'entregue', 'Armacao Ray-Ban + Lentes Transitions', '980.00', '100.00', '180.00', '2024-03-20', 'Dr. Carlos', 'OS loja anterior']]
+  },
+  produtos: {
+    headers: ['Nome', 'Codigo', 'Categoria', 'Marca', 'Descricao', 'Preco_Custo', 'Preco_Venda', 'Estoque', 'Estoque_Minimo'],
+    example: [['Armacao Ray-Ban RB5228', 'RB5228', 'Armacao', 'Ray-Ban', 'Armacao acetato preta', '150.00', '350.00', '10', '2']]
   }
 };
 
@@ -264,6 +275,79 @@ export default function ImportacaoPage() {
                 }
                 await supabase.from('crediario_parcelas').insert(parcelas);
               }
+              success++;
+            } catch (e: any) { errors++; messages.push(`Erro: ${e.message}`); }
+          }
+        }
+
+        else if (tab === 'produtos') {
+          for (const row of rows) {
+            try {
+              const nome = String(row['Nome'] || row['nome'] || '').trim();
+              if (!nome) { errors++; messages.push('Produto sem nome ignorado'); continue; }
+              const { error: insErr } = await supabase.from('products').insert([{
+                tenant_id: tenantId,
+                name: nome,
+                code: String(row['Codigo'] || row['codigo'] || ''),
+                category: row['Categoria'] || row['categoria'] || 'Outros',
+                brand: row['Marca'] || row['marca'] || '',
+                description: row['Descricao'] || row['descricao'] || '',
+                cost_price: parseFloat(row['Preco_Custo'] || row['preco_custo'] || 0) || 0,
+                sale_price: parseFloat(row['Preco_Venda'] || row['preco_venda'] || 0) || 0,
+                stock: parseInt(row['Estoque'] || row['estoque'] || 0) || 0,
+                min_stock: parseInt(row['Estoque_Minimo'] || row['estoque_minimo'] || 5) || 5,
+                active: true,
+              }]);
+              if (insErr) { errors++; messages.push('Erro ao inserir ' + nome + ': ' + insErr.message); continue; }
+              success++;
+            } catch (e: any) { errors++; messages.push(`Erro: ${e.message}`); }
+          }
+        }
+
+        else if (tab === 'os') {
+          for (const row of rows) {
+            try {
+              const nomeCliente = String(row['Nome_Cliente'] || '').trim();
+              const cpf = formatCPF(String(row['CPF_Cliente'] || '').replace(/[^0-9]/g,''));
+              let customerId = null;
+              if (cpf) {
+                const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).eq('cpf', cpf).maybeSingle();
+                customerId = cust?.id;
+              }
+              if (!customerId && nomeCliente) {
+                const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).ilike('name', nomeCliente).maybeSingle();
+                customerId = cust?.id;
+              }
+              const total = parseFloat(row['Valor_Total'] || 0) || 0;
+              const discount = parseFloat(row['Desconto'] || 0) || 0;
+              const entrada = parseFloat(row['Entrada'] || 0) || 0;
+              const rawDate = row['Data_Entrega'];
+              let deliveryDate: string | null = null;
+              if (rawDate) {
+                if (typeof rawDate === 'number') {
+                  deliveryDate = new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0];
+                } else {
+                  const s = String(rawDate).trim();
+                  if (s.includes('/')) {
+                    const p = s.split('/');
+                    deliveryDate = new Date(parseInt(p[2]), parseInt(p[1])-1, parseInt(p[0])).toISOString().split('T')[0];
+                  } else {
+                    deliveryDate = s;
+                  }
+                }
+              }
+              const { error: osErr } = await supabase.from('service_orders').insert([{
+                tenant_id: tenantId,
+                customer_id: customerId,
+                customer_name: nomeCliente || cpf || 'Importado',
+                medico: row['Medico'] || row['medico'] || null,
+                total, discount, entrada,
+                status: row['Status'] || row['status'] || 'aprovada',
+                delivery_date: deliveryDate,
+                notes: row['Descricao'] || row['Observacoes'] || 'Importado de sistema anterior',
+                obs_cliente: row['Observacoes'] || null,
+              }]);
+              if (osErr) { errors++; messages.push('Erro OS ' + nomeCliente + ': ' + osErr.message); continue; }
               success++;
             } catch (e: any) { errors++; messages.push(`Erro: ${e.message}`); }
           }

@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       else setLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') { setUser(null); setLoading(false); }
+      if (event === 'SIGNED_OUT') { profileLoadedRef.current = false; setUser(null); setLoading(false); }
       else if (event === 'SIGNED_IN' && session?.user) loadProfile(session.user.id, session.user.email);
     });
     return () => subscription.unsubscribe();
