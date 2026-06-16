@@ -175,10 +175,7 @@ export default function ProdutosPage() {
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           <button className="btn btn-secondary" onClick={exportCSV}><Download size={15}/> Exportar</button>
           <button className="btn btn-secondary" onClick={downloadModelo}><Download size={15}/> Modelo</button>
-          <label className="btn btn-secondary" style={{ cursor:'pointer' }}>
-            <Upload size={15}/> Importar
-            <input type="file" accept=".csv,.xlsx" style={{ display:'none' }} onChange={importCSV}/>
-          </label>
+          
           <button className="btn btn-secondary" onClick={zerarEstoque} style={{ color:'#f87171' }}>
             <Trash2 size={15}/> Zerar
           </button>
