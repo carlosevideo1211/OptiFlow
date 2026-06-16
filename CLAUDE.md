@@ -106,3 +106,33 @@ Sistema SaaS multi-tenant para oticas (gestao de clientes, vendas, OS, crediario
 7. Correcao do tenant_id na importacao (AuthContext limpa admin_viewing_tenant para nao-admins).
 8. Importacao de clientes usa insert simples (sem upsert com onConflict).
 9. Remocao do limite de 1000 registros em todas as listagens (fetchAllRows).
+
+
+## Autenticacao e Seguranca
+- profileLoadedRef e resetado no SIGNED_OUT para permitir login com outro inquilino apos logout.
+- loadProfile: se user_profiles nao tem tenant_id, faz logout silencioso (supabase.auth.signOut()).
+- signIn: apos autenticar, verifica se user_profiles existe e tem tenant_id. Se nao, faz logout e lanca erro "Conta sem acesso ao sistema. Use o painel administrativo."
+- Email do Admin (carlosevideo28@gmail.com) so acessa via /admin-login. Nao tem user_profiles, entao e bloqueado no /login normal com mensagem clara.
+- Trigger handle_new_user no Supabase cria user_profiles automaticamente para novos usuarios Auth. Se o email do admin for usado no /login, o trigger cria um perfil — deve ser deletado manualmente via SQL: delete from user_profiles where id = '<uid do admin>';
+- Site URL no Supabase deve ser https://app.visionproerp.com.br para que emails de reset de senha funcionem corretamente.
+- Redirect URLs no Supabase: https://app.visionproerp.com.br/** e http://localhost:5173/**
+
+## CPF
+- Campo CPF no cadastro de clientes usa maskCPF() (src/utils/format.ts) para mascarar progressivamente sem padding de zeros.
+- formatCPF() e usado apenas para exibicao/banco (dados vindos do banco ou importacao), nunca em onChange de input.
+
+## Cache / Atualizacao
+- public/_headers configurado para no-cache no HTML e cache longo em JS/CSS/imagens (Vite gera hash no nome dos arquivos).
+
+## Importacao Centralizada
+- Todos os botoes "Importar" foram removidos das paginas individuais (ClientesPage, ProdutosPage).
+- Importacao centralizada em /importacao com abas: Clientes, Consultas, Vendas, Crediario, OS, Produtos.
+
+## Carne de Pagamento
+- Cabecalho do carne exibe: nome da loja, CNPJ, endereco e telefone (igual ao Instrumento de Divida).
+- Variaveis usadas: sCnpj, sAddr, sCity, sState, sPhone (vindas de storeSettings).
+- Classe CSS .csi: font-size:10px, color:rgba(255,255,255,.8), margin-top:2px.
+
+## Tenant hotmail (carlosevideo@hotmail.com)
+- tenant_id corrigido para Otica Teste (378918f9-34fe-40ad-80c9-240dde5c10fe) via UPDATE em user_profiles.
+- Antes estava apontando para Otica Evangelista por engano.
