@@ -49,6 +49,8 @@ function formatDateTime(d: string) {
 export default function VendasPage() {
   const { tenantId } = useAuth();
   const [sales, setSales]         = useState<Sale[]>([]);
+  const [pagina, setPagina] = useState(1);
+  const POR_PAGINA = 50;
   const [products, setProducts]   = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orders, setOrders]       = useState<OS[]>([]);
@@ -92,8 +94,8 @@ export default function VendasPage() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: s }, { data: o }] = await Promise.all([
-      supabase.from('sales').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(200),
+    const [s, { data: o }] = await Promise.all([
+      fetchAllRows((from, to) => supabase.from('sales').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).range(from, to)),
       supabase.from('service_orders').select('id,os_number,customer_name,customer_id,frame_brand,frame_model,frame_color,frame_price,lens_type,lens_brand,lens_price,total,discount,entrada,od_esf,od_cil,od_eixo,oe_esf,oe_cil,oe_eixo,medico,obs_cliente,status').eq('tenant_id', tenantId).neq('status','entregue').neq('status','cancelada').order('created_at', { ascending: false }).limit(100),
     ]);
     const [pAll, cAll] = await Promise.all([
@@ -507,7 +509,7 @@ export default function VendasPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map(v => {
+                      {filtered.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA).map(v => {
                         const pag = PAGAMENTOS.find(p => p.value === v.payment_method);
                         return (
                           <tr key={v.id}>
@@ -550,7 +552,12 @@ export default function VendasPage() {
                   </table>
                 </div>
                 <div style={{ padding: '10px 16px', fontSize: 13, color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
-                  {filtered.length} venda(s) | Total: {formatBRL(filtered.reduce((s, v) => s + v.total, 0))}
+                  {filtered.length} venda(s) | Total: {formatBRL(filtered.reduce((s, v) => s + v.total, 0))} — Pag. {pagina}/{Math.ceil(filtered.length/POR_PAGINA)}
+                  <div style={{ display:'flex', gap:6, marginTop:6, flexWrap:'wrap' }}>
+                    <button onClick={() => setPagina(p => Math.max(1,p-1))} disabled={pagina===1} style={{ padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:pagina===1?'transparent':'var(--primary)', color:pagina===1?'var(--text-muted)':'#fff', cursor:pagina===1?'not-allowed':'pointer', fontSize:12 }}>← Ant</button>
+                    {Array.from({length:Math.ceil(filtered.length/POR_PAGINA)},(_,i)=>i+1).filter(n=>Math.abs(n-pagina)<=2).map(n=>(<button key={n} onClick={()=>setPagina(n)} style={{ padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:n===pagina?'var(--primary)':'transparent', color:n===pagina?'#fff':'var(--text-muted)', cursor:'pointer', fontWeight:n===pagina?700:400, fontSize:12 }}>{n}</button>))}
+                    <button onClick={() => setPagina(p => Math.min(Math.ceil(filtered.length/POR_PAGINA),p+1))} disabled={pagina===Math.ceil(filtered.length/POR_PAGINA)} style={{ padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:pagina===Math.ceil(filtered.length/POR_PAGINA)?'transparent':'var(--primary)', color:pagina===Math.ceil(filtered.length/POR_PAGINA)?'var(--text-muted)':'#fff', cursor:pagina===Math.ceil(filtered.length/POR_PAGINA)?'not-allowed':'pointer', fontSize:12 }}>Prox →</button>
+                  </div>
                 </div>
               </div>
             )}
