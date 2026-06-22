@@ -32,9 +32,12 @@ export default function CrediarioPage() {
   const { tenantId } = useAuth();
   const [parcelas, setParcelas] = useState<Parcela[]>([]);
   const [renegociando, setRenegociando] = useState<string|null>(null); // crediario_id
+  const [pagina, setPagina] = useState(1);
+  const POR_PAGINA = 50;
   const [renego, setRenego] = useState({ novoValor:'', numParcelas:'1', dataInicio:'', destino:'cancelar' });
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
+  // Reset pagina ao mudar filtros
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
@@ -490,7 +493,7 @@ export default function CrediarioPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(p => {
+                  {filtered.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA).map(p => {
                     const juros = calcJuros(p);
                     const vencida = p.status !== 'pago' && p.due_date && p.due_date < hoje;
                     const pago = p.status === 'pago';
