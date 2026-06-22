@@ -37,13 +37,13 @@ function fmtRx(v: any): string {
   return sign + n.toFixed(2).replace('.', ',');
 }
 
-const RX_ESF_REGEX = /^([+-]\d+,\d{2}|0,00)$/;
+const RX_ESF_REGEX = /^([+-]?\d+,\d{2}|0,00)$/;
 const RX_CIL_REGEX = /^-\d+,\d{2}$/;
 const ADICAO_VALIDAS = ['0,75','1,00','1,25','1,50','1,75','2,00','2,25','2,50','2,75','3,00','3,25','3,50'];
 
 function validateRxField(value: string, type: 'esf' | 'cil' | 'eixo' | 'adicao'): string | null {
   if (value === '') return null;
-  if (type === 'esf' && !RX_ESF_REGEX.test(value)) return 'Use: +0,50 / -0,50 / 0,00';
+  if (type === 'esf' && !RX_ESF_REGEX.test(value)) return 'Use: +0,50 / -0,50 / 0,00 (sinal + opcional)';
   if (type === 'cil' && !RX_CIL_REGEX.test(value)) return 'CIL negativo: -1,00';
   if (type === 'eixo') {
     const n = Number(value);
