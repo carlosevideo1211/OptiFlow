@@ -31,6 +31,8 @@ function calcJuros(p: Parcela): number {
 export default function CrediarioPage() {
   const { tenantId } = useAuth();
   const [parcelas, setParcelas] = useState<Parcela[]>([]);
+  const [renegociando, setRenegociando] = useState<string|null>(null); // crediario_id
+  const [renego, setRenego] = useState({ novoValor:'', numParcelas:'1', dataInicio:'', destino:'cancelar' });
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -361,6 +363,66 @@ export default function CrediarioPage() {
     </div>
   ) : null;
 
+
+  // Modal de Renegociacao
+  const parcelasDoCarneRenegociando = renegociando ? parcelas.filter(p => p.crediario_id === renegociando && p.status !== 'pago') : [];
+  const totalRenegociando = parcelasDoCarneRenegociando.reduce((s, p) => s + p.amount, 0);
+  const clienteRenegociando = parcelasDoCarneRenegociando[0]?.customer_name || '';
+
+  const confirmarRenegociacao = async () => {
+    if (!renegociando) return;
+    const novoValor = parseFloat(renego.novoValor.replace(',', '.'));
+    const numP = parseInt(renego.numParcelas);
+    if (!novoValor || novoValor <= 0) { toast.error('Informe o novo valor total'); return; }
+    if (!numP || numP <= 0) { toast.error('Informe o numero de parcelas'); return; }
+    if (!renego.dataInicio) { toast.error('Informe a data da primeira parcela'); return; }
+    const valorParcela = novoValor / numP;
+
+    // Criar novo crediario
+    const { data: novoCred, error: credErr } = await supabase.from('crediario').insert([{
+      tenant_id: tenantId,
+      customer_id: parcelasDoCarneRenegociando[0]?.customer_id || null,
+      customer_name: clienteRenegociando,
+      total_amount: novoValor,
+      installments: numP,
+      status: 'ativo',
+      notes: 'Renegociacao de divida anterior',
+      sale_id: null,
+    }]).select().single();
+    if (credErr || !novoCred) { toast.error('Erro ao criar renegociacao'); return; }
+
+    // Criar novas parcelas
+    const novasParcelas = [];
+    const dtBase = new Date(renego.dataInicio + 'T12:00:00');
+    for (let i = 0; i < numP; i++) {
+      const dt = new Date(dtBase);
+      dt.setMonth(dt.getMonth() + i);
+      novasParcelas.push({
+        crediario_id: novoCred.id,
+        tenant_id: tenantId,
+        installment_number: i + 1,
+        due_date: dt.toISOString().split('T')[0],
+        amount: parseFloat(valorParcela.toFixed(2)),
+        status: 'pendente',
+      });
+    }
+    await supabase.from('crediario_parcelas').insert(novasParcelas);
+
+    // Tratar carne original
+    if (renego.destino === 'cancelar') {
+      await supabase.from('crediario').update({ status: 'cancelado' }).eq('id', renegociando);
+      await supabase.from('crediario_parcelas').update({ status: 'cancelado' }).eq('crediario_id', renegociando).neq('status', 'pago');
+    } else if (renego.destino === 'quitado') {
+      await supabase.from('crediario').update({ status: 'quitado' }).eq('id', renegociando);
+      await supabase.from('crediario_parcelas').update({ status: 'pago', paid_at: new Date().toISOString().split('T')[0] }).eq('crediario_id', renegociando).neq('status', 'pago');
+    }
+
+    toast.success('Renegociacao criada com sucesso!');
+    setRenegociando(null);
+    setRenego({ novoValor:'', numParcelas:'1', dataInicio:'', destino:'cancelar' });
+    load();
+  };
+
   return (
     <div>
       {payModal}
@@ -490,7 +552,13 @@ export default function CrediarioPage() {
                                 style={{ background:'rgba(248,113,113,.1)', border:'1px solid rgba(248,113,113,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#f87171', display:'flex', alignItems:'center' }}>
                                 <Trash2 size={14}/>
                               </button>
-                            )}
+     )}
+     {!pago && (
+       <button onClick={() => setRenegociando(p.crediario_id)} title="Renegociar carne"
+         style={{ background:'rgba(251,191,36,.1)', border:'1px solid rgba(251,191,36,.3)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#fbbf24', display:'flex', alignItems:'center', gap:4, fontSize:12 }}>
+         ↺ Renego
+       </button>
+     )}
                             {!pago && (
                               <button onClick={async () => {
                                 if (!confirm('Excluir esta parcela permanentemente?')) return;
@@ -514,6 +582,53 @@ export default function CrediarioPage() {
             </div>
           </div>
         )}
+
+      {/* Modal Renegociacao */}
+      {renegociando && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.85)', zIndex:1000, backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'var(--card)', borderRadius:16, padding:28, width:'100%', maxWidth:480, border:'1px solid var(--border)' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+              <h2 style={{ fontSize:18, fontWeight:700, color:'#fbbf24' }}>↺ Renegociar Divida</h2>
+              <button onClick={() => setRenegociando(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', fontSize:20 }}>✕</button>
+            </div>
+            <div style={{ background:'rgba(251,191,36,.08)', border:'1px solid rgba(251,191,36,.2)', borderRadius:10, padding:14, marginBottom:20 }}>
+              <div style={{ fontWeight:700, marginBottom:4 }}>{clienteRenegociando}</div>
+              <div style={{ fontSize:13, color:'var(--text-muted)' }}>{parcelasDoCarneRenegociando.length} parcela(s) em aberto — Total: <strong style={{ color:'#f87171' }}>R$ {totalRenegociando.toFixed(2).replace('.',',')}</strong></div>
+            </div>
+            <div style={{ display:'grid', gap:14 }}>
+              <div>
+                <label style={{ fontSize:12, color:'var(--text-muted)', display:'block', marginBottom:4 }}>NOVO VALOR TOTAL (R$)</label>
+                <input className="form-input" placeholder="ex: 630,00" value={renego.novoValor} onChange={e => setRenego(r => ({...r, novoValor: e.target.value}))} />
+                {renego.novoValor && parseFloat(renego.numParcelas) > 0 && (
+                  <div style={{ fontSize:12, color:'#6366f1', marginTop:4 }}>
+                    {renego.numParcelas}x de R$ {(parseFloat(renego.novoValor.replace(',','.')) / parseInt(renego.numParcelas)).toFixed(2).replace('.',',')}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={{ fontSize:12, color:'var(--text-muted)', display:'block', marginBottom:4 }}>NUMERO DE PARCELAS</label>
+                <input className="form-input" type="number" min="1" max="60" value={renego.numParcelas} onChange={e => setRenego(r => ({...r, numParcelas: e.target.value}))} />
+              </div>
+              <div>
+                <label style={{ fontSize:12, color:'var(--text-muted)', display:'block', marginBottom:4 }}>DATA DA 1a PARCELA</label>
+                <input className="form-input" type="date" value={renego.dataInicio} onChange={e => setRenego(r => ({...r, dataInicio: e.target.value}))} />
+              </div>
+              <div>
+                <label style={{ fontSize:12, color:'var(--text-muted)', display:'block', marginBottom:4 }}>O QUE FAZER COM O CARNE ORIGINAL?</label>
+                <select className="form-input" value={renego.destino} onChange={e => setRenego(r => ({...r, destino: e.target.value}))}>
+                  <option value="cancelar">Cancelar carne original</option>
+                  <option value="quitado">Marcar como quitado</option>
+                  <option value="manter">Manter como esta</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:10, marginTop:22 }}>
+              <button onClick={() => setRenegociando(null)} className="btn btn-secondary" style={{ flex:1 }}>Cancelar</button>
+              <button onClick={confirmarRenegociacao} className="btn btn-primary" style={{ flex:2, background:'#fbbf24', color:'#000', fontWeight:700 }}>✓ Confirmar Renegociacao</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
