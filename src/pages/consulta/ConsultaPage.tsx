@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAll';
 import {
   Plus, Search, Eye, ClipboardList, CheckCircle,
   Clock, XCircle, Download, Edit2, Trash2
@@ -28,12 +29,12 @@ export default function ConsultaPage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
+    const data = await fetchAllRows<any>((from, to) => supabase
       .from('consultations')
       .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
-      .limit(100);
+      .range(from, to));
     setConsultations(data ?? []);
     setLoading(false);
   };
