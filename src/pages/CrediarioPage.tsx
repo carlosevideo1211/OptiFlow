@@ -44,7 +44,7 @@ export default function CrediarioPage() {
   const [saving, setSaving]     = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedParcela, setSelectedParcela] = useState<Parcela | null>(null);
-  const [payForm, setPayForm] = useState({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '' });
+  const [payForm, setPayForm] = useState({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0' });
   const [payingSaving, setPayingSaving] = useState(false);
 
   const load = async () => {
@@ -137,7 +137,7 @@ export default function CrediarioPage() {
 
   const pagarParcela = (p: Parcela) => {
     setSelectedParcela(p);
-    setPayForm({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '' });
+    setPayForm({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0' });
     setShowPayModal(true);
   };
 
@@ -152,7 +152,8 @@ export default function CrediarioPage() {
     if (!funcs || funcs.length === 0) { toast.error('Funcionario nao encontrado'); return; }
     if (String(funcs[0].access_password).trim() !== payForm.operator_pass.trim()) { toast.error('Senha incorreta'); return; }
     const juros = calcJuros(p);
-    const total = p.amount + juros;
+    const desconto = Math.max(0, parseFloat((payForm.desconto||'0').replace(',','.')) || 0);
+    const total = Math.max(0, p.amount + juros - desconto);
     const pago = payForm.is_partial ? parseFloat(payForm.paid_amount.replace(',','.')) : total;
     if (payForm.is_partial && (!pago || pago <= 0 || pago >= total)) { toast.error('Valor parcial invalido'); return; }
     if (payForm.is_partial && !payForm.partial_due_date) { toast.error('Informe o vencimento do saldo'); return; }
@@ -316,6 +317,12 @@ export default function CrediarioPage() {
           <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Data do Pagamento</label>
           <input className="form-input" type="date" value={payForm.partial_due_date || new Date().toISOString().split('T')[0]}
             onChange={e=>setPayForm(f=>({...f,partial_due_date:e.target.value}))}/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6,color:'#22c55e'}}>Desconto (R$)</label>
+          <input className="form-input" type="number" min="0" step="0.01" value={payForm.desconto}
+            onChange={e=>setPayForm(f=>({...f,desconto:e.target.value}))}
+            placeholder="0,00" style={{borderColor:'rgba(34,197,94,.3)'}}/>
         </div>
         <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,fontSize:13,cursor:'pointer'}}>
           <input type="checkbox" checked={payForm.is_partial} onChange={e=>setPayForm(f=>({...f,is_partial:e.target.checked}))} style={{width:16,height:16}}/>
