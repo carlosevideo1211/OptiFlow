@@ -76,6 +76,8 @@ export default function OrdemServicoPage() {
   const { tenantId } = useAuth();
   const [storeSettings, setStoreSettings] = useState<any>(null);
   const [orders, setOrders]       = useState<OS[]>([]);
+  const [pagina, setPagina] = useState(1);
+  const POR_PAGINA = 50;
   const [products, setProducts]   = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -438,7 +440,7 @@ export default function OrdemServicoPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(o => {
+                {filtered.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA).map(o => {
                   const st = getStatus(o.status);
                   return (
                     <tr key={o.id}>
@@ -482,7 +484,12 @@ export default function OrdemServicoPage() {
             </table>
           </div>
           <div style={{ padding:'10px 16px', fontSize:13, color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
-            {filtered.length} OS exibida(s)
+            {filtered.length} OS no total — Pag. {pagina}/{Math.ceil(filtered.length/POR_PAGINA)}
+            <div style={{ display:'flex', gap:6, marginTop:6, flexWrap:'wrap' }}>
+              <button onClick={() => setPagina(p => Math.max(1,p-1))} disabled={pagina===1} style={{ padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:pagina===1?'transparent':'var(--primary)', color:pagina===1?'var(--text-muted)':'#fff', cursor:pagina===1?'not-allowed':'pointer', fontSize:12 }}>← Ant</button>
+              {Array.from({length:Math.ceil(filtered.length/POR_PAGINA)},(_,i)=>i+1).filter(n=>Math.abs(n-pagina)<=2).map(n=>(<button key={n} onClick={()=>setPagina(n)} style={{ padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:n===pagina?'var(--primary)':'transparent', color:n===pagina?'#fff':'var(--text-muted)', cursor:'pointer', fontWeight:n===pagina?700:400, fontSize:12 }}>{n}</button>))}
+              <button onClick={() => setPagina(p => Math.min(Math.ceil(filtered.length/POR_PAGINA),p+1))} disabled={pagina===Math.ceil(filtered.length/POR_PAGINA)} style={{ padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:pagina===Math.ceil(filtered.length/POR_PAGINA)?'transparent':'var(--primary)', color:pagina===Math.ceil(filtered.length/POR_PAGINA)?'var(--text-muted)':'#fff', cursor:pagina===Math.ceil(filtered.length/POR_PAGINA)?'not-allowed':'pointer', fontSize:12 }}>Prox →</button>
+            </div>
           </div>
         </div>
        )}
