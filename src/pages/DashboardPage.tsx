@@ -49,7 +49,7 @@ export default function DashboardPage() {
       supabase.from('customers').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('active', true),
       supabase.from('service_orders').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['aprovada', 'em_producao']),
       supabase.from('sales').select('total').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', today),
-      supabase.from('crediario_parcelas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'vencida'),
+      supabase.from('crediario_parcelas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'pendente').lt('due_date', today),
       supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('date', today),
       supabase.from('products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('active', true).lt('stock', 5),
       supabase.from('sales').select('total').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', monthStart),
