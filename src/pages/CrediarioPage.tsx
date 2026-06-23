@@ -312,7 +312,7 @@ export default function CrediarioPage() {
         </div>
         <div style={{marginBottom:14}}>
           <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Valor Recebido (R$)</label>
-          <input className="form-input" value={payForm.is_partial ? payForm.paid_amount : fmtM(selectedParcela.amount+calcJuros(selectedParcela)).replace('R$ ','').replace('R$','').trim()}
+          <input className="form-input" value={payForm.is_partial ? payForm.paid_amount : (Math.max(0, selectedParcela.amount + calcJuros(selectedParcela) - (parseFloat((payForm.desconto||'0').replace(',','.')) || 0))).toFixed(2).replace('.',',')}
             onChange={e=>setPayForm(f=>({...f,paid_amount:e.target.value}))} readOnly={!payForm.is_partial} style={{marginBottom:10}}/>
           <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Data do Pagamento</label>
           <input className="form-input" type="date" value={payForm.partial_due_date || new Date().toISOString().split('T')[0]}
@@ -558,7 +558,7 @@ export default function CrediarioPage() {
                                 if (!confirm('Desmarcar pagamento desta parcela?')) return;
                                 await supabase.from('crediario_parcelas').update({ status:'pendente', paid_at:null, paid_amount:null }).eq('id', p.id);
                                 toast.success('Parcela desmarcada'); load();
-                              }} title="Desmarcar pagamento"
+                              }} title="Desfazer pagamento / Retornar para Pendente"
                                 style={{ background:'rgba(248,113,113,.1)', border:'1px solid rgba(248,113,113,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#f87171', display:'flex', alignItems:'center' }}>
                                 <Trash2 size={14}/>
                               </button>
