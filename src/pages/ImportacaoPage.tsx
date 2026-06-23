@@ -183,44 +183,50 @@ export default function ImportacaoPage() {
         }
 
         else if (tab === 'vendas') {
+          type VendaGrupo = { nome: string; cpf: string; data: any; pagamento: string; obs: string; itens: {desc:string;qty:number;preco:number;desc_val:number}[] };
+          const grupos: VendaGrupo[] = [];
+          let grupoAtual: VendaGrupo | null = null;
           for (const row of rows) {
+            const nome = String(row['Nome_Cliente'] || '').trim();
+            if (nome) {
+              grupoAtual = { nome, cpf: String(row['CPF_Cliente'] || '').replace(/[^0-9]/g,''), data: row['Data_Venda'], pagamento: row['Forma_Pagamento'] || 'dinheiro', obs: row['Observacoes'] || 'Importado de sistema anterior', itens: [] };
+              grupos.push(grupoAtual);
+            } else if (grupoAtual && row['Descricao_Produto']) {
+              grupoAtual.itens.push({ desc: String(row['Descricao_Produto']), qty: parseFloat(row['Quantidade'] || 1), preco: parseFloat(row['Valor_Unitario'] || 0), desc_val: Math.abs(parseFloat(row['Desconto'] || 0)) });
+            }
+          }
+          for (const g of grupos) {
             try {
-              const nomeCliente = row['Nome_Cliente'] || '';
               let customerId = null;
-              const cpf = formatCPF(String(row['CPF_Cliente'] || '').replace(/[^0-9]/g,''));
+              const cpf = formatCPF(g.cpf);
               if (cpf) {
                 const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).eq('cpf', cpf).maybeSingle();
                 customerId = cust?.id;
               }
-              const total = parseFloat(row['Valor_Unitario'] || 0) * parseFloat(row['Quantidade'] || 1) - parseFloat(row['Desconto'] || 0);
+              if (!customerId && g.nome) {
+                const { data: cust } = await supabase.from('customers').select('id').eq('tenant_id', tenantId).ilike('name', g.nome).maybeSingle();
+                customerId = cust?.id;
+              }
+              const subtotal = g.itens.reduce((s, it) => s + it.qty * it.preco, 0);
+              const descTotal = g.itens.reduce((s, it) => s + it.desc_val, 0);
+              const total = Math.max(0, subtotal - descTotal);
+              const dateISO = (() => { const d = g.data; if (!d) return new Date().toISOString(); const s = String(d).trim(); if (s.includes('/')) { const p = s.split('/'); return new Date(parseInt(p[2]), parseInt(p[1])-1, parseInt(p[0])).toISOString(); } if (typeof d === 'number') { return new Date(Math.round((Number(d)-25569)*86400*1000)).toISOString(); } return new Date(s).toISOString(); })();
               const { data: saleData } = await supabase.from('sales').insert([{
-                tenant_id: tenantId,
-                customer_id: customerId,
-                customer_name: nomeCliente.trim(),
-                payment_method: row['Forma_Pagamento'] || 'dinheiro',
-                installments: 1,
-                subtotal: total,
-                discount: parseFloat(row['Desconto'] || 0),
-                total: total,
-                status: 'concluida',
-                notes: row['Observacoes'] || 'Importado de sistema anterior',
-                created_at: (() => { const d = row['Data_Venda']; if (!d) return new Date().toISOString(); const s = String(d).trim(); if (s.includes('/')) { const p = s.split('/'); return new Date(parseInt(p[2]), parseInt(p[1])-1, parseInt(p[0])).toISOString(); } if (typeof d === 'number' || (!isNaN(Number(s)) && s.length < 6)) { return new Date(Math.round((Number(s)-25569)*86400*1000)).toISOString(); } return new Date(s).toISOString(); })(),
+                tenant_id: tenantId, customer_id: customerId, customer_name: g.nome,
+                payment_method: g.pagamento, installments: 1, subtotal, discount: descTotal,
+                total, status: 'concluida', notes: g.obs, created_at: dateISO,
               }]).select().single();
-              if (saleData) {
-                await supabase.from('sale_items').insert([{
-                  sale_id: saleData.id,
-                  tenant_id: tenantId,
-                  description: row['Descricao_Produto'] || 'Produto importado',
-                  quantity: parseFloat(row['Quantidade'] || 1),
-                  unit_price: parseFloat(row['Valor_Unitario'] || 0),
-                  total: total,
-                }]);
+              if (saleData && g.itens.length > 0) {
+                await supabase.from('sale_items').insert(g.itens.map(it => ({
+                  sale_id: saleData.id, tenant_id: tenantId,
+                  description: it.desc, quantity: it.qty, unit_price: it.preco,
+                  total: it.qty * it.preco,
+                })));
               }
               success++;
             } catch (e: any) { errors++; messages.push(`Erro: ${e.message}`); }
           }
         }
-
         else if (tab === 'crediario') {
           for (const row of rows) {
             try {
