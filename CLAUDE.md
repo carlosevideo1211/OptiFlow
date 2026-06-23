@@ -136,3 +136,71 @@ Sistema SaaS multi-tenant para oticas (gestao de clientes, vendas, OS, crediario
 ## Tenant hotmail (carlosevideo@hotmail.com)
 - tenant_id corrigido para Otica Teste (378918f9-34fe-40ad-80c9-240dde5c10fe) via UPDATE em user_profiles.
 - Antes estava apontando para Otica Evangelista por engano.
+
+
+## Sessao 22-23/Jun/2026 - Importacoes e Correcoes
+
+### Paginacao (50 registros por pagina)
+Implementada em TODAS as telas: Clientes, Vendas, Crediario, Consultas, OS.
+Padrao: estado `pagina` + `POR_PAGINA = 50` + `.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA)` no map + botoes Ant/Prox no footer.
+
+### Importacao de Vendas (formato duas linhas)
+O arquivo do VisionProERP exporta vendas em duas linhas: linha 1 = cliente/data, linhas seguintes = itens.
+Corrigido em ImportacaoPage.tsx: agrupa linhas por cliente (linha com Nome_Cliente inicia novo grupo).
+Tipo VendaGrupo criado para acumular itens antes de inserir.
+
+### Vendas sem filtro de data padrao
+VendasPage.tsx: dateFrom e dateTo iniciam vazios (antes iniciavam no primeiro dia do mes).
+Permite ver todas as 12.635+ vendas sem precisar limpar o filtro.
+
+### Crediario - Desconto no pagamento
+Modal Receber Parcela: campo verde "Desconto (R$)" que subtrai do valor a pagar.
+- payForm tem campo desconto: '0'
+- total = Math.max(0, p.amount + juros - desconto)
+- Valor Recebido atualiza em tempo real ao digitar desconto
+- Na lista: exibe paid_amount quando diferente do amount original
+
+### Badge Crediario no menu
+Shell.tsx: antes contava so parcelas status='vencida' (que nao existe no banco).
+Corrigido para .neq('status','pago').neq('status','cancelado') - conta todas em aberto.
+
+### Dashboard - Parcelas Vencidas
+DashboardPage.tsx: antes usava .eq('status','vencida') que nao existe.
+Corrigido para .eq('status','pendente').lt('due_date', today).
+
+### Consultas sem limit
+ConsultaPage.tsx: removido .limit(100), substituido por fetchAllRows para todos os inquilinos.
+
+### OS - Paginacao
+OrdemServicoPage.tsx: adicionada paginacao igual as outras telas.
+
+### Renegociacao de Dividas (CrediarioPage.tsx)
+Botao "Renego" em cada parcela nao paga. Modal com:
+- Resumo do cliente e total em aberto
+- Novo valor total (digitado manualmente)
+- Numero de parcelas e data da 1a parcela
+- Opcao do que fazer com o carne original (cancelar/quitado/manter)
+Cria novo crediario + parcelas. Fundo escuro com blur.
+
+### Conversao de arquivos VisionProERP para OptiFlow
+Funcao de leitura de xlsx via zipfile+xml (openpyxl falha com alguns arquivos).
+Arquivos convertidos:
+- clientes_para_importar.xlsx (3519 clientes)
+- receitas_para_importar.xlsx (1152 receitas)
+- os_para_importar.xlsx (1603 OS Filial Autazes)
+- os_evangelista_para_importar.xlsx (6347 OS Otica Evangelista)
+- vendas_autazes_para_importar.xlsx (1605 vendas Filial Autazes)
+- crediario_ssOtica_importacao.xlsx (987 carnes ssOtica)
+- Carnes para importar.xlsx (36 carnes gerados dos prints do VisionProERP)
+
+### Inquilinos cadastrados
+- Otica Evangelista Castanho: tenant 2ca58112-4498-4dfa-b6d1-550630d5c4a4, email oticaevangelistaam@gmail.com
+- Josue Neto (Otica Solar / Filial Autazes): tenant 8ac30fca-4663-4bd3-8bca-122d18945443
+- Otica Teste (Carlos Eduardo): tenant 378918f9-34fe-40ad-80c9-240dde5c10fe, email carlosevideo@hotmail.com
+- Admin: carlosevideo28@gmail.com - SO acessa /admin-login, bloqueado no /login normal
+
+### Seguranca - loadProfile
+Se user_profiles nao tem tenant_id: logout silencioso.
+Se signIn apos autenticar nao encontra perfil com tenant_id: logout + erro "Conta sem acesso ao sistema."
+Trigger handle_new_user cria user_profiles automaticamente - se email do admin logar no /login,
+deletar manualmente: delete from user_profiles where id = 'd316d550-8b58-4427-88ab-8b81a41b815d';
