@@ -513,7 +513,7 @@ export default function CrediarioPage() {
                           {p.installment_number}/{p.total_installments}
                         </td>
                         <td style={{ textAlign:'right', fontWeight:700 }}>
-                          {formatBRL(p.amount)}
+                          {(pago && p.paid_amount != null && Math.abs(p.paid_amount - p.amount) > 0.01 ? formatBRL(p.paid_amount) : formatBRL(p.amount))}
                         </td>
                         <td style={{ textAlign:'center' }}>
                           <div style={{ display:'flex', alignItems:'center', gap:4, justifyContent:'center' }}>
