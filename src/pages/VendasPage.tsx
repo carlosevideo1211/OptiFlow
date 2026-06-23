@@ -61,8 +61,8 @@ export default function VendasPage() {
   const [search, setSearch]       = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [vendedorFilter, setVendedorFilter] = useState('');
-  const [dateFrom, setDateFrom]   = useState(new Date().toISOString().slice(0, 8) + '01');
-  const [dateTo, setDateTo]       = useState(new Date().toISOString().slice(0, 10));
+  const [dateFrom, setDateFrom]   = useState('');
+  const [dateTo, setDateTo]       = useState('');
   const [viewSale, setViewSale]   = useState<Sale | null>(null);
 
   // PDV
