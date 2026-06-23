@@ -79,8 +79,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         .from('crediario_parcelas')
         .select('*', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
-        .eq('status', 'pendente')
-        .lt('due_date', today);
+        .neq('status', 'pago')
+        .neq('status', 'cancelado');
       const { data: tenant } = await supabase
         .from('tenants')
         .select('trial_end_date, status, plan')
