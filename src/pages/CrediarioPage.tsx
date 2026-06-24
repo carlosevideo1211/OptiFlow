@@ -57,6 +57,17 @@ export default function CrediarioPage() {
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelado')
       .range(from, to));
+    // Carregar carnês renegociados
+    const renegoData = await supabase.from('crediario').select('notes').eq('tenant_id', tenantId).like('notes', 'Renegociacao:%');
+    const renegOld = await supabase.from('crediario').select('id').eq('tenant_id', tenantId).eq('notes', 'Renegociacao de divida anterior');
+    const rs = new Set<string>();
+    (renegoData.data||[]).forEach((r:any)=>{ const id=r.notes?.replace('Renegociacao:',''); if(id) rs.add(id); });
+    if (renegOld.data?.length) {
+      const pOld = await supabase.from('crediario_parcelas').select('crediario_id').in('crediario_id', renegOld.data.map((r:any)=>r.id));
+      (pOld.data||[]).forEach((r:any)=>rs.add(r.crediario_id));
+    }
+    setRenegociados(rs);
+
     const custs = await fetchAllRows<any>((from, to) => supabase
       .from('customers')
       .select('id, whatsapp, phone')
