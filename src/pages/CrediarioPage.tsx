@@ -296,6 +296,51 @@ export default function CrediarioPage() {
     w.document.write(html);
     w.document.close();
   };
+
+  const imprimirCarneCompleto = async (p: Parcela) => {
+    const { data: creds } = await supabase.from('crediario').select('*').eq('id', p.crediario_id).single();
+    const cr = creds as any || {};
+    const { data: todasParcelas } = await supabase.from('crediario_parcelas').select('*').eq('crediario_id', p.crediario_id).order('installment_number', { ascending: true });
+    const lista = (todasParcelas || []) as any[];
+    let storeName = 'OPTIFLOW'; let storeCnpj = ''; let storeAddr = ''; let storeTel = ''; let storeLogo = '';
+    try {
+      const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single();
+      if (ss) { storeName = (ss.name || ss.company_name || 'OPTIFLOW').toUpperCase(); storeCnpj = ss.cnpj || ''; storeAddr = [ss.address, ss.city, ss.state].filter(Boolean).join(', '); storeTel = ss.phone || ''; storeLogo = ss.logo_url || ''; }
+    } catch(e) {}
+    const fmtV = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    const fmtD2 = (d: string) => { if (!d) return '--'; const dt=d.includes('T')?new Date(d):new Date(d+'T12:00:00'); return dt.toLocaleDateString('pt-BR'); };
+    const logoHtml = storeLogo ? '<img src="'+storeLogo+'" style="width:54px;height:54px;object-fit:contain;border-radius:6px;" />' : '<div style="width:54px;height:54px;background:linear-gradient(135deg,#6366f1,#06b6d4);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:16px;">O</div>';
+    const parcelasHTML = lista.map((parc: any) => {
+      const status = parc.status === 'pago' ? '<span style="color:#16a34a;font-weight:700">&#10003; PAGO</span>' : parc.due_date && parc.due_date < new Date().toISOString().split("T")[0] ? '<span style="color:#dc2626;font-weight:700">VENCIDA</span>' : '<span style="color:#2563eb;font-weight:700">EM ABERTO</span>';
+      return '<div style="border:1.5px solid #cbd5e1;border-radius:8px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;page-break-inside:avoid">'
+        + '<div><div style="font-size:13px;color:#64748b">Parcela <strong style="color:#1e3a5f">' + parc.installment_number + '/' + (parc.total_installments||lista.length) + '</strong></div>'
+        + '<div style="font-size:12px;color:#64748b;margin-top:2px">Venc: <strong>' + fmtD2(parc.due_date) + '</strong></div>'
+        + (parc.status==='pago' && parc.paid_at ? '<div style="font-size:11px;color:#16a34a">Pago em: '+fmtD2(parc.paid_at)+'</div>' : '') + '</div>'
+        + '<div style="text-align:right"><div style="font-size:20px;font-weight:800;color:#1e3a5f">' + fmtV(parc.paid_amount || parc.amount) + '</div>'
+        + '<div style="font-size:12px;margin-top:4px">' + status + '</div></div></div>';
+    }).join('');
+    const totalAberto = lista.filter((x:any)=>x.status!=='pago').reduce((s:number,x:any)=>s+x.amount,0);
+    const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Carne</title>'
+      + '<style>@page{size:A4 portrait;margin:12mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#222}</style></head><body>'
+      + '<div style="text-align:center;padding-bottom:14px;border-bottom:2px solid #1e3a5f;margin-bottom:18px">'
+      + '<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:6px">' + logoHtml
+      + '<div><div style="font-size:20px;font-weight:800;color:#1e3a5f">' + storeName + '</div>'
+      + (storeCnpj?'<div style="font-size:11px;color:#64748b">CNPJ: '+storeCnpj+'</div>':'')
+      + (storeAddr?'<div style="font-size:11px;color:#64748b">'+storeAddr+'</div>':'')
+      + (storeTel?'<div style="font-size:11px;color:#64748b">Tel: '+storeTel+'</div>':'') + '</div></div>'
+      + '<div style="font-size:13px;font-weight:700;color:#1e3a5f;margin-top:6px">CARNÊ DE PAGAMENTO</div></div>'
+      + '<div style="display:flex;justify-content:space-between;margin-bottom:16px;background:#f1f5f9;border-radius:8px;padding:12px 16px">'
+      + '<div><div style="font-size:11px;color:#64748b;text-transform:uppercase">Cliente</div><div style="font-size:15px;font-weight:700">' + p.customer_name + '</div></div>'
+      + '<div style="text-align:right"><div style="font-size:11px;color:#64748b;text-transform:uppercase">Total em Aberto</div><div style="font-size:15px;font-weight:700;color:#dc2626">' + fmtV(totalAberto) + '</div></div></div>'
+      + parcelasHTML
+      + '<div style="margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:center;font-size:11px;color:#94a3b8">' + storeName + ' — Emitido em ' + new Date().toLocaleDateString("pt-BR") + '</div>'
+      + '<script>window.onload=()=>window.print()<\/script></body></html>';
+    const w = window.open('', '_blank', 'width=800,height=700');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+  };
+
   const payModal = showPayModal && selectedParcela ? (
     <div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.85)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center'}}
       onClick={()=>setShowPayModal(false)}>
@@ -549,10 +594,11 @@ export default function CrediarioPage() {
                               style={{ background:'rgba(34,197,94,.1)', border:'1px solid rgba(34,197,94,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#25D366', display:'flex', alignItems:'center' }}>
                               <MessageCircle size={14}/>
                             </button>
-                            <button onClick={() => imprimirCarneIndividual(p)} title="Imprimir parcela"
+                            <button onClick={() => imprimirCarneIndividual(p)} title="Imprimir recibo desta parcela"
                               style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#f59e0b', display:'flex', alignItems:'center' }}>
                               <Printer size={14}/>
                             </button>
+                       <button onClick={() => imprimirCarneCompleto(p)} title="Imprimir carne completo" style={{ background:'rgba(34,197,94,.1)', border:'1px solid rgba(34,197,94,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', marginLeft:2 }}><span style={{fontSize:14}}>&#128196;</span></button>
                             {pago && (
                               <button onClick={async () => {
                                 if (!confirm('Desmarcar pagamento desta parcela?')) return;
