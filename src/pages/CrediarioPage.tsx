@@ -33,6 +33,7 @@ export default function CrediarioPage() {
   const [parcelas, setParcelas] = useState<Parcela[]>([]);
   const [renegociando, setRenegociando] = useState<string|null>(null); // crediario_id
   const [renegoSummary, setRenegoSummary] = useState<any>(null);
+  const [renegociados, setRenegociados] = useState<Set<string>>(new Set());
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
   const [renego, setRenego] = useState({ novoValor:'', numParcelas:'1', dataInicio:'', destino:'cancelar' });
@@ -608,7 +609,7 @@ export default function CrediarioPage() {
      )}
      {!pago && (
        <button onClick={() => handleRenego(p.crediario_id)} title="Renegociar carne"
-         style={{ background:'rgba(251,191,36,.1)', border:'1px solid rgba(251,191,36,.3)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#fbbf24', display:'flex', alignItems:'center', gap:4, fontSize:12 }}>
+         style={{ background:renegociados.has(p.crediario_id)?'rgba(99,102,241,.15)':'rgba(251,191,36,.1)', border:renegociados.has(p.crediario_id)?'1px solid rgba(99,102,241,.4)':'1px solid rgba(251,191,36,.3)',borderRadius:7, padding:'5px 8px', cursor:'pointer', color:renegociados.has(p.crediario_id)?'#818cf8':'#fbbf24', display:'flex', alignItems:'center', gap:4, fontSize:12 }}>
          ↺ Renego
        </button>
      )}
