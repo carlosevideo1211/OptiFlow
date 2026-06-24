@@ -426,7 +426,7 @@ export default function CrediarioPage() {
       total_amount: novoValor,
       installments: numP,
       status: 'ativo',
-      notes: 'Renegociacao de divida anterior',
+      notes: 'Renegociacao:' + renegociando,
       sale_id: null,
     }]).select().single();
     if (credErr || !novoCred) { toast.error('Erro ao criar renegociacao'); return; }
