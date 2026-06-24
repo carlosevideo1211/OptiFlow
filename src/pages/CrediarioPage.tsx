@@ -32,6 +32,7 @@ export default function CrediarioPage() {
   const { tenantId } = useAuth();
   const [parcelas, setParcelas] = useState<Parcela[]>([]);
   const [renegociando, setRenegociando] = useState<string|null>(null); // crediario_id
+  const [renegoSummary, setRenegoSummary] = useState<any>(null);
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
   const [renego, setRenego] = useState({ novoValor:'', numParcelas:'1', dataInicio:'', destino:'cancelar' });
@@ -409,6 +410,17 @@ export default function CrediarioPage() {
   const totalRenegociando = parcelasDoCarneRenegociando.reduce((s, p) => s + p.amount, 0);
   const clienteRenegociando = parcelasDoCarneRenegociando[0]?.customer_name || '';
 
+  const handleRenego = async (crediarioId: string) => {
+    const { data: existing } = await supabase.from('crediario').select('id,total_amount,installments,created_at,status,notes').eq('tenant_id', tenantId).like('notes', 'Renegociacao:'+crediarioId).maybeSingle();
+    if (existing) {
+      const { data: origP } = await supabase.from('crediario_parcelas').select('*').eq('crediario_id', crediarioId).order('installment_number', { ascending: true });
+      const { data: novoP } = await supabase.from('crediario_parcelas').select('*').eq('crediario_id', existing.id).order('installment_number', { ascending: true });
+      setRenegoSummary({ original: origP||[], novo: novoP||[], cred: existing });
+    } else {
+      setRenegociando(crediarioId);
+    }
+  };
+
   const confirmarRenegociacao = async () => {
     if (!renegociando) return;
     const novoValor = parseFloat(renego.novoValor.replace(',', '.'));
@@ -595,7 +607,7 @@ export default function CrediarioPage() {
                               </button>
      )}
      {!pago && (
-       <button onClick={() => setRenegociando(p.crediario_id)} title="Renegociar carne"
+       <button onClick={() => handleRenego(p.crediario_id)} title="Renegociar carne"
          style={{ background:'rgba(251,191,36,.1)', border:'1px solid rgba(251,191,36,.3)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#fbbf24', display:'flex', alignItems:'center', gap:4, fontSize:12 }}>
          ↺ Renego
        </button>
@@ -628,6 +640,43 @@ export default function CrediarioPage() {
      </div>
           </div>
         )}
+
+      {renegoSummary && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'var(--bg2)',borderRadius:14,padding:28,width:'90%',maxWidth:680,maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.4)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+              <h2 style={{fontSize:18,fontWeight:700}}>↺ Resumo da Renegociação</h2>
+              <button onClick={()=>setRenegoSummary(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',fontSize:22}}>×</button>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:13,color:'var(--text-muted)',marginBottom:10,textTransform:'uppercase',letterSpacing:'.5px'}}>📋 Dívida Original</div>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'4px 6px',textAlign:'center'}}>Parc.</th><th style={{padding:'4px 6px',textAlign:'left'}}>Vencimento</th><th style={{padding:'4px 6px',textAlign:'right'}}>Valor</th><th style={{padding:'4px 6px',textAlign:'center'}}>Status</th></tr></thead>
+                  <tbody>{renegoSummary.original.map((p:any,i:number)=>{
+                    const atrasada=p.status!=='pago'&&p.due_date&&p.due_date<new Date().toISOString().split('T')[0];
+                    return <tr key={i} style={{borderBottom:'1px solid var(--border)'}}><td style={{padding:'4px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{renegoSummary.original.length}</td><td style={{padding:'4px 6px',color:atrasada?'#f87171':'var(--text-muted)'}}>{p.due_date?new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'4px 6px',textAlign:'right'}}>{Number(p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'4px 6px',textAlign:'center'}}><span style={{padding:'1px 7px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(251,191,36,.15)',color:p.status==='pago'?'#22c55e':atrasada?'#f87171':'#fbbf24'}}>{p.status==='pago'?'Pago':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
+                  })}</tbody>
+                </table>
+              </div>
+              <div>
+                <div style={{fontWeight:700,fontSize:13,color:'#6366f1',marginBottom:10,textTransform:'uppercase',letterSpacing:'.5px'}}>🔄 Nova Renegociação</div>
+                <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:8}}>Total: {Number(renegoSummary.cred.total_amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em {renegoSummary.cred.installments}x — Criada em {new Date(renegoSummary.cred.created_at).toLocaleDateString('pt-BR')}</div>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'4px 6px',textAlign:'center'}}>Parc.</th><th style={{padding:'4px 6px',textAlign:'left'}}>Vencimento</th><th style={{padding:'4px 6px',textAlign:'right'}}>Valor</th><th style={{padding:'4px 6px',textAlign:'center'}}>Status</th></tr></thead>
+                  <tbody>{renegoSummary.novo.map((p:any,i:number)=>{
+                    const atrasada=p.status!=='pago'&&p.due_date&&p.due_date<new Date().toISOString().split('T')[0];
+                    return <tr key={i} style={{borderBottom:'1px solid var(--border)'}}><td style={{padding:'4px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{renegoSummary.novo.length}</td><td style={{padding:'4px 6px',color:atrasada?'#f87171':'#6366f1'}}>{p.due_date?new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}{atrasada?' ⚠️':''}</td><td style={{padding:'4px 6px',textAlign:'right'}}>{Number(p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'4px 6px',textAlign:'center'}}><span style={{padding:'1px 7px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(99,102,241,.15)',color:p.status==='pago'?'#22c55e':atrasada?'#f87171':'#6366f1'}}>{p.status==='pago'?'Pago':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
+                  })}</tbody>
+                </table>
+              </div>
+            </div>
+            <div style={{marginTop:20,textAlign:'right'}}>
+              <button onClick={()=>setRenegoSummary(null)} className="btn btn-secondary">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Renegociacao */}
       {renegociando && (
