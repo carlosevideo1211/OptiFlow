@@ -144,7 +144,7 @@ export default function ClientesPage() {
     });
     if (search.trim()) {
       const s = search.toLowerCase();
-      list = list.filter(c => c.name.toLowerCase().includes(s) || c.cpf?.includes(s) || c.phone?.includes(s));
+      list = list.filter(c => c.name.toLowerCase().includes(s) || c.cpf?.includes(s) || c.cpf?.replace(/[^0-9]/g,'').includes(s.replace(/[^0-9]/g,'')) || c.phone?.includes(s));
     }
     if (cityFilter.trim()) list = list.filter(c => c.city?.toLowerCase().includes(cityFilter.toLowerCase()));
     if (dateFrom) list = list.filter(c => c.created_at && c.created_at >= dateFrom);
