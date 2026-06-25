@@ -93,6 +93,7 @@ export default function ImportacaoPage() {
   const processImport = async () => {
     const file = fileRef.current?.files?.[0];
     if (!file) { toast.error('Selecione um arquivo'); return; }
+    if (!tenantId) { toast.error('Erro: tenant não identificado. Faça logout e login novamente.'); return; }
     setImporting(true);
     setResult(null);
     const reader = new FileReader();

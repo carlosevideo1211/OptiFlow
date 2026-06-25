@@ -539,6 +539,7 @@ export default function CrediarioPage() {
           <div className="empty-state">
             <div className="empty-icon"><CreditCard size={40}/></div>
             <h3>Nenhuma parcela encontrada.</h3>
+            {parcelas.length === 0 && !loading && <div style={{marginTop:12, padding:"10px 16px", background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.3)", borderRadius:8, color:"#f87171", fontSize:13}}>⚠️ Nenhum dado carregado. Se isso for inesperado, faça logout e login novamente ou contate o suporte.</div>}
           </div>
         ) : (
           <div className="card">
