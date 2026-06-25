@@ -229,10 +229,10 @@ export default function ImportacaoPage() {
           }
         }
         else if (tab === 'crediario') {
-          const BATCH = 50;
+          const BATCH = 30;
           for (let bi = 0; bi < rows.length; bi++) {
             const row = rows[bi];
-            if (bi > 0 && bi % BATCH === 0) { await new Promise(r => setTimeout(r, 800)); }
+            if (bi > 0 && bi % BATCH === 0) { await new Promise(r => setTimeout(r, 2000)); }
             try {
               const nomeCliente = row['Nome_Cliente'] || '';
               let customerId = null;
