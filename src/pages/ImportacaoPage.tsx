@@ -229,7 +229,10 @@ export default function ImportacaoPage() {
           }
         }
         else if (tab === 'crediario') {
-          for (const row of rows) {
+          const BATCH = 50;
+          for (let bi = 0; bi < rows.length; bi++) {
+            const row = rows[bi];
+            if (bi > 0 && bi % BATCH === 0) { await new Promise(r => setTimeout(r, 800)); }
             try {
               const nomeCliente = row['Nome_Cliente'] || '';
               let customerId = null;
