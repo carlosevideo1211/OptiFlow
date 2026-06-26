@@ -187,8 +187,7 @@ export default function CadastrosPage() {
     if (!funcForm.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSavingFunc(true);
     try {
-      const hashedPwd = funcForm.access_password ? await hashPassword(funcForm.access_password) : "";
-      const payload = { name: funcForm.name, cargo: funcForm.cargo, cpf: funcForm.cpf, phone: funcForm.phone, email: funcForm.email, access_password: hashedPwd || funcForm.access_password, tenant_id: tenantId, active: true };
+      const payload = { name: funcForm.name, cargo: funcForm.cargo, cpf: funcForm.cpf, phone: funcForm.phone, email: funcForm.email, access_password: funcForm.access_password, tenant_id: tenantId, active: true };
       if (editingFunc) {
         const { error } = await supabase.from('funcionarios').update(payload).eq('id', editingFunc.id);
         if (error) throw error; toast.success('Funcionário atualizado!');
