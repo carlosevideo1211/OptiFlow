@@ -292,3 +292,23 @@ AgendaPage, BaixasTab, ConsultaPage, NovaConsultaModal.
 - 859b688: Fix: adicionar search e filtros nas dependencias do useMemo clientes
 - 48b7963: Fix: reescrever busca cliente sem depender de norm import
 - 8eff53b: Fix: corrigir logica busca cliente por nome e cpf
+
+## Sessao 26/Jun/2026 - Correcoes RLS e Seguranca
+
+### Policies RLS faltando em varias tabelas
+Problema: tabelas com RLS habilitado mas sem nenhuma policy bloqueavam inserts.
+Tabelas corrigidas no Supabase:
+- funcionarios: policy funcionarios_all (tenant_id = get_tenant_id())
+- professionals: policy professionals_all (tenant_id = get_tenant_id())
+- suppliers: policy suppliers_all (tenant_id = get_tenant_id())
+- audit_log, crediario_backup_20260624, crediario_parcelas_backup_20260624,
+  nfe_itens, os_itens, tenant_backups: policy com using(true)
+- nfe, stock_movements: policy com tenant_id = get_tenant_id()
+
+### Hash senha funcionario via trigger no banco
+Problema: hashPassword() no frontend quebrava o insert por causa do RLS.
+Solucao: trigger no banco que faz hash automaticamente antes de salvar.
+- Funcao: hash_funcionario_password() usando digest(senha, sha256)
+- Trigger: trigger_hash_password BEFORE INSERT OR UPDATE OF access_password ON funcionarios
+- Frontend: envia senha em texto puro, banco converte automaticamente
+- Login: frontend calcula hash e compara com banco (aceita texto puro para senhas antigas)
