@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import type { UserProfile } from '../types/index';
+
+async function hashPassword(password: string): Promise<string> {
+  if (!password) return "";
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
 interface AuthCtx {
   user: UserProfile | null;
   tenantId: string | null;
@@ -68,7 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('active', true)
         .single();
       if (!func) throw error;
-      if (func.access_password !== password) throw error;
+      const hashedInput = await hashPassword(password);
+      const storedPwd = func.access_password || "";
+      const pwdMatch = storedPwd === hashedInput || storedPwd === password;
+      if (!pwdMatch) throw error;
       // Buscar dados da loja
       const { data: store } = await supabase
         .from('tenants')

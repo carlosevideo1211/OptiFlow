@@ -9,6 +9,15 @@ import {
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
 
+async function hashPassword(password: string): Promise<string> {
+  if (!password) return "";
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 interface Parcela {
   id: string; crediario_id: string; tenant_id: string;
   installment_number: number; due_date: string; amount: number;
@@ -165,7 +174,10 @@ export default function CrediarioPage() {
     if (!payForm.operator_pass.trim()) { toast.error('Informe a senha do operador'); return; }
     const { data: funcs } = await supabase.from('funcionarios').select('id,name,access_password').eq('tenant_id', tenantId).ilike('name', payForm.operator_name.trim());
     if (!funcs || funcs.length === 0) { toast.error('Funcionario nao encontrado'); return; }
-    if (String(funcs[0].access_password).trim() !== payForm.operator_pass.trim()) { toast.error('Senha incorreta'); return; }
+    const hashedOp = await hashPassword(payForm.operator_pass.trim());
+    const storedOp = String(funcs[0].access_password).trim();
+    const opMatch = storedOp === hashedOp || storedOp === payForm.operator_pass.trim();
+    if (!opMatch) { toast.error('Senha incorreta'); return; }
     const juros = calcJuros(p);
     const desconto = Math.max(0, parseFloat((payForm.desconto||'0').replace(',','.')) || 0);
     const total = Math.max(0, p.amount + juros - desconto);

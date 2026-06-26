@@ -5,6 +5,15 @@ import { BookUser, Plus, Search, Edit2, Trash2, X, Save, Users, Package, Stethos
 import toast from 'react-hot-toast';
 import { norm } from '../utils/normalize';
 
+async function hashPassword(password: string): Promise<string> {
+  if (!password) return "";
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 interface Supplier {
   id: string; tenant_id: string; name: string; cnpj?: string; category: string;
   email?: string; phone?: string; address?: string; city?: string; state?: string;
@@ -178,7 +187,8 @@ export default function CadastrosPage() {
     if (!funcForm.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSavingFunc(true);
     try {
-      const payload = { name: funcForm.name, cargo: funcForm.cargo, cpf: funcForm.cpf, phone: funcForm.phone, email: funcForm.email, access_password: funcForm.access_password, tenant_id: tenantId, active: true };
+      const hashedPwd = funcForm.access_password ? await hashPassword(funcForm.access_password) : "";
+      const payload = { name: funcForm.name, cargo: funcForm.cargo, cpf: funcForm.cpf, phone: funcForm.phone, email: funcForm.email, access_password: hashedPwd || funcForm.access_password, tenant_id: tenantId, active: true };
       if (editingFunc) {
         const { error } = await supabase.from('funcionarios').update(payload).eq('id', editingFunc.id);
         if (error) throw error; toast.success('Funcionário atualizado!');
