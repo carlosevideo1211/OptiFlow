@@ -593,14 +593,14 @@ export default function ClientesPage() {
                           <td style={{padding:'4px 8px',fontWeight:700,color:'#06b6d4'}}>OD</td>
                           <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_re_esf)}</td>
                           <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_re_cil)}</td>
-                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_re_eixo)}</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_re_eixo,'eixo')}</td>
                           <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_re_dnp)}</td>
                         </tr>
                         <tr style={{borderBottom:'1px solid var(--border)'}}>
                           <td style={{padding:'4px 8px',fontWeight:700,color:'#f87171'}}>OE</td>
                           <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_le_esf)}</td>
                           <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_le_cil)}</td>
-                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_le_eixo)}</td>
+                          <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_le_eixo,'eixo')}</td>
                           <td style={{padding:'4px 8px',textAlign:'center'}}>{fmtGrau(co.rx_le_dnp)}</td>
                         </tr>
                       </tbody>
