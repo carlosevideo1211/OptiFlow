@@ -143,7 +143,7 @@ export default function ClientesPage() {
       if (!c.birth_date) return false;
       return new Date(c.birth_date + 'T00:00:00').getMonth() === new Date().getMonth();
     });
-    console.log("SEARCH:", search, "CUSTOMERS:", customers.length); if (search.trim()) {
+    console.log("FILTERED WILL BE:", list.filter(c => norm(c.name).includes(norm(search))).length); if (search.trim()) {
       const s = norm(search);
       list = list.filter(c => norm(c.name).includes(s) || c.cpf?.includes(s) || c.cpf?.replace(/[^0-9]/g,'').includes(s.replace(/[^0-9]/g,'')) || norm(c.phone).includes(s));
     }
