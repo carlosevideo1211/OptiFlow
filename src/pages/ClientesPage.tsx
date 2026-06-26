@@ -151,7 +151,7 @@ export default function ClientesPage() {
     if (dateFrom) list = list.filter(c => c.created_at && c.created_at >= dateFrom);
     if (dateTo)   list = list.filter(c => c.created_at && c.created_at <= dateTo + 'T23:59:59');
     return list;
-  }, [customers, search, cityFilter, dateFrom, dateTo, showInactive, showBirthMonth]);
+  }, [customers, search, cityFilter, dateFrom, dateTo, showInactive, showBirthMonth, search, cityFilter, dateFrom, dateTo]);
 
   const openNew  = () => { setEditing(null); setViewing(null); setForm(emptyForm()); setShowModal(true); };
   const openEdit = (c: Customer) => {
