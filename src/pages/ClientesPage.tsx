@@ -144,13 +144,13 @@ export default function ClientesPage() {
       return new Date(c.birth_date + 'T00:00:00').getMonth() === new Date().getMonth();
     });
  if (search.trim()) {
-      const s = search.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const norm = (str: string) => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const s = norm(search);
       list = list.filter(c => {
-        const nome = (c.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        const cpf = (c.cpf || '').replace(/[^0-9]/g, '');
-        const tel = (c.phone || '').replace(/[^0-9]/g, '');
-        const busca = s.replace(/[^0-9a-z]/g, x => x === ' ' ? ' ' : x);
-        return nome.includes(busca) || cpf.includes(s.replace(/[^0-9]/g,'')) || tel.includes(s.replace(/[^0-9]/g,''));
+        const somenteNumeros = s.replace(/[^0-9]/g, '');
+        return norm(c.name).includes(s) ||
+               (somenteNumeros && (c.cpf || '').replace(/[^0-9]/g,'').includes(somenteNumeros)) ||
+               (somenteNumeros && (c.phone || '').replace(/[^0-9]/g,'').includes(somenteNumeros));
       });
     }
     if (cityFilter.trim()) list = list.filter(c => norm(c.city).includes(norm(cityFilter)));
