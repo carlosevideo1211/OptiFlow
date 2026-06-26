@@ -56,7 +56,6 @@ const MODELS: Record<Tab, { headers: string[]; example: any[] }> = {
 
 export default function ImportacaoPage() {
   const { tenantId } = useAuth();
-  console.log('TENANT ID NA IMPORTACAO:', tenantId);
   const [tab, setTab] = useState<Tab>('clientes');
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -134,8 +133,6 @@ export default function ImportacaoPage() {
                 active: true,
               }]);
 
-
-
               success++;
             } catch (e: any) { errors++; messages.push(`Erro em ${row['Nome']}: ${e.message}`); }
           }
@@ -177,7 +174,6 @@ export default function ImportacaoPage() {
                 rx_adicao: parseFloat(row['ADD'] || row['Adicao'] || row['adicao']) || null,
                 notes: row['Observacoes'] || row['observações'] || null,
               }]);
-              console.log("CONS ERR:", consErr, "tenant:", tenantId);
               success++;
             } catch (e: any) { errors++; messages.push(`Erro: ${e.message}`); }
           }
@@ -244,7 +240,6 @@ export default function ImportacaoPage() {
               const totalAmount = parseFloat(row['Valor_Total'] || 0);
               const numParcelas = parseInt(row['Num_Parcelas'] || 1);
               const valorParcela = parseFloat(row['Valor_Parcela'] || totalAmount / numParcelas);
-              console.log('crediario cpf:', cpf, 'customerId:', customerId, 'total:', totalAmount, 'parcelas:', numParcelas);
               const { data: credData, error: credErr } = await supabase.from('crediario').insert([{
                 tenant_id: tenantId,
                 customer_id: customerId,
@@ -254,7 +249,6 @@ export default function ImportacaoPage() {
                 status: row['Status'] === 'quitado' ? 'quitado' : 'ativo',
                 notes: row['Observacoes'] || 'Importado de sistema anterior',
               }]).select().single();
-              console.log('credData:', credData, 'credErr:', credErr);
               if (credErr) throw new Error(credErr.message);
               if (credData) {
                 const parcelas = [];
@@ -402,7 +396,6 @@ export default function ImportacaoPage() {
           ))}
         </div>
       </div>
-
 
       {/* Instrucoes de vinculo */}
       <div className="card" style={{ padding: 24, marginBottom: 24, border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.05)' }}>

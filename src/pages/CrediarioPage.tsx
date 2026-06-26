@@ -418,7 +418,6 @@ export default function CrediarioPage() {
     </div>
   ) : null;
 
-
   // Modal de Renegociacao
   const parcelasDoCarneRenegociando = renegociando ? parcelas.filter(p => p.crediario_id === renegociando && p.status !== 'pago') : [];
   const totalRenegociando = parcelasDoCarneRenegociando.reduce((s, p) => s + p.amount, 0);

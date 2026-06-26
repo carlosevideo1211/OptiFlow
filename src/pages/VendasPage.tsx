@@ -140,7 +140,6 @@ export default function VendasPage() {
   const subtotal = cartItems.reduce((s, i) => s + i.total + i.acrescimo, 0);
   const total    = Math.max(0, subtotal - discount);
   const saldo    = Math.max(0, total - entrada);
-  console.log('subtotal:', subtotal, 'discount:', discount, 'total:', total, 'entrada:', entrada, 'saldo:', saldo);
   const troco    = payment === 'dinheiro' ? Math.max(0, received - saldo) : 0;
 
   const filteredProducts = useMemo(() => {
