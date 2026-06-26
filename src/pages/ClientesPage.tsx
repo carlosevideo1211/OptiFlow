@@ -316,7 +316,7 @@ export default function ClientesPage() {
       <div style={{ display:'flex', gap:10, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>
         <div className="search-bar" style={{ flex:1, minWidth:220 }}>
           <Search size={15}/>
-          <input className="form-input" placeholder="Pesquisar por nome, CPF ou telefone..." value={search} onChange={e=>setSearch(e.target.value)}/>
+          <input className="form-input" placeholder="Pesquisar por nome, CPF ou telefone..." value={search} onChange={e=>{setSearch(e.target.value);setPagina(1);}}/>
         </div>
         <input className="form-input" style={{ width:140 }} placeholder="Filtrar cidade..." value={cityFilter} onChange={e=>setCityFilter(e.target.value)}/>
         <input className="form-input" type="date" style={{ width:145 }} value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/>
