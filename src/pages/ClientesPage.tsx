@@ -551,16 +551,6 @@ export default function ClientesPage() {
                       <div style={{display:'flex',alignItems:'center',gap:8}}>
                         <div style={{fontSize:12,color:'var(--text-muted)'}}>{co.professional_name||'--'}</div>
                         <button onClick={()=>{
-                          const fmtGrau=(v:any,tipo:string='esf')=>{
-                            if(v===null||v===undefined||v==='')return'--';
-                            const n=parseFloat(v);
-                            if(isNaN(n))return'--';
-                            if(tipo==='eixo')return Math.round(n)+'°';
-                            if(tipo==='dnp')return n.toFixed(1).replace('.',',');
-                            if(tipo==='adicao')return n.toFixed(2).replace('.',',');
-                            const abs=Math.abs(n).toFixed(2).replace('.',',');
-                            return(n>=0?'+':'-')+abs;
-                          };
                           const w=window.open('','_blank');
                           if(!w)return;
                           const c=viewing;
@@ -574,7 +564,7 @@ export default function ClientesPage() {
                           w.document.write('<tr><td style="background:#f8f9fa"><b>OD</b></td><td>'+(co.rx_re_esf!=null&&co.rx_re_esf!==''?'<b>'+co.rx_re_esf+'</b>':'--')+'</td><td>'+(co.rx_re_cil!=null&&co.rx_re_cil!==''?co.rx_re_cil:'--')+'</td><td>'+(co.rx_re_eixo!=null&&co.rx_re_eixo!==''?co.rx_re_eixo+'°':'--')+'</td><td>'+(co.rx_re_dnp!=null&&co.rx_re_dnp!==''?co.rx_re_dnp:'--')+'</td></tr>');
                           w.document.write('<tr><td style="background:#f8f9fa"><b>OE</b></td><td>'+(co.rx_le_esf!=null&&co.rx_le_esf!==''?'<b>'+co.rx_le_esf+'</b>':'--')+'</td><td>'+(co.rx_le_cil!=null&&co.rx_le_cil!==''?co.rx_le_cil:'--')+'</td><td>'+(co.rx_le_eixo!=null&&co.rx_le_eixo!==''?co.rx_le_eixo+'°':'--')+'</td><td>'+(co.rx_le_dnp!=null&&co.rx_le_dnp!==''?co.rx_le_dnp:'--')+'</td></tr>');
                           w.document.write('</table>');
-                          if(co.rx_adicao) w.document.write('<p><b>Adição:</b> '+fmtGrau(co.rx_adicao,'adicao')+'</p>');
+                          if(co.rx_adicao) w.document.write('<p><b>Adição:</b> '+f(co.rx_adicao,'adicao')+'</p>');
                           if(co.notes) w.document.write('<p><b>Obs:</b> '+co.notes+'</p>');
                           w.document.write('<br/><br/><p>_______________________________</p><p>Assinatura do Profissional</p>');
                           w.document.write('</body></html>');
