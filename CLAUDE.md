@@ -359,3 +359,17 @@ Solucao: trigger no banco que faz hash automaticamente antes de salvar.
 - DNP na tela de consultas estava sendo chamado sem tipo, usando formato padrao com sinal
 - Corrigido: fmtGrau(co.rx_re_dnp,'dnp') e fmtGrau(co.rx_le_dnp,'dnp')
 - DNP agora exibe 32,5 sem sinal em toda a aplicacao
+
+### Correcoes desta sessao
+- Icone editar data de vencimento de parcela no Crediario
+  - Botao calendario ao lado de cada parcela nao paga
+  - Abre input de data inline com botoes OK e X
+  - Salva diretamente no Supabase sem excluir o carne
+- Correcao de inconsistencia nos carnes importados
+  - Campo installments estava errado em 350 carnes (Otica Solar) e 81 (Altazes)
+  - Corrigido via SQL: UPDATE crediario SET installments = max(parcela)
+- Planos atualizados no painel admin:
+  - profissional -> Pro (R$ 147/mes)
+  - clinica -> Premium (R$ 197/mes)
+  - lancamento adicionado (R$ 110/mes)
+  - Atualizado em: PLANS, PLAN_LABELS, PLAN_PRICES, PLAN_PRICES_MAP
