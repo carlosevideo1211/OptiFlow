@@ -548,7 +548,7 @@ export default function ClientesPage() {
                       <div style={{display:'flex',alignItems:'center',gap:8}}>
                         <div style={{fontSize:12,color:'var(--text-muted)'}}>{co.professional_name||'--'}</div>
                         <button onClick={()=>{
-                          const fmtGrau=(v:any,tipo='esf')=>{
+                          const fmtGrau=(v:any,tipo:string='esf')=>{
                             if(v===null||v===undefined||v==='')return'--';
                             const n=parseFloat(v);
                             if(isNaN(n))return'--';
