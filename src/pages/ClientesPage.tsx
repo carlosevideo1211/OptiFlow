@@ -545,7 +545,30 @@ export default function ClientesPage() {
                   <div key={i} style={{marginBottom:16,padding:14,background:'var(--bg3)',borderRadius:10,border:'1px solid var(--border)'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
                       <div style={{fontWeight:700,fontSize:14}}>{co.date?new Date(co.date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</div>
-                      <div style={{fontSize:12,color:'var(--text-muted)'}}>{co.professional_name||'--'}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div style={{fontSize:12,color:'var(--text-muted)'}}>{co.professional_name||'--'}</div>
+                        <button onClick={()=>{
+                          const w=window.open('','_blank');
+                          if(!w)return;
+                          const c=viewing;
+                          w.document.write('<html><head><title>Consulta</title><style>body{font-family:Arial;padding:32px;max-width:700px;margin:0 auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:8px;text-align:center}th{background:#f5f5f5}h2,h3{margin-bottom:4px}@media print{button{display:none}}</style></head><body>');
+                          w.document.write('<h2>RECEITUARIO OPTICO</h2>');
+                          w.document.write('<p><b>Paciente:</b> '+(c?.name||'')+'</p>');
+                          w.document.write('<p><b>Data:</b> '+(co.date?new Date(co.date+'T00:00:00').toLocaleDateString('pt-BR'):'--')+'</p>');
+                          w.document.write('<p><b>Profissional:</b> '+(co.professional_name||'--')+'</p>');
+                          w.document.write('<h3>Grau</h3>');
+                          w.document.write('<table><tr><th></th><th>ESF</th><th>CIL</th><th>EIXO</th><th>DNP</th></tr>');
+                          w.document.write('<tr><td><b>OD</b></td><td>'+(co.rx_re_esf||'--')+'</td><td>'+(co.rx_re_cil||'--')+'</td><td>'+(co.rx_re_eixo||'--')+'</td><td>'+(co.rx_re_dnp||'--')+'</td></tr>');
+                          w.document.write('<tr><td><b>OE</b></td><td>'+(co.rx_le_esf||'--')+'</td><td>'+(co.rx_le_cil||'--')+'</td><td>'+(co.rx_le_eixo||'--')+'</td><td>'+(co.rx_le_dnp||'--')+'</td></tr>');
+                          w.document.write('</table>');
+                          if(co.rx_adicao) w.document.write('<p><b>Adição:</b> '+co.rx_adicao+'</p>');
+                          if(co.notes) w.document.write('<p><b>Obs:</b> '+co.notes+'</p>');
+                          w.document.write('<br/><br/><p>_______________________________</p><p>Assinatura do Profissional</p>');
+                          w.document.write('</body></html>');
+                          w.document.close();
+                          w.print();
+                        }} style={{padding:'3px 8px',fontSize:11,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,cursor:'pointer',color:'var(--text-muted)'}}>🖨️ Imprimir</button>
+                      </div>
                     </div>
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                       <thead><tr style={{background:'rgba(99,102,241,0.1)'}}>
