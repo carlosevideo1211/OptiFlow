@@ -340,3 +340,17 @@ Solucao: trigger no banco que faz hash automaticamente antes de salvar.
 - Limpeza: 98%
 - Pronto para venda com clientes conhecidos: SIM
 - Pronto para venda aberta ao publico: SIM (com ressalva de contrato formal)
+
+### Receituario Optico - impressao nas consultas do cliente
+- Botao Imprimir adicionado em cada consulta na aba Consultas do cliente
+- Abre nova aba com receituario formatado e dialogo de impressao
+- Formatacao padrao optico:
+  - ESF/CIL: sinal obrigatorio (+/-) com 2 casas decimais. Ex: +2,00 / -1,25
+  - EIXO: numero inteiro sem sinal com simbolo grau. Ex: 85 graus
+  - DNP: 1 casa decimal sem sinal. Ex: 32,5
+  - Adicao: 2 casas decimais sem sinal (sempre positivo). Ex: 3,00
+- Duas funcoes fmtGrau: uma global (tela) e uma local fg() (receituario impresso)
+
+### Outras correcoes
+- Baixas Crediario: policy select adicionada no Supabase
+- Baixas Crediario: restrito a role master e cargo Gerente
