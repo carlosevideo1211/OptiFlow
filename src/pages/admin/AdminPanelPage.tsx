@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type Plan = 'trial' | 'basico' | 'profissional' | 'clinica' | 'cancelado';
+type Plan = 'trial' | 'basico' | 'profissional' | 'clinica' | 'lancamento' | 'cancelado';
 
 interface Tenant {
   id: string;
@@ -27,13 +27,13 @@ interface Tenant {
   created_at: string;
 }
 
-const PLANS: Plan[] = ['trial','basico','profissional','clinica','cancelado'];
+const PLANS: Plan[] = ['trial','basico','profissional','clinica','lancamento','cancelado'];
 const PLAN_LABELS: Record<Plan,string> = {
-  trial:'Trial', basico:'Basico', profissional:'Profissional',
-  clinica:'Clinica', cancelado:'Cancelado'
+  trial:'Trial', basico:'Basico', profissional:'Pro',
+  clinica:'Premium', lancamento:'Lancamento', cancelado:'Cancelado'
 };
 const PLAN_PRICES: Record<Plan,number> = {
-  trial:0, basico:97, profissional:197, clinica:397, cancelado:0
+  trial:0, basico:97, profissional:147, clinica:197, lancamento:110, cancelado:0
 };
 const STATUS_LIST = [
   { value:'trial',        label:'Trial',        color:'#f59e0b', bg:'rgba(245,158,11,.15)' },
@@ -156,7 +156,7 @@ export default function AdminPanelPage() {
   }).sort((a,b) => (diasRestantes(a.trial_end_date)||0) - (diasRestantes(b.trial_end_date)||0));
 
   const PLAN_PRICES_MAP: Record<string,number> = {
-    trial:0, basico:97, profissional:197, clinica:397, cancelado:0
+    trial:0, basico:97, profissional:147, clinica:197, lancamento:110, cancelado:0
   };
   const updateField = async (id: string, field: string, value: any) => {
     setUpdating(id);
