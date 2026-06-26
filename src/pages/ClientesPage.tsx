@@ -561,7 +561,7 @@ export default function ClientesPage() {
                           w.document.write('<p><b>Profissional:</b> '+(co.professional_name||'--')+'</p>');
                           w.document.write('<h3>Grau</h3>');
                           w.document.write('<table><tr><th style="background:#2c3e50;color:white"></th><th style="background:#2c3e50;color:white">ESF</th><th style="background:#2c3e50;color:white">CIL</th><th style="background:#2c3e50;color:white">EIXO</th><th style="background:#2c3e50;color:white">DNP</th></tr>');
-   const fg=(v,t='esf')=>{if(v===null||v===undefined||v==='')return'--';const n=parseFloat(v);if(isNaN(n))return'--';if(t==='eixo')return Math.round(n)+'\u00b0';if(t==='dnp')return n.toFixed(1).replace('.',',');if(t==='adicao')return n.toFixed(2).replace('.',',');const a=Math.abs(n).toFixed(2).replace('.',',');return(n>=0?'+':'-')+a;};
+   const fg=(v:any,t:string='esf')=>{if(v===null||v===undefined||v==='')return'--';const n=parseFloat(v);if(isNaN(n))return'--';if(t==='eixo')return Math.round(n)+'\u00b0';if(t==='dnp')return n.toFixed(1).replace('.',',');if(t==='adicao')return n.toFixed(2).replace('.',',');const a=Math.abs(n).toFixed(2).replace('.',',');return(n>=0?'+':'-')+a;};
    w.document.write('<tr><td style="background:#f8f9fa"><b>OD</b></td><td>'+fg(co.rx_re_esf)+'</td><td>'+fg(co.rx_re_cil)+'</td><td>'+fg(co.rx_re_eixo,'eixo')+'</td><td>'+fg(co.rx_re_dnp,'dnp')+'</td></tr>');
    w.document.write('<tr><td style="background:#f8f9fa"><b>OE</b></td><td>'+fg(co.rx_le_esf)+'</td><td>'+fg(co.rx_le_cil)+'</td><td>'+fg(co.rx_le_eixo,'eixo')+'</td><td>'+fg(co.rx_le_dnp,'dnp')+'</td></tr>');
                           w.document.write('</table>');
