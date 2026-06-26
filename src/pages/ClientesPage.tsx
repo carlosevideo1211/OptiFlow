@@ -24,7 +24,7 @@ function fmtGrau(v: any, tipo: string = 'esf'): string {
   const n = parseFloat(v);
   if (isNaN(n)) return '--';
   if (tipo === 'eixo') return Math.round(n) + '°';
-  if (tipo === 'dnp') return n.toFixed(2).replace('.', ',');
+  if (tipo === 'dnp') return Math.abs(n).toFixed(2).replace('.', ',');
   if (tipo === 'adicao') return n.toFixed(2).replace('.', ',');
   const abs = Math.abs(n).toFixed(2).replace('.', ',');
   return (n >= 0 ? '+' : '-') + abs;
