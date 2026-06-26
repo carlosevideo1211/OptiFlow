@@ -146,6 +146,7 @@ export default function ProdutosPage() {
 
   const zerarEstoque = async () => {
     if (!confirm('Zerar o estoque de TODOS os produtos?')) return;
+    if (!confirm('Tem certeza? Esta acao NAO pode ser desfeita!')) return;
     await supabase.from('products').update({ stock: 0 }).eq('tenant_id', tenantId);
     toast.success('Estoque zerado!'); load();
   };

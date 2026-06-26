@@ -72,7 +72,7 @@ export default function RegisterPage() {
 
             // Enviar email de boas-vindas
       const emailData = emailBoasVindas(form.company, form.name, form.email);
-      sendEmail(emailData).then(r => console.log('Email boas-vindas:', r.ok ? 'enviado' : 'erro'));
+        sendEmail(emailData);
 
       toast.success('Conta criada! Bem-vindo ao OptiFlow 14 dias gratis!');
       navigate('/dashboard');

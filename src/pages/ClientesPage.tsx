@@ -267,6 +267,7 @@ export default function ClientesPage() {
 
   const zerarClientes = async () => {
     if (!confirm('Zerar TODOS os clientes?')) return;
+    if (!confirm('Tem certeza? Esta acao NAO pode ser desfeita!')) return;
     await supabase.from('customers').delete().eq('tenant_id', tenantId);
     toast.success('Clientes zerados!'); load();
   };

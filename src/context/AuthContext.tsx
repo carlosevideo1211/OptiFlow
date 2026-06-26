@@ -26,8 +26,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data } = await supabase.from('user_profiles').select('*').eq('id', uid).maybeSingle();
       if (data && data.tenant_id) {
         setUser(data as UserProfile);
+        // Verificar status do plano
+        const { data: tenant } = await supabase.from('tenants').select('plan,status,trial_end_date').eq('id', data.tenant_id).maybeSingle();
+        if (tenant) {
+          const expired = tenant.plan === 'trial' && tenant.trial_end_date && new Date(tenant.trial_end_date) < new Date();
+          const cancelled = tenant.status === 'cancelado' || tenant.plan === 'cancelado';
+          if (expired || cancelled) {
+            window.location.href = '/trial-expirado';
+            return;
+          }
+        }
       } else {
-        // Perfil sem tenant_id ou inexistente: fazer logout silencioso
         await supabase.auth.signOut();
         setUser(null);
       }
@@ -49,6 +58,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    const key = `login_attempts_${email}`;
+    const attemptsData = JSON.parse(localStorage.getItem(key) || '{"count":0,"time":0}');
+    const now = Date.now();
+    if (attemptsData.count >= 5 && (now - attemptsData.time) < 15 * 60 * 1000) {
+      const mins = Math.ceil((15 * 60 * 1000 - (now - attemptsData.time)) / 60000);
+      throw new Error(`Muitas tentativas. Aguarde ${mins} minuto(s) para tentar novamente.`);
+    }
+    if ((now - attemptsData.time) >= 15 * 60 * 1000) {
+      localStorage.setItem(key, JSON.stringify({count: 0, time: now}));
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (!error) {
       const uid = (await supabase.auth.getUser()).data.user?.id;
