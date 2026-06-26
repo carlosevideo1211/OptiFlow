@@ -119,6 +119,10 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+      <div style={{ textAlign:'center', marginTop:'1.5rem', fontSize:12, color:'var(--text-muted)' }}>
+        <a href="/termos" style={{ color:'var(--text-muted)', textDecoration:'underline', marginRight:16 }}>Termos de Uso</a>
+        <a href="/privacidade" style={{ color:'var(--text-muted)', textDecoration:'underline' }}>Politica de Privacidade</a>
+      </div>
     </div>
   );
 }
