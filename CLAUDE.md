@@ -354,3 +354,8 @@ Solucao: trigger no banco que faz hash automaticamente antes de salvar.
 ### Outras correcoes
 - Baixas Crediario: policy select adicionada no Supabase
 - Baixas Crediario: restrito a role master e cargo Gerente
+
+### DNP correcao final
+- DNP na tela de consultas estava sendo chamado sem tipo, usando formato padrao com sinal
+- Corrigido: fmtGrau(co.rx_re_dnp,'dnp') e fmtGrau(co.rx_le_dnp,'dnp')
+- DNP agora exibe 32,5 sem sinal em toda a aplicacao
