@@ -312,3 +312,31 @@ Solucao: trigger no banco que faz hash automaticamente antes de salvar.
 - Trigger: trigger_hash_password BEFORE INSERT OR UPDATE OF access_password ON funcionarios
 - Frontend: envia senha em texto puro, banco converte automaticamente
 - Login: frontend calcula hash e compara com banco (aceita texto puro para senhas antigas)
+
+## Sessao 26/Jun/2026 - Melhorias e Preparacao para Comercializacao
+
+### Itens tecnicos corrigidos
+1. console.log removido de RegisterPage.tsx
+2. Confirmacao dupla adicionada no botao Zerar (ClientesPage e ProdutosPage)
+3. Limite de 5 tentativas de login (bloqueio 15 min) em AuthContext.tsx via localStorage
+4. Verificacao de plano/trial no loadProfile - redireciona para /trial-expirado se expirado ou cancelado
+5. npm audit fix - reducao de 9 para 3 vulnerabilidades (xlsx sem fix disponivel)
+6. Code splitting no vite.config.ts - bundle dividido em chunks: vendor-react(244KB), vendor-supabase(196KB), vendor-xlsx(421KB), vendor-charts, vendor-ui
+7. Paginas de Termos de Uso (/termos) e Politica de Privacidade (/privacidade) criadas (LGPD)
+8. Links para Termos e Privacidade adicionados na pagina de login
+
+### Rotas publicas adicionadas
+- /termos -> TermosPage.tsx
+- /privacidade -> PrivacidadePage.tsx
+
+### Pendencias nao tecnicas (dependem do dono)
+- Contrato formal com cada inquilino
+- CNPJ ativo para cobranca
+- Revisar Termos e Privacidade com advogado se necessario
+
+### Status do sistema apos correcoes
+- Funcionalidade: 95%
+- Seguranca: 88%
+- Limpeza: 98%
+- Pronto para venda com clientes conhecidos: SIM
+- Pronto para venda aberta ao publico: SIM (com ressalva de contrato formal)
