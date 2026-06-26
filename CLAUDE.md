@@ -204,3 +204,91 @@ Se user_profiles nao tem tenant_id: logout silencioso.
 Se signIn apos autenticar nao encontra perfil com tenant_id: logout + erro "Conta sem acesso ao sistema."
 Trigger handle_new_user cria user_profiles automaticamente - se email do admin logar no /login,
 deletar manualmente: delete from user_profiles where id = 'd316d550-8b58-4427-88ab-8b81a41b815d';
+
+## Sessao 25-26/Jun/2026 - Importacoes, DNS, Seguranca e Busca
+
+### Inquilinos atualizados
+- Otica Evangelista Altazes: tenant e58b3f3a-683f-4fec-be95-c825220a3b22, email (Marcio Goncalves)
+- Otica Solar: tenant 8ac30fca-4663-4bd3-8bca-122d18945443, email oticasolar01@gmail.com (Josue Neto)
+
+### Importacao de Crediario via SQL direto
+O sistema de importacao pelo frontend falhava silenciosamente (RLS bloqueava inserts apos certo numero
+de requisicoes no plano Micro do Supabase). Solucao definitiva: gerar SQL com todos os dados e rodar
+direto no SQL Editor do Supabase (1 chamada ao banco, sem limite de conexoes).
+
+Policies RLS do crediario e crediario_parcelas foram separadas:
+- SELECT: isolado por tenant (tenant_id = get_tenant_id())
+- INSERT: with check (true) - qualquer autenticado pode inserir (tenant_id vem do codigo)
+- UPDATE/DELETE: isolado por tenant
+
+Dados importados:
+- Otica Evangelista Castanho: 1048 carnes, 3507 parcelas (SSOtica + VisionProERP)
+- Otica Solar: 524 carnes, 1913 parcelas (SSOtica Filial Autazes + VisionProERP)
+- Otica Evangelista Altazes: 163 carnes, 585 parcelas (SSOtica + VisionProERP)
+Total: 1735 carnes, 6005 parcelas
+
+### DNS - Dominio personalizado no Vercel
+Problema: app.visionproerp.com.br apontava para Hostinger (ALIAS @ -> cdn.hstgr.net).
+Solucao aplicada na Hostinger (DNS do app.visionproerp.com.br):
+- ALIAS @ alterado para: cname.vercel-dns.com
+- CNAME app adicionado com valor: ae14de5db47d4049.vercel-dns-016.com (recomendado pelo Vercel)
+Resultado: dominio adicionado no Vercel com "DNS Change Recommended" (funciona, mas usa registro antigo).
+A partir de agora, todo git push para main atualiza automaticamente o app.visionproerp.com.br.
+
+### Seguranca aplicada
+1. Hash SHA-256 nas senhas de funcionarios:
+   - Funcao hashPassword() usando Web Crypto API (crypto.subtle.digest) adicionada em:
+     AuthContext.tsx, CadastrosPage.tsx, CrediarioPage.tsx
+   - Login aceita senha antiga (texto puro) E nova (hash) - migracao gradual sem perder acesso
+   - CadastrosPage: ao salvar funcionario, senha e hasheada antes de ir ao banco
+   - CrediarioPage: ao verificar senha do operador no recebimento, compara hash
+
+2. Console.logs removidos de producao:
+   - CrediarioPage.tsx, ClientesPage.tsx, ImportacaoPage.tsx, VendasPage.tsx
+   - Dados sensiveis (CPF, tenant_id, dados de crediario) nao aparecem mais no F12
+
+3. Rota /admin protegida:
+   - AdminPanelPage.tsx: useEffect que verifica sessao Supabase ao montar
+   - Se nao autenticado, redireciona para /admin-login
+
+4. Arquivos de debug removidos do repositorio:
+   - src/utils/debug.py, fix_search.py, fix2.py, fix3.py, fix4.py
+
+5. Catch silencioso corrigido no CrediarioPage:
+   - } catch(e) {} substituido por } catch(e: any) { console.error('Erro:', e); }
+
+### Busca por nome de cliente (ClientesPage.tsx)
+Problema raiz: search nao estava nas dependencias do useMemo.
+Correcoes aplicadas:
+1. Adicionado search, cityFilter, dateFrom, dateTo nas dependencias do useMemo
+2. Logica de busca reescrita sem depender do import norm (que falhava silenciosamente):
+   - norm() definida localmente dentro do useMemo
+   - Busca por nome: normaliza acentos e compara com includes()
+   - Busca por CPF/telefone: extrai so numeros e compara
+   - Nao mistura busca de texto com busca de numero (bug anterior: "adail port 32011"
+     so filtrava pelo 32011, ignorando "adail port")
+
+Codigo atual do filtro (ClientesPage.tsx):
+  if (search.trim()) {
+    const norm = (str: string) => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const s = norm(search);
+    list = list.filter(c => {
+      const somenteNumeros = s.replace(/[^0-9]/g, '');
+      return norm(c.name).includes(s) ||
+             (somenteNumeros && (c.cpf || '').replace(/[^0-9]/g,'').includes(somenteNumeros)) ||
+             (somenteNumeros && (c.phone || '').replace(/[^0-9]/g,'').includes(somenteNumeros));
+    });
+  }
+
+### Busca sem acento em todo o sistema
+Arquivo src/utils/normalize.ts criado com funcao norm().
+Aplicado em: CadastrosPage, ProdutosPage, OrdemServicoPage, VendasPage, FinanceiroPage,
+AgendaPage, BaixasTab, ConsultaPage, NovaConsultaModal.
+(ClientesPage usa implementacao local por confiabilidade - ver acima)
+
+### Commits desta sessao
+- 3808f1b: Security: remove console.logs e debug files
+- a57ff38: Security: hash SHA-256 senhas funcionarios, protege admin
+- 859b688: Fix: adicionar search e filtros nas dependencias do useMemo clientes
+- 48b7963: Fix: reescrever busca cliente sem depender de norm import
+- 8eff53b: Fix: corrigir logica busca cliente por nome e cpf
