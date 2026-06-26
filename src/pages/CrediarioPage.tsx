@@ -594,15 +594,14 @@ export default function CrediarioPage() {
                         <td style={{ textAlign:'right', fontWeight:700 }}>
                           {(pago && p.paid_amount != null && Math.abs(p.paid_amount - p.amount) > 0.01 ? formatBRL(p.paid_amount) : formatBRL(p.amount))}
                         </td>
-                        <td style={{ textAlign:'center' }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:4, justifyContent:'center' }}>
-                            <Calendar size={12} style={{ color: vencida ? '#f87171' : 'var(--text-muted)' }}/>
-     <div style={{display:'flex',alignItems:'center',gap:6}}>
-       {editingDateParcela === p.id ? (
-         <div style={{display:'flex',alignItems:'center',gap:4}}><input type="date" value={newDate} onChange={e=>setNewDate(e.target.value)} style={{fontSize:11,padding:'2px 4px',border:'1px solid var(--border)',borderRadius:4,background:'var(--surface-2)',color:'var(--text-primary)'}}/><button onClick={()=>handleSaveDate(p.id)} style={{fontSize:10,padding:'2px 6px',background:'#22c55e',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>OK</button><button onClick={()=>setEditingDateParcela(null)} style={{fontSize:10,padding:'2px 4px',background:'#ef4444',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>X</button></div>
-       ) : (<><span style={{color:vencida?'#f87171':'inherit',fontWeight:vencida?700:400}}>{p.due_date?new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</span>{p.status!=='pago'&&<button onClick={()=>{setEditingDateParcela(p.id);setNewDate(p.due_date||'');}} title="Alterar data" style={{background:'none',border:'none',cursor:'pointer',padding:2,color:'#6366f1',display:'inline-flex',alignItems:'center'}}><Calendar size={12}/></button>}</>)}
-     </div>
-                        <td style={{ textAlign:'center' }}>
+ <td style={{ textAlign:'center' }}>
+   <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}>
+     {editingDateParcela === p.id ? (
+       <div style={{display:'flex',alignItems:'center',gap:4}}><input type="date" value={newDate} onChange={e=>setNewDate(e.target.value)} style={{fontSize:11,padding:'2px 4px',border:'1px solid var(--border)',borderRadius:4,background:'var(--surface-2)',color:'var(--text-primary)'}}/><button onClick={()=>handleSaveDate(p.id)} style={{fontSize:10,padding:'2px 6px',background:'#22c55e',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>OK</button><button onClick={()=>setEditingDateParcela(null)} style={{fontSize:10,padding:'2px 4px',background:'#ef4444',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>X</button></div>
+     ) : (<><span style={{color:vencida?'#f87171':'inherit',fontWeight:vencida?700:400}}>{p.due_date?new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</span>{p.status!=='pago'&&<button onClick={()=>{setEditingDateParcela(p.id);setNewDate(p.due_date||'');}} title="Alterar data" style={{background:'none',border:'none',cursor:'pointer',padding:2,color:'#6366f1',display:'inline-flex',alignItems:'center'}}><Calendar size={12}/></button>}</>)}
+   </div>
+ </td>
+ <td style={{ textAlign:'center' }}>
                           {juros > 0 ? (
                             <span style={{ color:'#f87171', fontWeight:700, fontSize:12 }}>+{formatBRL(juros)}</span>
                           ) : <span style={{ color:'var(--text-muted)', fontSize:12 }}>--</span>}
