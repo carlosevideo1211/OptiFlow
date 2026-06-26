@@ -55,6 +55,8 @@ export default function CrediarioPage() {
   const [saving, setSaving]     = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedParcela, setSelectedParcela] = useState<Parcela | null>(null);
+  const [editingDateParcela, setEditingDateParcela] = useState<string|null>(null);
+  const [newDate, setNewDate] = useState('');
   const [payForm, setPayForm] = useState({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0' });
   const [payingSaving, setPayingSaving] = useState(false);
 
@@ -435,6 +437,15 @@ export default function CrediarioPage() {
   const totalRenegociando = parcelasDoCarneRenegociando.reduce((s, p) => s + p.amount, 0);
   const clienteRenegociando = parcelasDoCarneRenegociando[0]?.customer_name || '';
 
+  const handleSaveDate = async (parcelaId: string) => {
+    if (!newDate) { toast.error('Informe a nova data'); return; }
+    const { error } = await supabase.from('crediario_parcelas').update({ due_date: newDate }).eq('id', parcelaId);
+    if (error) { toast.error('Erro ao salvar data'); return; }
+    toast.success('Data atualizada!');
+    setEditingDateParcela(null);
+    setNewDate('');
+    load();
+  };
   const handleRenego = async (crediarioId: string) => {
     const { data: existing } = await supabase.from('crediario').select('id,total_amount,installments,created_at,status,notes').eq('tenant_id', tenantId).like('notes', 'Renegociacao:'+crediarioId).maybeSingle();
     if (existing) {
