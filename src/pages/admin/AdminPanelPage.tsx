@@ -453,7 +453,11 @@ export default function AdminPanelPage() {
                             style={{ background:'rgba(99,102,241,.1)', border:'1px solid rgba(99,102,241,.2)', borderRadius:6, padding:'5px 8px', cursor:'pointer', color:'#6366f1', display:'flex', alignItems:'center' }}>
                             <Edit2 size={13}/>
                           </button>
-                          <button onClick={()=>acessarLoja(t.id)} title="Acessar Loja"
+   <button onClick={()=>window.open('/contrato/'+t.id,'_blank')} title="Contrato"
+                        style={{background:'rgba(59,130,246,.1)',border:'1px solid rgba(59,130,246,.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'#3b82f6',display:'flex',alignItems:'center',marginRight:4}}>
+                        <span style={{fontSize:12}}>Contrato</span>
+                      </button>
+                      <button onClick={()=>acessarLoja(t.id)} title="Acessar Loja"
                             style={{background:'rgba(34,197,94,.1)',border:'1px solid rgba(34,197,94,.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'#22c55e',display:'flex',alignItems:'center'}}>
                             <ExternalLink size={13}/>
                           </button>

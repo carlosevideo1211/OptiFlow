@@ -30,6 +30,7 @@ import AdminLoginPage from './pages/admin/AdminLoginPage';
 import AdminPanelPage from './pages/admin/AdminPanelPage';
 import TrialExpiredPage from './pages/TrialExpiredPage';
 import TermosPage from './pages/TermosPage';
+import ContratoPage from './pages/ContratoPage';
 import PrivacidadePage from './pages/PrivacidadePage';
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -72,6 +73,7 @@ function AppRoutes() {
       <Route path="/esqueci-senha" element={!user ? <ForgotPasswordPage /> : <Navigate to="/dashboard" />} />
       <Route path="/trial-expirado" element={<TrialExpiredPage />} />
       <Route path="/termos" element={<TermosPage />} />
+      <Route path="/contrato/:tenantId" element={<ContratoPage />} />
       <Route path="/privacidade" element={<PrivacidadePage />} />
       <Route path="/*" element={
         (!user && !localStorage.getItem('admin_viewing_tenant')) ? <Navigate to="/login" /> :
