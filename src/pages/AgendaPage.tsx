@@ -5,6 +5,7 @@ import { fetchAllRows } from '../lib/fetchAll';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, X, Save, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { norm } from '../utils/normalize';
 
 const DIAS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -99,7 +100,7 @@ export default function AgendaPage() {
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
   const filteredClients = customers.filter(c =>
-    searchClient.length > 1 && c.name.toLowerCase().includes(searchClient.toLowerCase())
+    searchClient.length > 1 && norm(c.name).includes(norm(searchClient))
   );
 
   const handleSave = async () => {

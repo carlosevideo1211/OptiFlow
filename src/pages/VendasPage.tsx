@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
+import { norm } from '../utils/normalize';
 
 const PAGAMENTOS = [
   { value: 'dinheiro',      label: 'Dinheiro',      icon: '💵' },
@@ -127,8 +128,8 @@ export default function VendasPage() {
   const filtered = useMemo(() => {
     let list = sales;
     if (search.trim()) {
-      const s = search.toLowerCase();
-      list = list.filter(v => v.customer_name?.toLowerCase().includes(s) || String(v.sale_number).includes(s) || v.vendedor?.toLowerCase().includes(s));
+      const s = norm(search);
+      list = list.filter(v => norm(v.customer_name).includes(s) || String(v.sale_number).includes(s) || norm(v.vendedor).includes(s));
     }
     if (vendedorFilter) list = list.filter(v => v.vendedor === vendedorFilter);
     if (dateFrom) list = list.filter(v => v.created_at >= dateFrom);
@@ -144,15 +145,15 @@ export default function VendasPage() {
 
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return [];
-    const s = productSearch.toLowerCase();
-    return products.filter(p => p.name.toLowerCase().includes(s) || p.brand?.toLowerCase().includes(s) || p.code?.toLowerCase().includes(s)).slice(0, 15);
+    const s = norm(productSearch);
+    return products.filter(p => norm(p.name).includes(s) || norm(p.brand).includes(s) || norm(p.code).includes(s)).slice(0, 15);
   }, [products, productSearch]);
 
   const filteredOS = useMemo(() => {
     const available = orders.filter(o => o.status !== 'entregue' && o.status !== 'cancelada');
     if (!osSearch.trim()) return available.slice(0, 8);
-    const s = osSearch.toLowerCase();
-    return available.filter(o => o.customer_name.toLowerCase().includes(s) || String(o.os_number).includes(s)).slice(0, 8);
+    const s = norm(osSearch);
+    return available.filter(o => norm(o.customer_name).includes(s) || String(o.os_number).includes(s)).slice(0, 8);
   }, [orders, osSearch]);
 
   const importarOS = async (os: OS) => {

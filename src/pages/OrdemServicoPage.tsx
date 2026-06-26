@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL, formatDate } from '../types/index';
+import { norm } from '../utils/normalize';
 
 const STATUS_LIST = [
   { value:'orcamento',  label:'Orçamento',        color:'#94a3b8', bg:'rgba(148,163,184,.15)' },
@@ -322,8 +323,8 @@ export default function OrdemServicoPage() {
     let list = orders;
     if (statusFilter) list = list.filter(o => o.status === statusFilter);
     if (search.trim()) {
-      const s = search.toLowerCase();
-      list = list.filter(o => o.customer_name.toLowerCase().includes(s) || String(o.os_number).includes(s));
+      const s = norm(search);
+      list = list.filter(o => norm(o.customer_name).includes(s) || String(o.os_number).includes(s));
     }
     return list;
   }, [orders, search, statusFilter]);
@@ -539,7 +540,7 @@ export default function OrdemServicoPage() {
                         autoComplete="off" />
                       {form.customer_name.length > 1 && !form.customer_id && (
                         <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:50, background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:8, maxHeight:200, overflowY:'auto', boxShadow:'0 8px 24px rgba(0,0,0,.4)' }}>
-                          {customers.filter(c => c.name.toLowerCase().includes(form.customer_name.toLowerCase())).slice(0,8).map(c => (
+                          {customers.filter(c => norm(c.name).includes(norm(form.customer_name))).slice(0,8).map(c => (
                             <div key={c.id} onClick={() => { set('customer_id', c.id); set('customer_name', c.name); loadConsultations(c.id); }}
                               style={{ padding:'10px 14px', cursor:'pointer', borderBottom:'1px solid var(--border)', fontSize:13 }}
                               onMouseEnter={e => (e.currentTarget.style.background='rgba(255,255,255,.05)')}
@@ -547,7 +548,7 @@ export default function OrdemServicoPage() {
                               {c.name}
                             </div>
                           ))}
-                          {customers.filter(c => c.name.toLowerCase().includes(form.customer_name.toLowerCase())).length === 0 && (
+                          {customers.filter(c => norm(c.name).includes(norm(form.customer_name))).length === 0 && (
                             <div style={{ padding:'10px 14px', color:'var(--text-muted)', fontSize:13 }}>Nenhum cliente encontrado</div>
                           )}
                         </div>

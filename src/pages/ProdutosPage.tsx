@@ -9,6 +9,7 @@ import {
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
+import { norm } from '../utils/normalize';
 
 const CATEGORIAS = ['Armação','Lente Solar','Lente de Grau','Lente de Contato','Acessório','Estojo','Cordão','Solução','Outro'];
 
@@ -53,8 +54,8 @@ export default function ProdutosPage() {
     let list = products.filter(p => p.active);
     if (catFilter) list = list.filter(p => p.category === catFilter);
     if (search.trim()) {
-      const s = search.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(s) || p.code?.toLowerCase().includes(s) || p.brand?.toLowerCase().includes(s));
+      const s = norm(search);
+      list = list.filter(p => norm(p.name).includes(s) || norm(p.code).includes(s) || norm(p.brand).includes(s));
     }
     return list;
   }, [products, search, catFilter]);

@@ -11,6 +11,7 @@ import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { formatCPF, maskCPF } from '../utils/format';
 import type { Customer } from '../types/index';
+import { norm } from '../utils/normalize';
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -143,10 +144,10 @@ export default function ClientesPage() {
       return new Date(c.birth_date + 'T00:00:00').getMonth() === new Date().getMonth();
     });
     if (search.trim()) {
-      const s = search.toLowerCase();
-      list = list.filter(c => c.name.toLowerCase().includes(s) || c.cpf?.includes(s) || c.cpf?.replace(/[^0-9]/g,'').includes(s.replace(/[^0-9]/g,'')) || c.phone?.includes(s));
+      const s = norm(search);
+      list = list.filter(c => norm(c.name).includes(s) || c.cpf?.includes(s) || c.cpf?.replace(/[^0-9]/g,'').includes(s.replace(/[^0-9]/g,'')) || norm(c.phone).includes(s));
     }
-    if (cityFilter.trim()) list = list.filter(c => c.city?.toLowerCase().includes(cityFilter.toLowerCase()));
+    if (cityFilter.trim()) list = list.filter(c => norm(c.city).includes(norm(cityFilter)));
     if (dateFrom) list = list.filter(c => c.created_at && c.created_at >= dateFrom);
     if (dateTo)   list = list.filter(c => c.created_at && c.created_at <= dateTo + 'T23:59:59');
     return list;

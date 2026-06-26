@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { norm } from '../utils/normalize';
 
 export default function BaixasTab() {
   const { tenantId } = useAuth();
@@ -20,7 +21,7 @@ export default function BaixasTab() {
 
   const fmt = (n: number) => (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const fmtDT = (d: string) => d ? new Date(d).toLocaleString('pt-BR') : '--';
-  const filtered = baixasLog.filter(b => !search || b.customer_name?.toLowerCase().includes(search.toLowerCase()) || b.operator_name?.toLowerCase().includes(search.toLowerCase()));
+  const filtered = baixasLog.filter(b => !search || norm(b.customer_name).includes(norm(search)) || norm(b.operator_name).includes(norm(search)));
 
   return (
     <div>

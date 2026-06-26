@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Customer } from '../../types/index';
 import { Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { norm } from '../../utils/normalize';
 
 interface Props { onClose: () => void; onSaved: () => void; }
 
@@ -26,7 +27,7 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
   }, [tenantId]);
 
   const filtered = customers.filter(c =>
-    !search || c.name.toLowerCase().includes(search.toLowerCase())
+    !search || norm(c.name).includes(norm(search))
   );
 
   const handleIniciar = () => {

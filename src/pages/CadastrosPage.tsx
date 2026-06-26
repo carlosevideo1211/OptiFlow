@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { BookUser, Plus, Search, Edit2, Trash2, X, Save, Users, Package, Stethoscope, UserCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { norm } from '../utils/normalize';
 
 interface Supplier {
   id: string; tenant_id: string; name: string; cnpj?: string; category: string;
@@ -87,20 +88,20 @@ export default function CadastrosPage() {
 
   const filtered = useMemo(() => {
     if (!search.trim()) return suppliers;
-    const s = search.toLowerCase();
-    return suppliers.filter(f => f.name.toLowerCase().includes(s) || f.category.toLowerCase().includes(s));
+    const s = norm(search);
+    return suppliers.filter(f => norm(f.name).includes(s) || norm(f.category).includes(s));
   }, [suppliers, search]);
 
   const filteredProf = useMemo(() => {
     if (!searchProf.trim()) return professionals.filter(p => p.active);
-    const s = searchProf.toLowerCase();
-    return professionals.filter(p => p.active && (p.name.toLowerCase().includes(s) || p.specialty?.toLowerCase().includes(s)));
+    const s = norm(searchProf);
+    return professionals.filter(p => p.active && (norm(p.name).includes(s) || norm(p.specialty).includes(s)));
   }, [professionals, searchProf]);
 
   const filteredFunc = useMemo(() => {
     if (!searchFunc.trim()) return funcionarios.filter(f => f.active);
-    const s = searchFunc.toLowerCase();
-    return funcionarios.filter(f => f.active && (f.name.toLowerCase().includes(s) || f.cargo?.toLowerCase().includes(s)));
+    const s = norm(searchFunc);
+    return funcionarios.filter(f => f.active && (norm(f.name).includes(s) || norm(f.cargo).includes(s)));
   }, [funcionarios, searchFunc]);
 
   // ── Fornecedores ──

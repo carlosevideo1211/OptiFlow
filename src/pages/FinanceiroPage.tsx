@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
+import { norm } from '../utils/normalize';
 
 const CATEGORIAS_RECEITA = ['Venda','Crediário','Serviço','Outros'];
 const CATEGORIAS_DESPESA = ['Fornecedor','Aluguel','Salário','Água/Luz','Internet','Laboratório','Manutenção','Impostos','Outros'];
@@ -72,8 +73,8 @@ export default function FinanceiroPage() {
     if (typeFilter)   list = list.filter(t => t.type === typeFilter);
     if (statusFilter) list = list.filter(t => t.status === statusFilter);
     if (search.trim()) {
-      const s = search.toLowerCase();
-      list = list.filter(t => t.description.toLowerCase().includes(s) || t.category?.toLowerCase().includes(s));
+      const s = norm(search);
+      list = list.filter(t => norm(t.description).includes(s) || norm(t.category).includes(s));
     }
     if (dateFrom) list = list.filter(t => t.due_date >= dateFrom);
     if (dateTo)   list = list.filter(t => t.due_date <= dateTo);

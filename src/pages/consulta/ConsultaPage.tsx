@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import NovaConsultaModal from './NovaConsultaModal';
 import AgendaPage from '../AgendaPage';
 import toast from 'react-hot-toast';
+import { norm } from '../../utils/normalize';
 
 export default function ConsultaPage() {
   const { tenantId } = useAuth();
@@ -43,8 +44,8 @@ export default function ConsultaPage() {
     let list = consultations;
     if (statusFilter) list = list.filter(c => c.status === statusFilter);
     if (search.trim()) {
-      const s = search.toLowerCase();
-      list = list.filter(c => c.customer_name?.toLowerCase().includes(s) || c.professional_name?.toLowerCase().includes(s));
+      const s = norm(search);
+      list = list.filter(c => norm(c.customer_name).includes(s) || norm(c.professional_name).includes(s));
     }
     return list;
   }, [consultations, search, statusFilter]);
