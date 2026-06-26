@@ -16,7 +16,7 @@ const PAGAMENTO_LABELS: Record<string, string> = {
 };
 
 export default function RelatoriosPage() {
-  const { tenantId } = useAuth();
+  const { tenantId, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [abaAtiva, setAbaAtiva] = useState('resumo');
   const [periodo, setPeriodo] = useState('mes');
@@ -177,7 +177,14 @@ export default function RelatoriosPage() {
         <button onClick={() => setAbaAtiva('resumo')} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, background: abaAtiva === 'resumo' ? '#6366f1' : 'transparent', color: abaAtiva === 'resumo' ? 'white' : 'rgba(255,255,255,.5)', borderRadius: '6px 6px 0 0' }}>Resumo</button>
         <button onClick={() => setAbaAtiva('baixas')} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, background: abaAtiva === 'baixas' ? '#6366f1' : 'transparent', color: abaAtiva === 'baixas' ? 'white' : 'rgba(255,255,255,.5)', borderRadius: '6px 6px 0 0' }}>Baixas Crediario</button>
       </div>
-      {abaAtiva === 'baixas' && <BaixasTab />}
+      {abaAtiva === 'baixas' && (
+        (user as any)?.role === 'master' || (user as any)?.role === 'Gerente' || (user as any)?.cargo === 'Gerente' ?
+        <BaixasTab /> :
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>🔒</div>
+          <p>Acesso restrito a Gerentes e Administradores.</p>
+        </div>
+      )}
       {abaAtiva === 'resumo' && (<>
 
       {/* Filtro de período */}
