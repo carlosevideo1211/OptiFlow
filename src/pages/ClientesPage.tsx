@@ -19,12 +19,15 @@ function emptyForm() {
   return { name:'', cpf:'', phone:'', whatsapp:'', email:'', birth_date:'', address:'', city:'', state:'', notes:'', active:true, photo_url:'' };
 }
 
-function fmtGrau(v: any): string {
+function fmtGrau(v: any, tipo: string = 'esf'): string {
   if (v === null || v === undefined || v === '') return '--';
   const n = parseFloat(v);
   if (isNaN(n)) return '--';
-  const s = n >= 0 ? '+' : '';
-  return s + n.toFixed(2).replace('.', ',');
+  if (tipo === 'eixo') return Math.round(n) + '°';
+  if (tipo === 'dnp') return n.toFixed(1).replace('.', ',');
+  if (tipo === 'adicao') return n.toFixed(2).replace('.', ',');
+  const abs = Math.abs(n).toFixed(2).replace('.', ',');
+  return (n >= 0 ? '+' : '-') + abs;
 }
 
 export default function ClientesPage() {
