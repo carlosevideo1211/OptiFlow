@@ -561,10 +561,11 @@ export default function ClientesPage() {
                           w.document.write('<p><b>Profissional:</b> '+(co.professional_name||'--')+'</p>');
                           w.document.write('<h3>Grau</h3>');
                           w.document.write('<table><tr><th style="background:#2c3e50;color:white"></th><th style="background:#2c3e50;color:white">ESF</th><th style="background:#2c3e50;color:white">CIL</th><th style="background:#2c3e50;color:white">EIXO</th><th style="background:#2c3e50;color:white">DNP</th></tr>');
-                          w.document.write('<tr><td style="background:#f8f9fa"><b>OD</b></td><td>'+(co.rx_re_esf!=null&&co.rx_re_esf!==''?'<b>'+co.rx_re_esf+'</b>':'--')+'</td><td>'+(co.rx_re_cil!=null&&co.rx_re_cil!==''?co.rx_re_cil:'--')+'</td><td>'+(co.rx_re_eixo!=null&&co.rx_re_eixo!==''?co.rx_re_eixo+'°':'--')+'</td><td>'+(co.rx_re_dnp!=null&&co.rx_re_dnp!==''?co.rx_re_dnp:'--')+'</td></tr>');
-                          w.document.write('<tr><td style="background:#f8f9fa"><b>OE</b></td><td>'+(co.rx_le_esf!=null&&co.rx_le_esf!==''?'<b>'+co.rx_le_esf+'</b>':'--')+'</td><td>'+(co.rx_le_cil!=null&&co.rx_le_cil!==''?co.rx_le_cil:'--')+'</td><td>'+(co.rx_le_eixo!=null&&co.rx_le_eixo!==''?co.rx_le_eixo+'°':'--')+'</td><td>'+(co.rx_le_dnp!=null&&co.rx_le_dnp!==''?co.rx_le_dnp:'--')+'</td></tr>');
+   const fg=(v,t='esf')=>{if(v===null||v===undefined||v==='')return'--';const n=parseFloat(v);if(isNaN(n))return'--';if(t==='eixo')return Math.round(n)+'\u00b0';if(t==='dnp')return n.toFixed(1).replace('.',',');if(t==='adicao')return n.toFixed(2).replace('.',',');const a=Math.abs(n).toFixed(2).replace('.',',');return(n>=0?'+':'-')+a;};
+   w.document.write('<tr><td style="background:#f8f9fa"><b>OD</b></td><td>'+fg(co.rx_re_esf)+'</td><td>'+fg(co.rx_re_cil)+'</td><td>'+fg(co.rx_re_eixo,'eixo')+'</td><td>'+fg(co.rx_re_dnp,'dnp')+'</td></tr>');
+   w.document.write('<tr><td style="background:#f8f9fa"><b>OE</b></td><td>'+fg(co.rx_le_esf)+'</td><td>'+fg(co.rx_le_cil)+'</td><td>'+fg(co.rx_le_eixo,'eixo')+'</td><td>'+fg(co.rx_le_dnp,'dnp')+'</td></tr>');
                           w.document.write('</table>');
-                          if(co.rx_adicao) w.document.write('<p><b>Adição:</b> '+f(co.rx_adicao,'adicao')+'</p>');
+   if(co.rx_adicao) w.document.write('<p><b>Adição:</b> '+fg(co.rx_adicao,'adicao')+'</p>');
                           if(co.notes) w.document.write('<p><b>Obs:</b> '+co.notes+'</p>');
                           w.document.write('<br/><br/><p>_______________________________</p><p>Assinatura do Profissional</p>');
                           w.document.write('</body></html>');
