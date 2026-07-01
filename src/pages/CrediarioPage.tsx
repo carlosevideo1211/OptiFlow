@@ -606,7 +606,7 @@ export default function CrediarioPage() {
                           {p.installment_number}/{p.total_installments}
                         </td>
                         <td style={{ textAlign:'right', fontWeight:700 }}>
-                          {(pago && p.paid_amount != null && Math.abs(p.paid_amount - p.amount) > 0.01 ? formatBRL(p.paid_amount) : formatBRL(p.amount))}
+                          {editingValueParcela===p.id?(<div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'flex-end'}}><input type="number" step="0.01" value={newValue} onChange={e=>setNewValue(e.target.value)} style={{width:80,fontSize:11,padding:'2px 4px',border:'1px solid var(--border)',borderRadius:4,background:'var(--surface-2)',color:'var(--text-primary)'}}/><button onClick={()=>handleSaveValue(p.id)} style={{fontSize:10,padding:'2px 6px',background:'#22c55e',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>OK</button><button onClick={()=>setEditingValueParcela(null)} style={{fontSize:10,padding:'2px 4px',background:'#ef4444',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>X</button></div>):(<span>{(pago && p.paid_amount != null && Math.abs(p.paid_amount - p.amount) > 0.01 ? formatBRL(p.paid_amount) : formatBRL(p.amount))}{p.status!=='pago'&&<button onClick={()=>{setEditingValueParcela(p.id);setNewValue(String(p.amount));}} title="Alterar valor" style={{background:'none',border:'none',cursor:'pointer',padding:2,color:'#f59e0b',display:'inline-flex',alignItems:'center'}}><Pencil size={12}/></button>}</span>)}
                         </td>
  <td style={{ textAlign:'center' }}>
    <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}>
