@@ -416,7 +416,7 @@ export default function ClientesPage() {
 
       {/* Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:860, width:'95%' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
@@ -703,3 +703,4 @@ export default function ClientesPage() {
     </div>
   );
 }
+
