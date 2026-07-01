@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import {
   CreditCard, Search, CheckCircle, Trash2,
-  AlertTriangle, Download, MessageCircle, Calendar, Printer, Lock, User, X
+  AlertTriangle, Download, MessageCircle, Calendar, Printer, Lock, User, X, Pencil
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
@@ -56,6 +56,8 @@ export default function CrediarioPage() {
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedParcela, setSelectedParcela] = useState<Parcela | null>(null);
   const [editingDateParcela, setEditingDateParcela] = useState<string|null>(null);
+  const [editingValueParcela, setEditingValueParcela] = useState<string|null>(null);
+  const [newValue, setNewValue] = useState('');
   const [newDate, setNewDate] = useState('');
   const [payForm, setPayForm] = useState({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0' });
   const [payingSaving, setPayingSaving] = useState(false);
@@ -443,7 +445,19 @@ export default function CrediarioPage() {
     if (error) { toast.error('Erro ao salvar data'); return; }
     toast.success('Data atualizada!');
     setEditingDateParcela(null);
+  
     setNewDate('');
+    load();
+  };
+
+  const handleSaveValue = async (id: string) => {
+    const val = parseFloat(newValue.replace(',','.'));
+    if (isNaN(val) || val <= 0) { toast.error('Valor invalido'); return; }
+    const { error } = await supabase.from('crediario_parcelas').update({ amount: val }).eq('id', id);
+    if (error) { toast.error('Erro ao salvar valor'); return; }
+    toast.success('Valor atualizado!');
+    setEditingValueParcela(null);
+    setNewValue('');
     load();
   };
   const handleRenego = async (crediarioId: string) => {
@@ -691,7 +705,7 @@ export default function CrediarioPage() {
                   <thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'4px 6px',textAlign:'center'}}>Parc.</th><th style={{padding:'4px 6px',textAlign:'left'}}>Vencimento</th><th style={{padding:'4px 6px',textAlign:'right'}}>Valor</th><th style={{padding:'4px 6px',textAlign:'center'}}>Status</th></tr></thead>
                   <tbody>{renegoSummary.original.map((p:any,i:number)=>{
                     const atrasada=p.status!=='pago'&&p.due_date&&p.due_date<new Date().toISOString().split('T')[0];
-                    return <tr key={i} style={{borderBottom:'1px solid var(--border)'}}><td style={{padding:'4px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{renegoSummary.original.length}</td><td style={{padding:'4px 6px',color:atrasada?'#f87171':'var(--text-muted)'}}>{p.due_date?new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'4px 6px',textAlign:'right'}}>{Number(p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'4px 6px',textAlign:'center'}}><span style={{padding:'1px 7px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(251,191,36,.15)',color:p.status==='pago'?'#22c55e':atrasada?'#f87171':'#fbbf24'}}>{p.status==='pago'?'Pago':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
+                    return <tr key={i} style={{borderBottom:'1px solid var(--border)'}}><td style={{padding:'4px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{renegoSummary.original.length}</td><td style={{padding:'4px 6px',color:atrasada?'#f87171':'var(--text-muted)'}}>{p.due_date?new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'4px 6px',textAlign:'right'}}>{editingValueParcela===p.id?(<div style={{display:'flex',alignItems:'center',gap:4}}><input type="number" step="0.01" value={newValue} onChange={e=>setNewValue(e.target.value)} style={{width:80,fontSize:11,padding:'2px 4px',border:'1px solid var(--border)',borderRadius:4,background:'var(--surface-2)',color:'var(--text-primary)'}}/><button onClick={()=>handleSaveValue(p.id)} style={{fontSize:10,padding:'2px 6px',background:'#22c55e',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>OK</button><button onClick={()=>setEditingValueParcela(null)} style={{fontSize:10,padding:'2px 4px',background:'#ef4444',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>X</button></div>):(<span>{Number(p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}{p.status!=='pago'&&<button onClick={()=>{setEditingValueParcela(p.id);setNewValue(String(p.amount));}} title="Alterar valor" style={{background:'none',border:'none',cursor:'pointer',padding:2,color:'#f59e0b',display:'inline-flex',alignItems:'center'}}><Pencil size={12}/></button>}</span>)}</td><td style={{padding:'4px 6px',textAlign:'center'}}><span style={{padding:'1px 7px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(251,191,36,.15)',color:p.status==='pago'?'#22c55e':atrasada?'#f87171':'#fbbf24'}}>{p.status==='pago'?'Pago':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
                   })}</tbody>
                 </table>
               </div>
@@ -763,3 +777,4 @@ export default function CrediarioPage() {
     </div>
   );
 }
+
