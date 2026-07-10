@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -61,6 +61,8 @@ export default function CrediarioPage() {
   const [newDate, setNewDate] = useState('');
   const [payForm, setPayForm] = useState({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0' });
   const [payingSaving, setPayingSaving] = useState(false);
+  const [renegoSaving, setRenegoSaving] = useState(false);
+  const parcelaActionRef = useRef(false);
 
   const load = async () => {
     setLoading(true);
@@ -172,6 +174,7 @@ export default function CrediarioPage() {
   const fmtM = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 
   const handleConfirmPay = async () => {
+    if (payingSaving) return;
     if (!selectedParcela) return;
     const p = selectedParcela;
     if (!payForm.operator_name.trim()) { toast.error('Informe o nome do operador'); return; }
@@ -440,25 +443,36 @@ export default function CrediarioPage() {
   const clienteRenegociando = parcelasDoCarneRenegociando[0]?.customer_name || '';
 
   const handleSaveDate = async (parcelaId: string) => {
+    if (parcelaActionRef.current) return;
     if (!newDate) { toast.error('Informe a nova data'); return; }
-    const { error } = await supabase.from('crediario_parcelas').update({ due_date: newDate }).eq('id', parcelaId);
-    if (error) { toast.error('Erro ao salvar data'); return; }
-    toast.success('Data atualizada!');
-    setEditingDateParcela(null);
-  
-    setNewDate('');
-    load();
+    parcelaActionRef.current = true;
+    try {
+      const { error } = await supabase.from('crediario_parcelas').update({ due_date: newDate }).eq('id', parcelaId);
+      if (error) { toast.error('Erro ao salvar data'); return; }
+      toast.success('Data atualizada!');
+      setEditingDateParcela(null);
+      setNewDate('');
+      load();
+    } finally {
+      parcelaActionRef.current = false;
+    }
   };
 
   const handleSaveValue = async (id: string) => {
+    if (parcelaActionRef.current) return;
     const val = parseFloat(newValue.replace(',','.'));
     if (isNaN(val) || val <= 0) { toast.error('Valor invalido'); return; }
-    const { error } = await supabase.from('crediario_parcelas').update({ amount: val }).eq('id', id);
-    if (error) { toast.error('Erro ao salvar valor'); return; }
-    toast.success('Valor atualizado!');
-    setEditingValueParcela(null);
-    setNewValue('');
-    load();
+    parcelaActionRef.current = true;
+    try {
+      const { error } = await supabase.from('crediario_parcelas').update({ amount: val }).eq('id', id);
+      if (error) { toast.error('Erro ao salvar valor'); return; }
+      toast.success('Valor atualizado!');
+      setEditingValueParcela(null);
+      setNewValue('');
+      load();
+    } finally {
+      parcelaActionRef.current = false;
+    }
   };
   const handleRenego = async (crediarioId: string) => {
     const { data: existing } = await supabase.from('crediario').select('id,total_amount,installments,created_at,status,notes').eq('tenant_id', tenantId).like('notes', 'Renegociacao:'+crediarioId).maybeSingle();
@@ -472,6 +486,7 @@ export default function CrediarioPage() {
   };
 
   const confirmarRenegociacao = async () => {
+    if (renegoSaving) return;
     if (!renegociando) return;
     const novoValor = parseFloat(renego.novoValor.replace(',', '.'));
     const numP = parseInt(renego.numParcelas);
@@ -480,49 +495,56 @@ export default function CrediarioPage() {
     if (!renego.dataInicio) { toast.error('Informe a data da primeira parcela'); return; }
     const valorParcela = novoValor / numP;
 
-    // Criar novo crediario
-    const { data: novoCred, error: credErr } = await supabase.from('crediario').insert([{
-      tenant_id: tenantId,
-      customer_id: parcelasDoCarneRenegociando[0]?.customer_id || null,
-      customer_name: clienteRenegociando,
-      total_amount: novoValor,
-      installments: numP,
-      status: 'ativo',
-      notes: 'Renegociacao:' + renegociando,
-      sale_id: null,
-    }]).select().single();
-    if (credErr || !novoCred) { toast.error('Erro ao criar renegociacao'); return; }
-
-    // Criar novas parcelas
-    const novasParcelas = [];
-    const dtBase = new Date(renego.dataInicio + 'T12:00:00');
-    for (let i = 0; i < numP; i++) {
-      const dt = new Date(dtBase);
-      dt.setMonth(dt.getMonth() + i);
-      novasParcelas.push({
-        crediario_id: novoCred.id,
+    setRenegoSaving(true);
+    try {
+      // Criar novo crediario
+      const { data: novoCred, error: credErr } = await supabase.from('crediario').insert([{
         tenant_id: tenantId,
-        installment_number: i + 1,
-        due_date: dt.toISOString().split('T')[0],
-        amount: parseFloat(valorParcela.toFixed(2)),
-        status: 'pendente',
-      });
-    }
-    await supabase.from('crediario_parcelas').insert(novasParcelas);
+        customer_id: parcelasDoCarneRenegociando[0]?.customer_id || null,
+        customer_name: clienteRenegociando,
+        total_amount: novoValor,
+        installments: numP,
+        status: 'ativo',
+        notes: 'Renegociacao:' + renegociando,
+        sale_id: null,
+      }]).select().single();
+      if (credErr || !novoCred) { toast.error('Erro ao criar renegociacao'); return; }
 
-    // Tratar carne original
-    if (renego.destino === 'cancelar') {
-      await supabase.from('crediario').update({ status: 'cancelado' }).eq('id', renegociando);
-      await supabase.from('crediario_parcelas').update({ status: 'cancelado' }).eq('crediario_id', renegociando).neq('status', 'pago');
-    } else if (renego.destino === 'quitado') {
-      await supabase.from('crediario').update({ status: 'quitado' }).eq('id', renegociando);
-      await supabase.from('crediario_parcelas').update({ status: 'pago', paid_at: new Date().toISOString().split('T')[0] }).eq('crediario_id', renegociando).neq('status', 'pago');
-    }
+      // Criar novas parcelas
+      const novasParcelas = [];
+      const dtBase = new Date(renego.dataInicio + 'T12:00:00');
+      for (let i = 0; i < numP; i++) {
+        const dt = new Date(dtBase);
+        dt.setMonth(dt.getMonth() + i);
+        novasParcelas.push({
+          crediario_id: novoCred.id,
+          tenant_id: tenantId,
+          installment_number: i + 1,
+          due_date: dt.toISOString().split('T')[0],
+          amount: parseFloat(valorParcela.toFixed(2)),
+          status: 'pendente',
+        });
+      }
+      await supabase.from('crediario_parcelas').insert(novasParcelas);
 
-    toast.success('Renegociacao criada com sucesso!');
-    setRenegociando(null);
-    setRenego({ novoValor:'', numParcelas:'1', dataInicio:'', destino:'cancelar' });
-    load();
+      // Tratar carne original
+      if (renego.destino === 'cancelar') {
+        await supabase.from('crediario').update({ status: 'cancelado' }).eq('id', renegociando);
+        await supabase.from('crediario_parcelas').update({ status: 'cancelado' }).eq('crediario_id', renegociando).neq('status', 'pago');
+      } else if (renego.destino === 'quitado') {
+        await supabase.from('crediario').update({ status: 'quitado' }).eq('id', renegociando);
+        await supabase.from('crediario_parcelas').update({ status: 'pago', paid_at: new Date().toISOString().split('T')[0] }).eq('crediario_id', renegociando).neq('status', 'pago');
+      }
+
+      toast.success('Renegociacao criada com sucesso!');
+      setRenegociando(null);
+      setRenego({ novoValor:'', numParcelas:'1', dataInicio:'', destino:'cancelar' });
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao renegociar');
+    } finally {
+      setRenegoSaving(false);
+    }
   };
 
   return (
@@ -769,7 +791,7 @@ export default function CrediarioPage() {
             </div>
             <div style={{ display:'flex', gap:10, marginTop:22 }}>
               <button onClick={() => setRenegociando(null)} className="btn btn-secondary" style={{ flex:1 }}>Cancelar</button>
-              <button onClick={confirmarRenegociacao} className="btn btn-primary" style={{ flex:2, background:'#fbbf24', color:'#000', fontWeight:700 }}>✓ Confirmar Renegociacao</button>
+              <button onClick={confirmarRenegociacao} disabled={renegoSaving} className="btn btn-primary" style={{ flex:2, background:'#fbbf24', color:'#000', fontWeight:700 }}>{renegoSaving ? 'Processando...' : '✓ Confirmar Renegociacao'}</button>
             </div>
           </div>
         </div>

@@ -71,7 +71,8 @@ export default function ProdutosPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) { toast.error('Nome obrigatório'); return; }
+    if (saving) return;
+      if (!form.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSaving(true);
     try {
       const payload = { ...form, tenant_id: tenantId };

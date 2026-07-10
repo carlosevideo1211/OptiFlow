@@ -154,7 +154,8 @@ export default function NfePage() {
   const totalNota = itens.reduce((s,i) => s + (i.valor_total||0), 0);
 
   const gerarXML = async () => {
-    if (!config.cnpj) { toast.error('Configure os dados fiscais primeiro!'); setTab('config'); return; }
+    if (saving) return;
+      if (!config.cnpj) { toast.error('Configure os dados fiscais primeiro!'); setTab('config'); return; }
     if (!nfeForm.cliente_nome) { toast.error('Informe o nome do cliente'); return; }
     if (itens.length === 0 || !itens[0].descricao) { toast.error('Adicione pelo menos um item'); return; }
 

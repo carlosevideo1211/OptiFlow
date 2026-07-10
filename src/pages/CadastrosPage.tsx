@@ -124,7 +124,8 @@ export default function CadastrosPage() {
   };
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) { toast.error('Nome obrigatório'); return; }
+    if (saving) return;
+      if (!form.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSaving(true);
     try {
       const payload = { ...form, tenant_id: tenantId };
@@ -154,7 +155,8 @@ export default function CadastrosPage() {
   };
   const handleSaveProf = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profForm.name.trim()) { toast.error('Nome obrigatório'); return; }
+    if (savingProf) return;
+      if (!profForm.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSavingProf(true);
     try {
       const payload = { ...profForm, tenant_id: tenantId, active: true };
@@ -184,7 +186,8 @@ export default function CadastrosPage() {
   };
   const handleSaveFunc = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!funcForm.name.trim()) { toast.error('Nome obrigatório'); return; }
+    if (savingFunc) return;
+      if (!funcForm.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSavingFunc(true);
     try {
       const payload = { name: funcForm.name, cargo: funcForm.cargo, cpf: funcForm.cpf, phone: funcForm.phone, email: funcForm.email, access_password: funcForm.access_password, tenant_id: tenantId, active: true };

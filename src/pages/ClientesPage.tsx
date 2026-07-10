@@ -187,6 +187,7 @@ export default function ClientesPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     if (!form.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSaving(true);
     try {
@@ -201,8 +202,14 @@ export default function ClientesPage() {
         toast.success('Cliente cadastrado!');
       }
       setShowModal(false); load();
-    } catch (err: any) { toast.error(err.message||'Erro ao salvar'); }
-    finally { setSaving(false); }
+    } catch (err: any) {
+        if (err.code === '23505') {
+          toast.error('Já existe um cliente cadastrado com esse CPF.');
+        } else {
+          toast.error(err.message || 'Erro ao salvar');
+        }
+      }
+      finally { setSaving(false); }
   };
 
   const toggleActive = async (c: Customer) => {

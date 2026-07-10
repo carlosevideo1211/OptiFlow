@@ -194,6 +194,7 @@ export default function VendasPage() {
   };
 
   const gerarBoleto = async () => {
+  if (saving) return;
     if (cartItems.length === 0) { toast.error('Carrinho vazio!'); return; }
     if (!customerName.trim()) { toast.error('Informe o cliente'); return; }
     if (!selectedCustomer) { toast.error('Selecione um cliente cadastrado'); return; }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -239,6 +239,8 @@ export default function AtendimentoPage() {
   const [consultation, setConsultation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const creatingRef = useRef(false);
+  const [gerandoOS, setGerandoOS] = useState(false);
   const [section, setSection] = useState<Section>('prescricao_oculos');
   const [open, setOpen] = useState<Record<Accordion, boolean>>({
     anamnese: false, ult_prescricao: false, acuidade: false, biomicroscopia: false,
@@ -612,6 +614,7 @@ export default function AtendimentoPage() {
 
   // ── salvar ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
+    if (creatingRef.current) return;
     const rxErrors = validateAllRx();
     if (rxErrors.length > 0) {
       rxErrors.forEach(e => toast.error(e, { duration: 5000 }));
@@ -621,6 +624,7 @@ export default function AtendimentoPage() {
     setSaving(true);
     try {
       if (isNew && newData) {
+        creatingRef.current = true;
         const { data: created, error: createErr } = await supabase.from('consultations').insert([{
           tenant_id: tenantId, customer_id: newData.customerId, customer_name: newData.customerName,
           professional_id: newData.professionalId, professional_name: newData.professionalName,
@@ -698,6 +702,7 @@ export default function AtendimentoPage() {
       if (error) throw error;
       toast.success('Salvo com sucesso!');
     } catch (err: any) {
+      creatingRef.current = false;
       toast.error('Erro ao salvar: ' + err.message);
     } finally {
       setSaving(false);
@@ -705,20 +710,26 @@ export default function AtendimentoPage() {
   };
 
   const handleGerarOS = async () => {
-    if (!consultation) return;
-    const { data, error } = await supabase.from('service_orders').insert([{
-      tenant_id: tenantId,
-      customer_id: consultation.customer_id || (isNew ? newData?.customerId : null),
-      customer_name: consultation.customer_name, consultation_id: isNew ? null : id,
-      lens_type: rxTipoLente||null, lens_brand: null, lens_material: null,
-      frame_brand: null, frame_model: null, frame_color: null,
-      frame_price: 0, lens_price: 0, discount: 0, total: 0,
-      status: 'orcamento', notes: rxTratamento||null,
-    }]).select().single();
-    if (error) { toast.error('Erro ao gerar OS: ' + error.message); return; }
-    toast.success('OS gerada com sucesso!');
-    navigate('/os');
-  };
+      if (gerandoOS) return;
+      if (!consultation) return;
+      setGerandoOS(true);
+      try {
+        const { data, error } = await supabase.from('service_orders').insert([{
+          tenant_id: tenantId,
+          customer_id: consultation.customer_id || (isNew ? newData?.customerId : null),
+          customer_name: consultation.customer_name, consultation_id: isNew ? null : id,
+          lens_type: rxTipoLente||null, lens_brand: null, lens_material: null,
+          frame_brand: null, frame_model: null, frame_color: null,
+          frame_price: 0, lens_price: 0, discount: 0, total: 0,
+          status: 'orcamento', notes: rxTratamento||null,
+        }]).select().single();
+        if (error) { toast.error('Erro ao gerar OS: ' + error.message); return; }
+        toast.success('OS gerada com sucesso!');
+        navigate('/os');
+      } finally {
+        setGerandoOS(false);
+      }
+    };
 
   const handlePrint = () => {
     const win = window.open('', '_blank');

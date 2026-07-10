@@ -94,6 +94,7 @@ export default function OrdemServicoPage() {
   const [prodSearch, setProdSearch] = useState('');
   const [showProdSug, setShowProdSug] = useState(false);
   const prodSearchRef = useRef<HTMLInputElement>(null);
+  const avancandoRef = useRef(false);
 
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
@@ -305,11 +306,17 @@ export default function OrdemServicoPage() {
   };
 
   const avancarStatus = async (o: OS) => {
-    const idx = STATUS_LIST.findIndex(s => s.value === o.status);
-    const next = STATUS_LIST[(idx + 1) % STATUS_LIST.length];
-    await supabase.from('service_orders').update({ status: next.value }).eq('id', o.id);
-    toast.success('Status: ' + next.label);
-    load();
+    if (avancandoRef.current) return;
+    avancandoRef.current = true;
+    try {
+      const idx = STATUS_LIST.findIndex(s => s.value === o.status);
+      const next = STATUS_LIST[(idx + 1) % STATUS_LIST.length];
+      await supabase.from('service_orders').update({ status: next.value }).eq('id', o.id);
+      toast.success('Status: ' + next.label);
+      load();
+    } finally {
+      avancandoRef.current = false;
+    }
   };
 
   const exportCSV = () => {

@@ -93,6 +93,7 @@ export default function EstoquePage() {
 
   const handleAjuste = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     if (!selProduct || adjQty <= 0) { toast.error('Informe a quantidade'); return; }
     setSaving(true);
     try {
@@ -111,6 +112,7 @@ export default function EstoquePage() {
 
   const handleEntrada = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingEnt) return;
     if (!entForm.product_id || entForm.quantity <= 0) { toast.error('Selecione o produto e quantidade'); return; }
     setSavingEnt(true);
     try {

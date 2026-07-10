@@ -23,7 +23,8 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) { toast.error('Nome obrigatorio'); return; }
+    if (loading) return;
+      if (!form.name.trim()) { toast.error('Nome obrigatorio'); return; }
     if (!form.company.trim()) { toast.error('Nome da optica obrigatorio'); return; }
     if (form.password.length < 6) { toast.error('Senha minimo 6 caracteres'); return; }
     if (form.password !== form.confirm) { toast.error('Senhas nao conferem'); return; }

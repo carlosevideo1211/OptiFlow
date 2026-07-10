@@ -130,6 +130,7 @@ export default function FinanceiroPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     if (!form.description || form.amount <= 0) { toast.error('Preencha descrição e valor'); return; }
     setSaving(true);
     try {

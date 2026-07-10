@@ -104,7 +104,8 @@ export default function AgendaPage() {
   );
 
   const handleSave = async () => {
-    if (!form.customer_name.trim()) { toast.error('Selecione o paciente'); return; }
+    if (saving) return;
+      if (!form.customer_name.trim()) { toast.error('Selecione o paciente'); return; }
     if (!form.professional_name.trim()) { toast.error('Selecione o profissional'); return; }
     if (!form.date) { toast.error('Informe a data'); return; }
     if (!form.time) { toast.error('Informe o horário de início'); return; }
