@@ -167,16 +167,16 @@ export default function OrdemServicoPage() {
       customer_name: os.customer_name,
       medico: os.medico || '',
       data_receita: os.data_receita || '',
-      od_esf: String(os.od_esf ?? ''),
-      od_cil: String(os.od_cil ?? ''),
-      od_eixo: String(os.od_eixo ?? ''),
-      od_adicao: String(os.od_adicao ?? ''),
-      od_dnp: String(os.od_dnp ?? ''),
-      oe_esf: String(os.oe_esf ?? ''),
-      oe_cil: String(os.oe_cil ?? ''),
-      oe_eixo: String(os.oe_eixo ?? ''),
-      oe_adicao: String(os.oe_adicao ?? ''),
-      oe_dnp: String(os.oe_dnp ?? ''),
+      od_esf: fmtRx(os.od_esf, 'esf'),
+      od_cil: fmtRx(os.od_cil, 'cil'),
+      od_eixo: fmtRx(os.od_eixo, 'eixo'),
+      od_adicao: fmtRx(os.od_adicao, 'adicao'),
+      od_dnp: os.od_dnp != null ? String(os.od_dnp) : '',
+      oe_esf: fmtRx(os.oe_esf, 'esf'),
+      oe_cil: fmtRx(os.oe_cil, 'cil'),
+      oe_eixo: fmtRx(os.oe_eixo, 'eixo'),
+      oe_adicao: fmtRx(os.oe_adicao, 'adicao'),
+      oe_dnp: os.oe_dnp != null ? String(os.oe_dnp) : '',
       dp_total: os.dp_total || '',
       entrada: os.entrada || 0,
       discount: os.discount || 0,
@@ -230,6 +230,12 @@ export default function OrdemServicoPage() {
     ).slice(0, 10);
   }, [prodSearch, products]);
 
+  const parseRxNum = (v: any): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseFloat(String(v).replace(',', '.'));
+    return isNaN(n) ? null : n;
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.customer_name.trim()) { toast.error('Informe o cliente'); return; }
@@ -242,16 +248,16 @@ export default function OrdemServicoPage() {
         customer_name: form.customer_name,
         medico: form.medico || null,
         data_receita: form.data_receita || null,
-        od_esf: parseFloat(String(form.od_esf)) || null,
-        od_cil: parseFloat(String(form.od_cil)) || null,
-        od_eixo: parseFloat(String(form.od_eixo)) || null,
-        od_adicao: parseFloat(String(form.od_adicao)) || null,
-        od_dnp: parseFloat(String(form.od_dnp)) || null,
-        oe_esf: parseFloat(String(form.oe_esf)) || null,
-        oe_cil: parseFloat(String(form.oe_cil)) || null,
-        oe_eixo: parseFloat(String(form.oe_eixo)) || null,
-        oe_adicao: parseFloat(String(form.oe_adicao)) || null,
-        oe_dnp: parseFloat(String(form.oe_dnp)) || null,
+        od_esf: parseRxNum(form.od_esf),
+        od_cil: parseRxNum(form.od_cil),
+        od_eixo: parseRxNum(form.od_eixo),
+        od_adicao: parseRxNum(form.od_adicao),
+        od_dnp: parseRxNum(form.od_dnp),
+        oe_esf: parseRxNum(form.oe_esf),
+        oe_cil: parseRxNum(form.oe_cil),
+        oe_eixo: parseRxNum(form.oe_eixo),
+        oe_adicao: parseRxNum(form.oe_adicao),
+        oe_dnp: parseRxNum(form.oe_dnp),
         dp_total: form.dp_total || null,
         frame_price: 0, lens_price: 0, servicos_price: 0,
         total: totalCalculado,
