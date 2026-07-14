@@ -62,6 +62,22 @@ Sistema SaaS multi-tenant para oticas (gestao de clientes, vendas, OS, crediario
   document.body.style.overflow=hidden / document.documentElement.style.overflow=hidden.
   Ao fechar, reverte tudo.
 
+## Foto de Cliente e Produto (ClientesPage.tsx / ProdutosPage.tsx)
+- Ambas as telas tem botoes "Camera" e "Importar" no modal de cadastro/edicao.
+- NAO faz upload para Supabase Storage: a imagem e convertida em base64 via
+  FileReader.readAsDataURL() e salva diretamente no campo photo_url (text) da tabela
+  (customers.photo_url e products.photo_url).
+- ClientesPage usa capture="user" (camera frontal, padrao para fotografar a pessoa).
+- ProdutosPage usa capture="environment" (camera traseira, mais adequado para fotografar
+  um objeto/produto fisico).
+- O atributo capture so tem efeito em navegadores mobile (abre a camera direto). No
+  desktop/Windows, tanto "Camera" quanto "Importar" abrem o mesmo seletor de arquivos do
+  sistema operacional - isso e esperado, nao e bug.
+- A foto aparece na listagem (avatar circular em Clientes, thumbnail quadrado em Produtos)
+  sempre que photo_url estiver preenchido; senao, cai no fallback de iniciais/icone.
+- Coluna photo_url em products foi adicionada via:
+  alter table products add column if not exists photo_url text;
+
 ## Integracao Asaas (cobranca por inquilino)
 - Cada inquilino configura sua PROPRIA chave Asaas em Configuracoes -> Integracoes
   (campos: asaas_key, asaas_env [sandbox|production], asaas_enabled na tabela store_settings).
@@ -95,6 +111,17 @@ Sistema SaaS multi-tenant para oticas (gestao de clientes, vendas, OS, crediario
   simples (@'...'@) para conteudo com backtick, ou evitar backtick.
 - Cuidado com escaping: strings com aspas dentro de heredocs as vezes precisam de regex (re.sub)
   com \s* no lugar de espacos literais, pois a formatacao do codigo tem espacamento irregular.
+- Ao aplicar arquivos gerados pelo Claude, o padrao e baixar do chat e rodar:
+  Copy-Item "$env:USERPROFILE\Downloads\NomeDoArquivo.tsx" -Destination "src\caminho\NomeDoArquivo.tsx" -Force
+- O usuario as vezes trabalha em mais de uma maquina (ex: PC principal em C:\Users\computador,
+  notebook em D:\optiflow). Sempre confirmar em qual maquina/pasta esta antes de gerar comandos
+  de Copy-Item, pois o caminho do Downloads muda.
+- Para deploy: o projeto usa Vercel com deploy automatico a cada `git push origin main`
+  (nao precisa de nenhum comando de deploy manual). Fluxo padrao:
+  git add <arquivos especificos> (evitar `git add .` pra nao subir arquivos .backup_* soltos)
+  git commit -m "mensagem"
+  git push origin main
+  O deploy leva 1-3 minutos; confirmar testando em producao com Ctrl+Shift+R.
 
 ## Historico de Correcoes Aplicadas
 1. Layout Vendas/OS com Desconto, Entrada e Total separados (saldo devedor correto).
@@ -116,6 +143,13 @@ Sistema SaaS multi-tenant para oticas (gestao de clientes, vendas, OS, crediario
 - Trigger handle_new_user no Supabase cria user_profiles automaticamente para novos usuarios Auth. Se o email do admin for usado no /login, o trigger cria um perfil — deve ser deletado manualmente via SQL: delete from user_profiles where id = '<uid do admin>';
 - Site URL no Supabase deve ser https://app.visionproerp.com.br para que emails de reset de senha funcionem corretamente.
 - Redirect URLs no Supabase: https://app.visionproerp.com.br/** e http://localhost:5173/**
+- IMPORTANTE: o campo role do perfil do Admin em user_profiles precisa ser EXATAMENTE
+  'system_admin' (nao 'master' nem outro valor). O AuthContext so preserva o
+  admin_viewing_tenant do localStorage quando user.role === 'system_admin'; qualquer
+  outro valor faz o sistema apagar esse localStorage e cair de volta no tenant_id
+  proprio do perfil do admin, fazendo o Admin "ver como" a empresa errada ao clicar em
+  Acessar Loja. Se isso acontecer, corrigir com:
+  update user_profiles set role = 'system_admin' where email = 'carlosevideo28@gmail.com';
 
 ## CPF
 - Campo CPF no cadastro de clientes usa maskCPF() (src/utils/format.ts) para mascarar progressivamente sem padding de zeros.
@@ -152,6 +186,7 @@ Tipo VendaGrupo criado para acumular itens antes de inserir.
 ### Vendas sem filtro de data padrao
 VendasPage.tsx: dateFrom e dateTo iniciam vazios (antes iniciavam no primeiro dia do mes).
 Permite ver todas as 12.635+ vendas sem precisar limpar o filtro.
+(Ver tambem Sessao 13/Jul/2026 - a busca por nome/OS/ID agora ignora esse filtro de data.)
 
 ### Crediario - Desconto no pagamento
 Modal Receber Parcela: campo verde "Desconto (R$)" que subtrai do valor a pagar.
@@ -373,3 +408,100 @@ Solucao: trigger no banco que faz hash automaticamente antes de salvar.
   - clinica -> Premium (R$ 197/mes)
   - lancamento adicionado (R$ 110/mes)
   - Atualizado em: PLANS, PLAN_LABELS, PLAN_PRICES, PLAN_PRICES_MAP
+
+## Sessao 13/Jul/2026 - Bug do Admin, Login de Inquilino, Reconstrucao de Carnes, Baixar PDF e Foto de Produto
+
+### Bug: Admin "Acessar Loja" abria a empresa errada
+Sintoma: ao clicar em "Acessar Loja" em uma empresa no Painel Admin, o sistema abria sempre a
+Otica Solar, independente de qual empresa fosse clicada.
+Causa raiz: o role do perfil do admin (carlosevideo28@gmail.com) em user_profiles estava
+como 'master' em vez de 'system_admin'. O AuthContext so preserva o admin_viewing_tenant
+do localStorage quando user.role === 'system_admin' — com qualquer outro valor, essa linha
+apaga o localStorage na mesma renderizacao (if (user && user.role !== 'system_admin')
+localStorage.removeItem('admin_viewing_tenant')), fazendo o sistema cair de volta no
+tenant_id proprio do perfil do admin (que estava preso na Solar).
+Correcao: update user_profiles set role = 'system_admin' where email = 'carlosevideo28@gmail.com';
+(ver secao Autenticacao e Seguranca acima).
+
+### Bug: login da Otica do Povo falhando ("Invalid login credentials")
+Investigacao descartou tenant_id incorreto (estava correto) e usuario nao confirmado
+(email_confirmed_at preenchido). Causa mais provavel: senha incorreta. Resolvido resetando
+a senha diretamente no banco:
+  update auth.users set encrypted_password = crypt('NovaSenha', gen_salt('bf'))
+  where email = 'valeriadvideo@gmail.com';
+
+### Reconstrucao de 51 carnes de crediario ausentes
+Sintoma: vendas com payment_method='crediario' sem nenhum registro correspondente em
+crediario/crediario_parcelas (ex: venda da Rebecca Lima Cabral, Otica Solar).
+Diagnostico: 75 vendas do sistema inteiro estavam nessa situacao. Formula de reconstrucao
+validada com casos que ja funcionavam: valor da parcela = total / installments (total ja e
+o saldo devedor). Vencimento: nao ha como recuperar a data exata combinada com o cliente
+(e escolhida manualmente na venda, nao decorre da data da venda) - usado 30 dias apos a
+venda como estimativa, com nota no campo notes do crediario pedindo confirmacao com o
+cliente e ajuste manual (tela de Crediario ja tem icone de calendario para isso).
+Das 75, 51 tinham dados completos (total>0 e customer_id valido) e foram reconstruidas via
+SQL direto. As outras 24 (quase todas da Otica Evangelista, entre 01/06 e 19/06/2026) tinham
+subtotal/desconto/entrada/total todos zerados - nao sao o mesmo bug, ficaram pendentes de
+revisao do dono (possveis vendas de teste ou incompletas).
+
+### Novo utilitario central: src/utils/printDoc.ts
+Todas as telas do sistema que geravam impressao abrindo uma janela nova e chamando
+window.print() automaticamente foram migradas para um padrao unico: window.open() +
+barra fixa no topo com dois botoes, "Imprimir" e "Baixar PDF" (em vez de imprimir sozinho).
+
+Como funciona (abrirDocumentoImprimivel(opts)):
+- Recebe { title, filename, css, body, extraScripts?, windowFeatures? }.
+- Body deve vir SEM as tags <html>/<head>/<body> - so o conteudo.
+- Se o documento tiver mais de uma pagina fisica (ex: carne), cada pagina deve ser
+  envolvida em <div class="print-page">...</div>. Sem isso, o documento inteiro vira
+  uma pagina unica automaticamente no PDF.
+- O botao "Baixar PDF" carrega html2canvas + jsPDF via CDN (cdnjs.cloudflare.com) sob
+  demanda, dentro da propria janela do documento - nao precisa de nenhuma lib nova
+  instalada no projeto (mesmo padrao ja usado pelo carne para desenhar o QR Code do Pix).
+- CSS do utilitario forca #__pd_content e .print-page para width:210mm, garantindo que a
+  proporcao capturada pelo html2canvas bata com uma pagina A4 real.
+- Ao adaptar uma funcao de impressao existente para esse padrao: remover o
+  window.open()/win.document.write()/win.print() manual, extrair o CSS (sem as tags
+  <style>) e o HTML do body separadamente, e chamar abrirDocumentoImprimivel({...}) no
+  lugar. Scripts extras que precisem rodar apos abrir a janela (ex: gerar QR Code) vao
+  no campo extraScripts, usando a funcao __pd_loadScript ja definida internamente pelo
+  utilitario para carregar bibliotecas via CDN.
+
+Telas/documentos migrados nesta sessao (13 documentos ao todo, em 5 arquivos):
+- VendasPage.tsx: Comprovante, Carne, Instrumento de Divida, Quitacao.
+- CrediarioPage.tsx: Recibo parcial (imprimirReciboParcial), Comprovante de parcela
+  (imprimirCarneIndividual), Carne completo (imprimirCarneCompleto).
+- OrdemServicoPage.tsx: impressao da OS (printOS).
+- src/pages/consulta/AtendimentoPage.tsx: Ficha Clinica/Receituario (handlePrint) +
+  5 documentos em imprimirDocumento (Atestado, Laudo Optometrico, Declaracao, Termo de
+  Autorizacao, Encaminhamento).
+- ContratoPage.tsx: Contrato de Servicos (handlePrint).
+Pendente/nao verificado: o "Imprimir" do Receituario dentro de ClientesPage.tsx (dentro
+da aba Consultas, funcao inline no viewTab==='consultas') ainda usa o padrao antigo
+(window.open + win.print() direto) - nao foi migrado nesta sessao.
+
+### Bug: busca de vendas nao encontrava vendas fora do periodo de data selecionado
+Sintoma: o filtro de data em Vendas/PDV vem por padrao com "hoje". Ao digitar o nome de um
+cliente que so tem vendas em outras datas, a busca nao retornava nada (a venda existia, mas
+ficava escondida pelo filtro de data aplicado junto).
+Correcao em VendasPage.tsx (funcao filtered, useMemo): quando ha um termo de busca ativo
+(search.trim().length > 0), o filtro de dateFrom/dateTo passa a ser IGNORADO - a busca por
+nome/OS/ID sempre varre todas as vendas, independente do periodo selecionado na tela. Sem
+busca ativa, o filtro de data volta a funcionar normalmente (mostrando so o periodo, com
+"hoje" como padrao).
+
+### Foto de Produto (ProdutosPage.tsx)
+Adicionados os mesmos botoes "Camera" e "Importar" que ja existiam em ClientesPage, com o
+mesmo padrao de salvar a imagem como base64 direto no campo photo_url (ver secao "Foto de
+Cliente e Produto" acima). Requereu adicionar a coluna no banco:
+  alter table products add column if not exists photo_url text;
+A foto aparece como thumbnail quadrado na listagem de produtos, no lugar do icone generico
+de caixa, quando o produto tiver photo_url preenchido.
+Pendente: a busca de produto no PDV (VendasPage.tsx) e em OrdemServicoPage.tsx ainda nao
+mostra a foto do produto nas sugestoes de busca - só a listagem em /produtos foi ajustada.
+
+### Deploy
+Commit b824d0d (branch main): "Adiciona botao Baixar PDF em todas as impressoes; corrige
+busca de vendas para ignorar filtro de data; adiciona foto em produtos" - 7 arquivos
+alterados (6 modificados + src/utils/printDoc.ts novo). Deploy automatico via Vercel
+(git push origin main), confirmado funcionando em producao.
