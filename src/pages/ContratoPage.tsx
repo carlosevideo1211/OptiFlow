@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { abrirDocumentoImprimivel } from '../utils/printDoc';
 
 export default function ContratoPage() {
   const { tenantId } = useParams();
@@ -91,13 +92,15 @@ export default function ContratoPage() {
   };
 
   const handlePrint = () => {
-    const w = window.open('', '_blank');
-    if (!w) return;
-    const { data: contrato } = { data: null } as any;
-    w.document.write('<html><body style="font-family:Arial;padding:40px;max-width:800px;margin:0 auto">');
-    w.document.write(generateContractHtml(form, tenant, new Date().toISOString()));
-    w.document.write('</body></html>');
-    w.print();
+    const nome = form.company_name || tenant?.company_name || 'contrato';
+    const slug = nome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    abrirDocumentoImprimivel({
+      title: 'Contrato — ' + nome,
+      filename: 'contrato-' + slug + '.pdf',
+      css: 'body{font-family:Arial;padding:20px;max-width:800px;margin:0 auto}',
+      body: generateContractHtml(form, tenant, new Date().toISOString()),
+      windowFeatures: 'width=800,height=1000',
+    });
   };
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Carregando...</div>;

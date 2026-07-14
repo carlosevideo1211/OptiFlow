@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import {
   Plus, Search, Edit2, Package, AlertTriangle,
-  Download, Upload, Trash2, Layers, DollarSign, X, Save, CheckCircle
+  Download, Upload, Camera, Trash2, Layers, DollarSign, X, Save, CheckCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
@@ -17,11 +17,11 @@ interface Product {
   id: string; tenant_id: string; name: string; code?: string;
   category: string; brand?: string; description?: string;
   cost_price: number; sale_price: number; stock: number; min_stock: number; active: boolean;
-  created_at: string;
+  photo_url?: string; created_at: string;
 }
 
 function emptyForm() {
-  return { name:'', code:'', category:'Armação', brand:'', description:'', cost_price:0, sale_price:0, stock:0, min_stock:5, active:true };
+  return { name:'', code:'', category:'Armação', brand:'', description:'', cost_price:0, sale_price:0, stock:0, min_stock:5, active:true, photo_url:'' };
 }
 
 export default function ProdutosPage() {
@@ -65,7 +65,7 @@ export default function ProdutosPage() {
     setEditing(p);
     setForm({ name:p.name, code:p.code||'', category:p.category, brand:p.brand||'',
               description:p.description||'', cost_price:p.cost_price, sale_price:p.sale_price,
-              stock:p.stock, min_stock:p.min_stock, active:p.active });
+              stock:p.stock, min_stock:p.min_stock, active:p.active, photo_url:p.photo_url||'' });
     setShowModal(true);
   };
 
@@ -238,10 +238,14 @@ export default function ProdutosPage() {
                     <tr key={p.id}>
                       <td>
                         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                          <div style={{ width:32, height:32, borderRadius:8, background:'rgba(99,102,241,.15)',
-                            display:'flex', alignItems:'center', justifyContent:'center' }}>
-                            <Package size={16} style={{ color:'#6366f1' }}/>
-                          </div>
+                          {p.photo_url ? (
+                            <img src={p.photo_url} alt={p.name} style={{ width:32, height:32, borderRadius:8, objectFit:'cover', flexShrink:0 }}/>
+                          ) : (
+                            <div style={{ width:32, height:32, borderRadius:8, background:'rgba(99,102,241,.15)',
+                              display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                              <Package size={16} style={{ color:'#6366f1' }}/>
+                            </div>
+                          )}
                           <div>
                             <div style={{ fontWeight:500 }}>{p.name}</div>
                             {p.brand && <div style={{ fontSize:12, color:'var(--text-muted)' }}>{p.brand}{mg ? ' — '+mg+'% margem' : ''}</div>}
@@ -304,6 +308,28 @@ export default function ProdutosPage() {
             </div>
             <form onSubmit={handleSave}>
               <div className="modal-body">
+                {/* Foto do produto */}
+                <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:16 }}>
+                  <div style={{ width:72, height:72, borderRadius:12, overflow:'hidden', flexShrink:0,
+                    background:'rgba(99,102,241,.15)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    {form.photo_url ? (
+                      <img src={form.photo_url} alt="foto" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                    ) : (
+                      <Package size={28} style={{ color:'#6366f1' }}/>
+                    )}
+                  </div>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <label style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, background:'rgba(99,102,241,.15)', color:'#6366f1', fontSize:13, fontWeight:600, cursor:'pointer', border:'1px solid rgba(99,102,241,.3)' }}>
+                      <Camera size={15}/> Câmera
+                      <input type="file" accept="image/*" capture="environment" style={{ display:'none' }} onChange={e => { const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>set('photo_url',ev.target?.result as string); r.readAsDataURL(f); }}/>
+                    </label>
+                    <label style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, background:'rgba(255,255,255,.06)', color:'var(--text-muted)', fontSize:13, fontWeight:600, cursor:'pointer', border:'1px solid rgba(255,255,255,.1)' }}>
+                      <Upload size={15}/> Importar
+                      <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => { const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>set('photo_url',ev.target?.result as string); r.readAsDataURL(f); }}/>
+                    </label>
+                    {form.photo_url && <button type="button" onClick={() => set('photo_url','')} style={{ padding:'7px 10px', borderRadius:8, background:'rgba(248,113,113,.1)', color:'#f87171', border:'1px solid rgba(248,113,113,.3)', cursor:'pointer' }}><X size={14}/></button>}
+                  </div>
+                </div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
                   <div style={{ gridColumn:'1/-1' }}>
                     <label className="form-label">Nome *</label>

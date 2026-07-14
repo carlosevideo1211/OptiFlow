@@ -7,6 +7,7 @@ import {
   Save, Printer, ArrowLeft, CheckCircle, User, History
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { abrirDocumentoImprimivel } from '../../utils/printDoc';
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
 type Section =
@@ -463,9 +464,6 @@ export default function AtendimentoPage() {
 
   // ── imprimir documentos ─────────────────────────────────────────────────────
   const imprimirDocumento = (tipo: string) => {
-    const win = window.open('', '_blank');
-    if (!win) { toast.error('Permita pop-ups para imprimir'); return; }
-
     const nome = consultation?.customer_name ?? '';
     const prof = docProfissional || consultation?.professional_name || user?.full_name || '';
     const cpf = docCpf || consultation?.customer_cpf || '';
@@ -607,9 +605,15 @@ export default function AtendimentoPage() {
         ${rodapeDoc(cidade, dtCurta)}`;
     }
 
-    win.document.write(`<html><head><title>${tipo} — ${nome}</title>${styleDoc}</head><body>${body}</body></html>`);
-    win.document.close();
-    setTimeout(() => win.print(), 400);
+    const css = styleDoc.replace('<style>', '').replace('</style>', '');
+    const slug = (nome || 'paciente').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    abrirDocumentoImprimivel({
+      title: tipo + ' — ' + nome,
+      filename: tipo + '-' + slug + '.pdf',
+      css,
+      body,
+      windowFeatures: 'width=800,height=1000',
+    });
   };
 
   // ── salvar ──────────────────────────────────────────────────────────────────
@@ -732,8 +736,6 @@ export default function AtendimentoPage() {
     };
 
   const handlePrint = () => {
-    const win = window.open('', '_blank');
-    if (!win) return;
     const nome = consultation?.customer_name ?? '';
     const prof = docProfissional || consultation?.professional_name || '';
     const dt = date ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
@@ -743,9 +745,7 @@ export default function AtendimentoPage() {
     const linha = (label: string, valor: string) => valor ? `<tr><td class="lbl">${label}</td><td>${valor}</td></tr>` : '';
     const checks = (arr: string[]) => arr?.length ? arr.join(', ') : '—';
 
-    win.document.write(`
-      <html><head><title>Ficha Clínica — ${nome}</title>
-      <style>
+    const css = `
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; padding: 28px; color: #111; font-size: 12px; }
         h1 { text-align: center; font-size: 16px; margin-bottom: 2px; }
@@ -762,9 +762,9 @@ export default function AtendimentoPage() {
         .box-label { font-size: 10px; font-weight: 700; color: #666; text-transform: uppercase; margin-bottom: 3px; }
         .footer { margin-top: 40px; text-align: center; border-top: 1px solid #ccc; padding-top: 16px; }
         .assinatura { border-top: 1px solid #000; width: 220px; margin: 0 auto 4px; }
-        @media print { body { padding: 14px; } }
-      </style></head><body>
+      `;
 
+    const body = `
       <h1>FICHA CLÍNICA — OPTOMETRIA</h1>
       <div class="cabecalho">
         Paciente: <strong>${nome}</strong> &nbsp;|&nbsp;
@@ -838,11 +838,16 @@ export default function AtendimentoPage() {
         <div style="font-weight:700">${prof}</div>
         <div style="font-size:11px;color:#555;margin-top:2px">Optometrista</div>
       </div>
+    `;
 
-      </body></html>
-    `);
-    win.document.close();
-    win.print();
+    const slug = (nome || 'paciente').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    abrirDocumentoImprimivel({
+      title: 'Ficha Clínica — ' + nome,
+      filename: 'ficha-clinica-' + slug + '.pdf',
+      css,
+      body,
+      windowFeatures: 'width=800,height=1000',
+    });
   };
 
   function CheckGroup({ items, selected, onToggle }: { items: string[]; selected: string[]; onToggle: (v: string) => void }) {
