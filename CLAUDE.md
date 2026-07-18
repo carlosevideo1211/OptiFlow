@@ -505,3 +505,42 @@ Commit b824d0d (branch main): "Adiciona botao Baixar PDF em todas as impressoes;
 busca de vendas para ignorar filtro de data; adiciona foto em produtos" - 7 arquivos
 alterados (6 modificados + src/utils/printDoc.ts novo). Deploy automatico via Vercel
 (git push origin main), confirmado funcionando em producao.
+
+## Sessao 17-18/Jul/2026 - Bug critico: cliente pagante bloqueado apos 30 dias
+
+### Bug: Plano e Status dessincronizados bloqueavam cliente ja pago
+Sintoma: dois inquilinos pagaram (Pix, comprovante confirmado) e foram liberados manualmente
+no Painel Admin, mas apos ~30 dias voltaram a ver a tela de trial expirado. A propria tela
+de Admin tambem passou a piscar, caindo na tela de planos ao carregar.
+Causa raiz: no Painel Admin, "Plano" e "Status" eram dois campos independentes (dois
+<select> separados, cada um chamando updateField isoladamente). A verificacao de bloqueio em
+AuthContext.tsx so olhava tenant.plan === 'trial' (ignorava tenant.status). Ao liberar um
+cliente, o Status era trocado para "Ativo" mas o campo Plano continuava em "Trial" - o
+sistema so parecia funcionar enquanto trial_end_date nao vencia; ao vencer, o bloqueio
+disparava mesmo com o cliente pago (Status Ativo).
+
+### Correcao 1 - AuthContext.tsx (rede de seguranca)
+A condicao de expirado agora exige status E plan em 'trial' ao mesmo tempo:
+  const expired = tenant.status === 'trial' && tenant.plan === 'trial' && tenant.trial_end_date && new Date(tenant.trial_end_date) < new Date();
+Assim, mesmo que os campos fiquem dessincronizados de novo no futuro, um tenant com
+Status "Ativo" nunca e bloqueado, independente do campo Plano.
+
+### Correcao 2 - AdminPanelPage.tsx (updateField sincronizado)
+- Ao mudar o campo Plano para qualquer plano pago (diferente de 'trial' e 'cancelado'), o
+  Status e setado para 'ativo' automaticamente, com next_billing +30 dias, e o MRR calculado
+  via PLAN_PRICES_MAP - tudo na mesma acao.
+- Ao mudar o Plano para 'cancelado', o Status tambem vira 'cancelado' automaticamente.
+- Se alguem tentar mudar o Status para 'ativo' manualmente enquanto o Plano ainda esta em
+  'trial', a acao e BLOQUEADA com um toast de erro pedindo para selecionar o plano pago
+  primeiro (evita repetir o mesmo bug por esse caminho).
+
+### Dados corrigidos retroativamente
+Dois tenants estavam com Status Ativo e Plano preso em Trial (MRR contando R$0 errado):
+- Otica Solar (tenant 8ac30fca-4663-4bd3-8bca-122d18945443)
+- Otica Teste (tenant 378918f9-34fe-40ad-80c9-240dde5c10fe)
+Corrigidos via Painel Admin (dropdown Plano alterado para Lancamento - R$110/mes cada).
+MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
+
+### Confirmado
+- Tela de Admin parou de piscar/redirecionar para planos apos as correcoes.
+- Trava de bloqueio de ativacao sem plano pago testada e funcionando.

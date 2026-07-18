@@ -161,15 +161,30 @@ export default function AdminPanelPage() {
   const updateField = async (id: string, field: string, value: any) => {
     setUpdating(id);
     const updates: any = { [field]: value };
-    // Ao mudar plano, atualiza MRR automaticamente
+
+    // Ao mudar plano para um plano pago, ativa o status automaticamente
     if (field === 'plan') {
       updates.mrr_value = PLAN_PRICES_MAP[value] || 0;
+      if (value !== 'trial' && value !== 'cancelado') {
+        updates.status = 'ativo';
+        const nb = new Date(); nb.setDate(nb.getDate()+30);
+        updates.next_billing = nb.toISOString().split('T')[0];
+      }
+      if (value === 'cancelado') updates.status = 'cancelado';
     }
-    // Ao ativar, seta next_billing para 30 dias
+
+    // Ao ativar o status manualmente, garante que o plano nao fica preso em "trial"
     if (field === 'status' && value === 'ativo') {
+      const tenantAtual = tenants.find(t => t.id === id);
       const nb = new Date(); nb.setDate(nb.getDate()+30);
       updates.next_billing = nb.toISOString().split('T')[0];
+      if (tenantAtual && tenantAtual.plan === 'trial') {
+        toast.error('Selecione o plano pago antes de ativar (o campo Plano ainda esta em "Trial").', { duration: 5000 });
+        setUpdating(null);
+        return;
+      }
     }
+
     await supabase.from('tenants').update(updates).eq('id', id);
     setTenants(prev => prev.map(t => t.id===id ? {...t, ...updates} : t));
     setUpdating(null);

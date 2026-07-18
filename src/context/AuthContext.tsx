@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Verificar status do plano
         const { data: tenant } = await supabase.from('tenants').select('plan,status,trial_end_date').eq('id', data.tenant_id).maybeSingle();
         if (tenant) {
-          const expired = tenant.plan === 'trial' && tenant.trial_end_date && new Date(tenant.trial_end_date) < new Date();
+          const expired = tenant.status === 'trial' && tenant.plan === 'trial' && tenant.trial_end_date && new Date(tenant.trial_end_date) < new Date();
           const cancelled = tenant.status === 'cancelado' || tenant.plan === 'cancelado';
           if (expired || cancelled) {
             window.location.href = '/trial-expirado';
