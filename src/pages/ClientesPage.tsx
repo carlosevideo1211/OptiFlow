@@ -1,4 +1,4 @@
-﻿﻿﻿import { useState, useEffect, useMemo } from 'react';
+﻿﻿﻿﻿﻿import { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -675,22 +675,37 @@ export default function ClientesPage() {
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                       <thead><tr style={{borderBottom:'1px solid var(--border)'}}>
                         <th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Parc.</th>
+                        <th style={{padding:'3px 6px',textAlign:'left',color:'var(--text-muted)'}}>Vencimento</th>
+                        <th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Valor Parcela</th>
+                        <th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Juros</th>
                         <th style={{padding:'3px 6px',textAlign:'left',color:'var(--text-muted)'}}>Pago em</th>
-                        <th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Valor pago</th>
+                        <th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Total Pago</th>
                         <th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Tipo</th>
+                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Forma</th>
                         <th style={{padding:'3px 6px',textAlign:'left',color:'var(--text-muted)'}}>Operador</th>
                       </tr></thead>
-                      <tbody>{baixasDoCarne.map((b:any,k:number)=>(
+                      <tbody>{baixasDoCarne.map((b:any,k:number)=>{
+                        const formaLabel: Record<string,string> = { dinheiro: 'Dinheiro', cartao: 'Cartao', pix: 'Pix' };
+                        const parcelaRef = parcelas.find((pp:any)=>pp.id===b.parcela_id);
+                        const valorBase = Number(parcelaRef?.amount||0);
+                        const jurosCobrado = Math.max(0, Number(b.amount||0) - valorBase);
+                        const vencRef = parcelaRef?.due_date ? new Date(parcelaRef.due_date+'T00:00:00').toLocaleDateString('pt-BR') : '--';
+                        return (
                         <tr key={k} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
                           <td style={{padding:'3px 6px',textAlign:'center',fontWeight:600}}>{b.installment_number}/{cr.installments}</td>
+                          <td style={{padding:'3px 6px',color:'var(--text-muted)'}}>{vencRef}</td>
+                          <td style={{padding:'3px 6px',textAlign:'right'}}>{valorBase.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                          <td style={{padding:'3px 6px',textAlign:'right',color:jurosCobrado>0?'#f87171':'var(--text-muted)'}}>{jurosCobrado>0?jurosCobrado.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'--'}</td>
                           <td style={{padding:'3px 6px'}}>{b.paid_date?new Date(b.paid_date+'T12:00:00').toLocaleDateString('pt-BR'):'--'}</td>
                           <td style={{padding:'3px 6px',textAlign:'right',fontWeight:700,color:'#22c55e'}}>{Number(b.paid_amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
                           <td style={{padding:'3px 6px',textAlign:'center'}}>
                             <span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:b.is_partial?'rgba(251,191,36,.15)':'rgba(34,197,94,.15)',color:b.is_partial?'#fbbf24':'#22c55e'}}>{b.is_partial?'Parcial':'Total'}</span>
                           </td>
+                          <td style={{padding:'3px 6px',textAlign:'center'}}>{formaLabel[b.payment_method] || '--'}</td>
                           <td style={{padding:'3px 6px'}}>{b.operator_name||'--'}</td>
                         </tr>
-                      ))}</tbody>
+                        );
+                      })}</tbody>
                     </table>
                   </div>
                 );

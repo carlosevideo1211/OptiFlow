@@ -1,4 +1,4 @@
-﻿﻿﻿import { useState, useEffect, useMemo, useRef } from 'react';
+﻿﻿﻿﻿﻿﻿import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -24,7 +24,7 @@ interface Parcela {
   installment_number: number; due_date: string; amount: number;
   paid_at?: string; paid_amount?: number; status: string;
   customer_name?: string; customer_id?: string; whatsapp?: string;
-  total_installments?: number; sale_id?: string;
+  total_installments?: number; sale_id?: string; payment_method?: string;
 }
 
 const JUROS_DIA = 0.07;
@@ -60,7 +60,7 @@ export default function CrediarioPage() {
   const [editingValueParcela, setEditingValueParcela] = useState<string|null>(null);
   const [newValue, setNewValue] = useState('');
   const [newDate, setNewDate] = useState('');
-  const [payForm, setPayForm] = useState({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0' });
+  const [payForm, setPayForm] = useState({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0', payment_method: '' });
   const [payingSaving, setPayingSaving] = useState(false);
   const [renegoSaving, setRenegoSaving] = useState(false);
   const parcelaActionRef = useRef(false);
@@ -168,7 +168,7 @@ export default function CrediarioPage() {
 
   const pagarParcela = (p: Parcela) => {
     setSelectedParcela(p);
-    setPayForm({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0' });
+    setPayForm({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0', payment_method: '' });
     setShowPayModal(true);
   };
 
@@ -180,6 +180,7 @@ export default function CrediarioPage() {
     const p = selectedParcela;
     if (!payForm.operator_name.trim()) { toast.error('Informe o nome do operador'); return; }
     if (!payForm.operator_pass.trim()) { toast.error('Informe a senha do operador'); return; }
+    if (!payForm.payment_method) { toast.error('Selecione a forma de pagamento'); return; }
     const { data: funcs } = await supabase.from('funcionarios').select('id,name,access_password').eq('tenant_id', tenantId).ilike('name', payForm.operator_name.trim());
     if (!funcs || funcs.length === 0) { toast.error('Funcionario nao encontrado'); return; }
     const hashedOp = await hashPassword(payForm.operator_pass.trim());
@@ -195,13 +196,13 @@ export default function CrediarioPage() {
     setPayingSaving(true);
     try {
       const saldo = payForm.is_partial ? Math.round((total - pago) * 100) / 100 : 0;
-      await supabase.from('crediario_parcelas').update({ status: 'pago', paid_at: new Date().toISOString(), paid_amount: pago }).eq('id', p.id);
+      await supabase.from('crediario_parcelas').update({ status: 'pago', paid_at: new Date().toISOString(), paid_amount: pago, payment_method: payForm.payment_method }).eq('id', p.id);
       if (payForm.is_partial && saldo > 0) {
         await supabase.from('crediario_parcelas').insert([{ crediario_id: p.crediario_id, tenant_id: tenantId, installment_number: p.installment_number, due_date: payForm.partial_due_date, amount: saldo, status: 'aberta' }]);
       }
-      await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + ' - ' + p.customer_name, category: 'Crediario', amount: pago, due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: 'crediario' }]);
+      await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + ' - ' + p.customer_name, category: 'Crediario', amount: pago, due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: payForm.payment_method }]);
       // Corrigido 22/07/2026: havia uma gravacao duplicada aqui (mesmo insert rodava 2x a cada pagamento)
-      await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount+calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial?Math.round((p.amount+calcJuros(p)-pago)*100)/100:0, operator_name: funcs[0].name, paid_date: new Date().toISOString().split('T')[0] }]);
+      await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount+calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial?Math.round((p.amount+calcJuros(p)-pago)*100)/100:0, operator_name: funcs[0].name, paid_date: new Date().toISOString().split('T')[0], payment_method: payForm.payment_method }]);
       // Verificar se todas as parcelas do crediario estao pagas -> quitar
       if (!payForm.is_partial) {
         const { data: todasParcelas } = await supabase
@@ -414,6 +415,17 @@ export default function CrediarioPage() {
           <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Data do Pagamento</label>
           <input className="form-input" type="date" value={payForm.partial_due_date || new Date().toISOString().split('T')[0]}
             onChange={e=>setPayForm(f=>({...f,partial_due_date:e.target.value}))}/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Forma de Pagamento *</label>
+          <div style={{display:'flex',gap:8}}>
+            {[['dinheiro','Dinheiro'],['cartao','Cartao'],['pix','Pix']].map(([val,label]) => (
+              <button key={val} type="button" onClick={()=>setPayForm(f=>({...f,payment_method:val}))}
+                style={{flex:1,padding:'8px 10px',borderRadius:8,border:payForm.payment_method===val?'2px solid #6366f1':'1px solid var(--border)',background:payForm.payment_method===val?'rgba(99,102,241,.15)':'transparent',color:payForm.payment_method===val?'#6366f1':'var(--text-muted,#888)',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div style={{marginBottom:14}}>
           <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6,color:'#22c55e'}}>Desconto (R$)</label>
@@ -682,6 +694,11 @@ export default function CrediarioPage() {
                               {p.paid_at && (
                                 <span style={{ fontSize:10, color:'var(--text-muted)' }}>
                                   em {new Date(p.paid_at).toLocaleDateString('pt-BR')}
+                                </span>
+                              )}
+                              {p.payment_method && (
+                                <span style={{ fontSize:10, color:'#6366f1', fontWeight:600 }}>
+                                  {({ dinheiro: 'Dinheiro', cartao: 'Cartao', pix: 'Pix' } as Record<string,string>)[p.payment_method] || p.payment_method}
                                 </span>
                               )}
                             </div>

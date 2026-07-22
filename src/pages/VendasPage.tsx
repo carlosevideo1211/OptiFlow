@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -59,7 +59,9 @@ export default function VendasPage() {
   const [profissionais, setProfissionais] = useState<{id:string;name:string}[]>([]);
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
   const [loading, setLoading]     = useState(true);
-  const [tab, setTab]             = useState<'lista' | 'pdv'>('lista');
+  const [tab, setTab]             = useState<'lista' | 'pdv' | 'caixa'>('lista');
+  const [caixaData, setCaixaData] = useState<any[]>([]);
+  const [caixaLoading, setCaixaLoading] = useState(false);
   const [search, setSearch]       = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [vendedorFilter, setVendedorFilter] = useState('');
@@ -119,6 +121,44 @@ export default function VendasPage() {
     supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single()
       .then(({ data }) => { if (data) setStoreSettings(data as StoreSettings); });
   }, [tenantId]);
+
+  // Caixa do Dia - adicionado 22/07/2026, pedido da Larissa (Otica Evangelista Castanho).
+  // Fonte unica: financial_transactions, que ja recebe tanto a entrada/pagamento a vista
+  // de vendas quanto os pagamentos de parcelas do crediario (corrigido para usar a forma
+  // de pagamento real, nao mais fixo como 'crediario').
+  const loadCaixa = async () => {
+    if (!tenantId) return;
+    setCaixaLoading(true);
+    const hojeStr = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from('financial_transactions')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('type', 'receita')
+      .eq('status', 'pago')
+      .gte('paid_at', hojeStr + 'T00:00:00')
+      .lte('paid_at', hojeStr + 'T23:59:59')
+      .order('paid_at', { ascending: false });
+    setCaixaData(data || []);
+    setCaixaLoading(false);
+  };
+  useEffect(() => { if (tab === 'caixa' && tenantId) loadCaixa(); }, [tab, tenantId]);
+
+  const FORMA_LABELS: Record<string, { label: string; icon: string }> = {
+    dinheiro: { label: 'Dinheiro', icon: '💵' },
+    pix: { label: 'Pix', icon: '📱' },
+    cartao: { label: 'Cartão', icon: '💳' },
+    credito: { label: 'Cartão Crédito', icon: '💳' },
+    debito: { label: 'Cartão Débito', icon: '🏧' },
+    transferencia: { label: 'Transferência', icon: '🏦' },
+    boleto: { label: 'Boleto', icon: '📄' },
+  };
+  const caixaPorForma = useMemo(() => {
+    const map: Record<string, number> = {};
+    caixaData.forEach((t: any) => { const k = t.payment_method || 'outro'; map[k] = (map[k] || 0) + Number(t.amount || 0); });
+    return map;
+  }, [caixaData]);
+  const caixaTotal = caixaData.reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
 
   const totalPeriodo = sales.reduce((s, v) => s + (v.status === 'concluida' ? v.total : 0), 0);
   const ticketMed    = sales.filter(v => v.status === 'concluida').length ? totalPeriodo / sales.filter(v => v.status === 'concluida').length : 0;
@@ -481,7 +521,7 @@ export default function VendasPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border)' }}>
-        {[{ k: 'lista', l: '📋 Lista de Vendas' }, { k: 'pdv', l: '🛒 PDV — Nova Venda' }].map(t => (
+        {[{ k: 'lista', l: '📋 Lista de Vendas' }, { k: 'pdv', l: '🛒 PDV — Nova Venda' }, { k: 'caixa', l: '🧾 Caixa do Dia' }].map(t => (
           <button key={t.k} onClick={() => setTab(t.k as any)} style={{ padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: tab === t.k ? '#6366f1' : 'var(--text-muted)', borderBottom: tab === t.k ? '2px solid #6366f1' : '2px solid transparent', transition: 'all .15s' }}>
             {t.l}
           </button>
@@ -591,6 +631,75 @@ export default function VendasPage() {
               </div>
             )}
         </>
+      )}
+
+      {tab === 'caixa' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Caixa do Dia</h2>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 0' }}>{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+            </div>
+            <button className="btn btn-secondary" onClick={loadCaixa}>🔄 Atualizar</button>
+          </div>
+
+          {caixaLoading ? (
+            <div className="empty-state"><p>Carregando...</p></div>
+          ) : caixaData.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon"><Receipt size={40} /></div>
+              <h3>Nenhum recebimento hoje ainda.</h3>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 20 }}>
+                {Object.entries(caixaPorForma).map(([forma, valor]) => {
+                  const info = FORMA_LABELS[forma] || { label: forma, icon: '💰' };
+                  return (
+                    <div key={forma} className="card" style={{ padding: 16, borderTop: '3px solid #6366f1' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>{info.icon} {info.label}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#22c55e' }}>{formatBRL(valor)}</div>
+                    </div>
+                  );
+                })}
+                <div className="card" style={{ padding: 16, borderTop: '3px solid #22c55e', background: 'rgba(34,197,94,.06)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>TOTAL DO DIA</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: '#22c55e' }}>{formatBRL(caixaTotal)}</div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left' }}>Hora</th>
+                        <th style={{ textAlign: 'left' }}>Descrição</th>
+                        <th style={{ textAlign: 'left' }}>Categoria</th>
+                        <th style={{ textAlign: 'center' }}>Forma</th>
+                        <th style={{ textAlign: 'right' }}>Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {caixaData.map((t: any) => {
+                        const info = FORMA_LABELS[t.payment_method] || { label: t.payment_method || '--', icon: '' };
+                        return (
+                          <tr key={t.id}>
+                            <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t.paid_at ? new Date(t.paid_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--'}</td>
+                            <td style={{ fontSize: 13 }}>{t.description}</td>
+                            <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t.category || '--'}</td>
+                            <td style={{ textAlign: 'center', fontSize: 12 }}>{info.icon} {info.label}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>{formatBRL(Number(t.amount || 0))}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {tab === 'pdv' && (
