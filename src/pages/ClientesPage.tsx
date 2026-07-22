@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+﻿﻿﻿import { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -30,6 +30,14 @@ function fmtGrau(v: any, tipo: string = 'esf'): string {
   return (n >= 0 ? '+' : '-') + abs;
 }
 
+// Divide um array em lotes menores - evita clausulas IN gigantes (milhares de IDs de uma vez),
+// que estavam causando falha de conexao (net::ERR_CONNECTION_RESET/CLOSED) - corrigido 22/07/2026
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export default function ClientesPage() {
   const { tenantId } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -50,27 +58,33 @@ export default function ClientesPage() {
 
   const [rankings, setRankings] = useState<Record<string, string|null>>({});
   const [viewTab, setViewTab] = useState('dados');
-  const [viewHist, setViewHist] = useState<any>({v:[],o:[],c:[],cr:[]});
+  const [viewHist, setViewHist] = useState<any>({v:[],o:[],c:[],cr:[],bx:[]});
 
   // Calcular ranking de cada cliente baseado no historico de parcelas
   const calcRankings = async (ids: string[], tid: string) => {
     if (!ids.length) return;
-    // Buscar crediarios dos clientes
-    const { data: creds } = await supabase
-      .from('crediario')
-      .select('id, customer_id')
-      .eq('tenant_id', tid)
-      .in('customer_id', ids);
-    if (!creds || !creds.length) return;
+    const CHUNK_SIZE = 200;
+    // Buscar crediarios dos clientes - em lotes de 200 IDs, TODOS EM PARALELO (Promise.all).
+    // Corrigido 22/07/2026: a versao anterior rodava os lotes um de cada vez (sequencial),
+    // o que com ~25 lotes ficava tao lento quanto a consulta unica que falhava antes.
+    const credsBatches = await Promise.all(
+      chunkArray(ids, CHUNK_SIZE).map(batch =>
+        supabase.from('crediario').select('id, customer_id').eq('tenant_id', tid).in('customer_id', batch)
+      )
+    );
+    const creds: any[] = credsBatches.flatMap(r => r.data || []);
+    if (!creds.length) return;
     const credMap: Record<string, string> = {};
     creds.forEach((c: any) => { credMap[c.id] = c.customer_id; });
     const credIds = creds.map((c: any) => c.id);
-    // Buscar parcelas desses crediarios
-    const { data } = await supabase
-      .from('crediario_parcelas')
-      .select('crediario_id, due_date, status, paid_at')
-      .in('crediario_id', credIds);
-    if (!data) return;
+    // Buscar parcelas desses crediarios - tambem em lotes, tambem em paralelo
+    const parcelasBatches = await Promise.all(
+      chunkArray(credIds, CHUNK_SIZE).map(batch =>
+        supabase.from('crediario_parcelas').select('crediario_id, due_date, status, paid_at').in('crediario_id', batch)
+      )
+    );
+    const data: any[] = parcelasBatches.flatMap(r => r.data || []);
+    if (!data.length) return;
     const map: Record<string, string[]> = {};
     data.forEach((p: any) => {
       const cid = credMap[p.crediario_id];
@@ -175,13 +189,26 @@ export default function ClientesPage() {
     setEditing(null);
     setViewing(c);
     setViewTab('dados');
-    setViewHist({v:[],o:[],c:[],cr:[]});
+    setViewHist({v:[],o:[],c:[],cr:[],bx:[]});
     if (tenantId) Promise.all([
       supabase.from('sales').select('sale_number,total,subtotal,discount,payment_method,installments,created_at,status,entrada,sale_items(description,quantity,unit_price,total)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('service_orders').select('os_number,status,total,discount,created_at,delivery_date,frame_brand,frame_model,lens_type,lens_brand,od_esf,od_cil,od_eixo,od_adicao,od_dnp,oe_esf,oe_cil,oe_eixo,oe_adicao,oe_dnp,entrada,notes,sales(id,sale_items(description,quantity,unit_price,total))').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('consultations').select('id,date,professional_name,notes,rx_re_esf,rx_re_cil,rx_re_eixo,rx_re_dnp,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_dnp,rx_adicao').eq('tenant_id',tenantId).eq('customer_id',c.id).order('date',{ascending:false}).limit(15),
-      supabase.from('crediario').select('total_amount,installments,status,created_at,crediario_parcelas(installment_number,due_date,amount,paid_amount,status)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
-    ]).then(([v,o,co,cr])=>setViewHist({v:v.data||[],o:o.data||[],c:co.data||[],cr:cr.data||[]}));
+      supabase.from('crediario').select('total_amount,installments,status,created_at,crediario_parcelas(id,installment_number,due_date,amount,paid_amount,status)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
+    ]).then(async ([v,o,co,cr])=>{
+      const crData = cr.data || [];
+      // Historico de pagamentos (baixas_log) - adicionado 22/07/2026, pedido da Larissa (Otica Evangelista Castanho)
+      const parcelaIds: string[] = [];
+      crData.forEach((crItem: any) => {
+        (crItem.crediario_parcelas || []).forEach((p: any) => { if (p.id) parcelaIds.push(p.id); });
+      });
+      let baixas: any[] = [];
+      if (parcelaIds.length > 0) {
+        const { data: bx } = await supabase.from('baixas_log').select('*').in('parcela_id', parcelaIds).order('paid_date', { ascending: false });
+        baixas = bx || [];
+      }
+      setViewHist({v:v.data||[],o:o.data||[],c:co.data||[],cr:crData,bx:baixas});
+    });
     setShowModal(true);
   };
 
@@ -638,6 +665,36 @@ export default function ClientesPage() {
                   return <tr key={j} style={{borderBottom:'1px solid rgba(255,255,255,0.05)',background:atrasada?'rgba(248,113,113,.05)':'transparent'}}><td style={{padding:'3px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{cr.installments}</td><td style={{padding:'3px 6px',color:atrasada?'#f87171':'var(--text-muted)'}}>{venc.toLocaleDateString('pt-BR')}{atrasada?' ⚠️':''}</td><td style={{padding:'3px 6px',textAlign:'right'}}>{Number(p.paid_amount||p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'3px 6px',textAlign:'center'}}><span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(251,191,36,.15)',color:p.status==='pago'?'#22c55e':atrasada?'#f87171':'#fbbf24'}}>{p.status==='pago'?'Pago':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
                 })}</tbody>
               </table>}
+              {(() => {
+                const parcelaIdsDoCarne = new Set(parcelas.map((pp:any)=>pp.id));
+                const baixasDoCarne = (viewHist.bx||[]).filter((b:any)=>parcelaIdsDoCarne.has(b.parcela_id));
+                if (baixasDoCarne.length === 0) return null;
+                return (
+                  <div style={{marginTop:12,paddingTop:10,borderTop:'1px dashed var(--border)'}}>
+                    <div style={{fontSize:11,fontWeight:700,color:'var(--text-muted)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.5px'}}>Historico de Pagamentos</div>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                      <thead><tr style={{borderBottom:'1px solid var(--border)'}}>
+                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Parc.</th>
+                        <th style={{padding:'3px 6px',textAlign:'left',color:'var(--text-muted)'}}>Pago em</th>
+                        <th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Valor pago</th>
+                        <th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Tipo</th>
+                        <th style={{padding:'3px 6px',textAlign:'left',color:'var(--text-muted)'}}>Operador</th>
+                      </tr></thead>
+                      <tbody>{baixasDoCarne.map((b:any,k:number)=>(
+                        <tr key={k} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+                          <td style={{padding:'3px 6px',textAlign:'center',fontWeight:600}}>{b.installment_number}/{cr.installments}</td>
+                          <td style={{padding:'3px 6px'}}>{b.paid_date?new Date(b.paid_date+'T12:00:00').toLocaleDateString('pt-BR'):'--'}</td>
+                          <td style={{padding:'3px 6px',textAlign:'right',fontWeight:700,color:'#22c55e'}}>{Number(b.paid_amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                          <td style={{padding:'3px 6px',textAlign:'center'}}>
+                            <span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:b.is_partial?'rgba(251,191,36,.15)':'rgba(34,197,94,.15)',color:b.is_partial?'#fbbf24':'#22c55e'}}>{b.is_partial?'Parcial':'Total'}</span>
+                          </td>
+                          <td style={{padding:'3px 6px'}}>{b.operator_name||'--'}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>;
         })}</div>}
               </div>}

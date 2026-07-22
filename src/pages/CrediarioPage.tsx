@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+﻿﻿﻿import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -200,8 +200,8 @@ export default function CrediarioPage() {
         await supabase.from('crediario_parcelas').insert([{ crediario_id: p.crediario_id, tenant_id: tenantId, installment_number: p.installment_number, due_date: payForm.partial_due_date, amount: saldo, status: 'aberta' }]);
       }
       await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + ' - ' + p.customer_name, category: 'Crediario', amount: pago, due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: 'crediario' }]);
+      // Corrigido 22/07/2026: havia uma gravacao duplicada aqui (mesmo insert rodava 2x a cada pagamento)
       await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount+calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial?Math.round((p.amount+calcJuros(p)-pago)*100)/100:0, operator_name: funcs[0].name, paid_date: new Date().toISOString().split('T')[0] }]);
-      await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount + calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial ? Math.round((p.amount+calcJuros(p)-pago)*100)/100 : 0, operator_name: funcs[0].name, paid_date: new Date().toISOString().split('T')[0] }]);
       // Verificar se todas as parcelas do crediario estao pagas -> quitar
       if (!payForm.is_partial) {
         const { data: todasParcelas } = await supabase
@@ -220,7 +220,6 @@ export default function CrediarioPage() {
         imprimirReciboParcial(p, pago, funcs[0].name);
       }
       setShowPayModal(false);
-      load();
       load();
     } catch(e: any) { toast.error(e.message || 'Erro'); }
     finally { setPayingSaving(false); }
@@ -268,6 +267,23 @@ export default function CrediarioPage() {
     const nP2 = p.total_installments || '?';
     const venc = p.due_date ? fmtD2(p.due_date) : '--';
     const hoje = new Date().toLocaleDateString('pt-BR');
+    // Corrigido 22/07/2026: recibo estava imprimindo p.amount (valor base sem juros),
+    // ignorando tanto o juros por atraso quanto o valor efetivamente pago (paid_amount).
+    const parcelaPaga = p.status === 'pago';
+    const valorRecibo = parcelaPaga
+      ? (p.paid_amount != null ? p.paid_amount : p.amount)
+      : (p.amount + calcJuros(p));
+    // Adicionado 22/07/2026: descricao do valor original + juros/ajustes no recibo
+    const jurosCalc = parcelaPaga
+      ? Math.round((valorRecibo - p.amount) * 100) / 100
+      : calcJuros(p);
+    const breakdownHtml = jurosCalc !== 0
+      ? '<div class="breakdown">'
+        + '<div class="brow"><span>Valor original da parcela</span><span>'+fmtV(p.amount)+'</span></div>'
+        + '<div class="brow"><span>'+(parcelaPaga ? 'Juros / ajustes' : 'Juros por atraso')+'</span><span>'+fmtV(jurosCalc)+'</span></div>'
+        + '<div class="brow total"><span>Total</span><span>'+fmtV(valorRecibo)+'</span></div>'
+        + '</div>'
+      : '';
     // Buscar dados da loja do Supabase
     let storeName = 'OPTIFLOW';
     let storeCnpj = '';
@@ -300,6 +316,9 @@ export default function CrediarioPage() {
       +'.value-box{text-align:center;border:2px solid #1e3a5f;border-radius:8px;padding:16px;margin:20px 0}'
       +'.value-label{font-size:12px;color:#666;margin-bottom:4px}'
       +'.value-amount{font-size:32px;font-weight:800;color:#1e3a5f}'
+      +'.breakdown{border:1px solid #ddd;border-radius:8px;padding:10px 14px;margin:16px 0;font-size:12px}'
+      +'.brow{display:flex;justify-content:space-between;padding:3px 0}'
+      +'.brow.total{border-top:1px solid #ccc;margin-top:4px;padding-top:6px;font-weight:700}'
       +'.footer{margin-top:40px;text-align:center;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:14px}'
       +'.sig{display:flex;justify-content:space-around;margin-top:50px}'
       +'.sig-line{text-align:center;width:200px}'
@@ -313,9 +332,10 @@ export default function CrediarioPage() {
       +'<div class="title">Recibo de Pagamento de Parcela</div>'
       +'<table class="table"><thead><tr><th>Parcela</th><th>Cliente</th><th>Vencimento</th><th>Emissão</th></tr></thead>'
       +'<tbody><tr><td>'+pNum+'/'+nP2+'</td><td>'+p.customer_name+'</td><td>'+venc+'</td><td>'+hoje+'</td></tr></tbody></table>'
+      +breakdownHtml
       +'<div class="value-box">'
-      +'<div class="value-label">VALOR DA PARCELA</div>'
-      +'<div class="value-amount">'+fmtV(p.amount)+'</div>'
+      +'<div class="value-label">'+(parcelaPaga ? 'VALOR TOTAL PAGO' : 'VALOR DA PARCELA')+'</div>'
+      +'<div class="value-amount">'+fmtV(valorRecibo)+'</div>'
       +'</div>'
       +'<p style="font-size:11px;color:#888;text-align:center;">O não pagamento acarretará juros de R$ 0,07 ao dia. Pagável somente na loja de origem.</p>'
       +'<div class="sig">'
@@ -657,7 +677,14 @@ export default function CrediarioPage() {
                         </td>
                         <td style={{ textAlign:'center' }}>
                           {pago ? (
-                            <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(34,197,94,.15)', color:'#22c55e' }}>Paga</span>
+                            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                              <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(34,197,94,.15)', color:'#22c55e' }}>Paga</span>
+                              {p.paid_at && (
+                                <span style={{ fontSize:10, color:'var(--text-muted)' }}>
+                                  em {new Date(p.paid_at).toLocaleDateString('pt-BR')}
+                                </span>
+                              )}
+                            </div>
                           ) : vencida ? (
                             <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(248,113,113,.15)', color:'#f87171' }}>Vencida</span>
                           ) : (
