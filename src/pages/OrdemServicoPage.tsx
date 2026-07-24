@@ -1,16 +1,17 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+﻿import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import {
   Plus, Search, Edit2, Eye, ClipboardList,
   Clock, CheckCircle, Truck, Package, X, Save,
-  Download, Trash2, Printer, Circle, User, ShoppingBag
+  Download, Trash2, Printer, Circle, User, ShoppingBag, CreditCard
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL, formatDate } from '../types/index';
 import { norm } from '../utils/normalize';
 import { abrirDocumentoImprimivel } from '../utils/printDoc';
+import VitrineLentes from '../components/VitrineLentes';
 
 const STATUS_LIST = [
   { value:'orcamento',  label:'Orçamento',        color:'#94a3b8', bg:'rgba(148,163,184,.15)' },
@@ -23,6 +24,9 @@ const STATUS_LIST = [
 ];
 function getStatus(v: string) { return STATUS_LIST.find(s => s.value===v)||STATUS_LIST[0]; }
 
+const TIPOS_LENTE = ['Visão simples', 'Multifocal', 'Bifocal', 'Ocupacional'];
+const FORMAS_PAGAMENTO = ['Mastercard', 'Visa', 'Crediário', 'À vista', 'Pix'];
+
 function emptyForm() {
   return {
     customer_id:'', customer_name:'',
@@ -30,6 +34,7 @@ function emptyForm() {
     od_esf:'', od_cil:'', od_eixo:'', od_adicao:'', od_dnp:'',
     oe_esf:'', oe_cil:'', oe_eixo:'', oe_adicao:'', oe_dnp:'',
     dp_total:'',
+    tipo_lente:'', forma_pagamento:'',
     entrada:0, discount:0,
     delivery_date:'', obs_cliente:'', obs_lab:'',
     status:'orcamento', lab_name:'',
@@ -53,6 +58,7 @@ interface OS {
   od_esf?:number; od_cil?:number; od_eixo?:number; od_adicao?:number; od_dnp?:number;
   oe_esf?:number; oe_cil?:number; oe_eixo?:number; oe_adicao?:number; oe_dnp?:number;
   dp_total?:string; obs_lab?:string; obs_cliente?:string;
+  tipo_lente?:string; forma_pagamento?:string;
 }
 
 interface Product { id:string; name:string; category:string; brand?:string; sale_price:number; stock:number; }
@@ -96,6 +102,7 @@ export default function OrdemServicoPage() {
   const [showProdSug, setShowProdSug] = useState(false);
   const prodSearchRef = useRef<HTMLInputElement>(null);
   const avancandoRef = useRef(false);
+  const [showVitrine, setShowVitrine] = useState(false);
 
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
@@ -145,6 +152,7 @@ export default function OrdemServicoPage() {
     set('oe_adicao', fmtRx(c.rx_adicao, 'adicao'));
     set('oe_dnp', c.rx_le_dnp != null ? String(c.rx_le_dnp) : '');
     if (c.professional_name) set('medico', c.professional_name);
+    if (c.rx_tipo_lente) set('tipo_lente', c.rx_tipo_lente);
     toast.success('RX importado!');
   };
 
@@ -179,6 +187,8 @@ export default function OrdemServicoPage() {
       oe_adicao: fmtRx(os.oe_adicao, 'adicao'),
       oe_dnp: os.oe_dnp != null ? String(os.oe_dnp) : '',
       dp_total: os.dp_total || '',
+      tipo_lente: os.tipo_lente || '',
+      forma_pagamento: os.forma_pagamento || '',
       entrada: os.entrada || 0,
       discount: os.discount || 0,
       delivery_date: os.delivery_date || '',
@@ -260,6 +270,8 @@ export default function OrdemServicoPage() {
         oe_adicao: parseRxNum(form.oe_adicao),
         oe_dnp: parseRxNum(form.oe_dnp),
         dp_total: form.dp_total || null,
+        tipo_lente: form.tipo_lente || null,
+        forma_pagamento: form.forma_pagamento || null,
         frame_price: 0, lens_price: 0, servicos_price: 0,
         total: totalCalculado,
         discount: form.discount || 0,
@@ -368,20 +380,27 @@ export default function OrdemServicoPage() {
     color: color, display:'flex', alignItems:'center'
   });
 
+  // Impressão da OS de balcão — via única (reimprimir sempre que precisar de outra cópia)
   const printOS = async (os: OS) => {
-    // Buscar itens da OS
     const { data: itens } = await supabase.from('os_itens').select('*').eq('os_id', os.id).order('created_at');
-    const osItensData = itens || [];
+    const osItensData: OsItem[] = itens || [];
+
+    let customerFull: any = null;
+    if (os.customer_id) {
+      const { data: custData } = await supabase.from('customers').select('*').eq('id', os.customer_id).single();
+      customerFull = custData;
+    }
+
     const s = storeSettings;
-    const sName = (s?.name || 'OPTIFLOW').toUpperCase();
-    const sCnpj = s?.cnpj || '';
+    const sName = s?.name || 'OptiFlow';
     const sAddr = [s?.address, s?.city, s?.state].filter(Boolean).join(', ');
     const sTel = s?.phone || '';
     const sLogo = s?.logo_url || '';
-    const fmtD = (d: string) => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '--';
+
+    const fmtD = (d: string) => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '__/__/__';
     const fmtV = (n: number) => (n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
     const fmtRxVal = (v: any, tipo: string) => {
-      if (v === null || v === undefined || v === '') return '--';
+      if (v === null || v === undefined || v === '') return '';
       const n = parseFloat(String(v));
       if (isNaN(n)) return String(v);
       if (tipo === 'eixo') return String(Math.round(n));
@@ -389,9 +408,118 @@ export default function OrdemServicoPage() {
       const abs = Math.abs(n).toFixed(2).replace('.',',');
       return (n >= 0 ? '+' : '-') + abs;
     };
-    const STATUS_LABELS: Record<string,string> = {orcamento:'Orçamento',aprovado:'Aprovado',producao:'Em Produção',pronto:'Pronto',entregue:'Entregue',cancelado:'Cancelado',garantia:'Garantia'};
-    const css = '@page{size:A4;margin:12mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#222;font-size:13px}.header{text-align:center;padding-bottom:14px;border-bottom:2px solid #1e3a5f;margin-bottom:16px}.store-name{font-size:20px;font-weight:800;color:#1e3a5f}.store-info{font-size:11px;color:#555;margin-top:2px}.title{font-size:15px;font-weight:700;text-align:center;margin:14px 0;padding:8px;background:#1e3a5f;color:white;border-radius:4px}.section{margin-bottom:12px;padding:12px;border:1px solid #ddd;border-radius:6px}.section-title{font-size:11px;font-weight:700;color:#1e3a5f;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:4px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.field-label{color:#888;font-size:10px;text-transform:uppercase}.field-value{font-weight:600;font-size:12px;margin-top:1px}.rx-table{width:100%;border-collapse:collapse;font-size:11px}.rx-table th{background:#f0f4f8;padding:6px;text-align:center;font-weight:600;border:1px solid #ddd}.rx-table td{padding:6px;text-align:center;border:1px solid #ddd}.total-box{text-align:center;border:2px solid #1e3a5f;border-radius:8px;padding:12px;margin:14px 0}.total-value{font-size:26px;font-weight:800;color:#1e3a5f}.sig{display:flex;justify-content:space-around;margin-top:50px}.sig-line{text-align:center;width:200px}.sig-line hr{border:none;border-top:1px solid #333;margin-bottom:6px}';
-    const html = `<div class="header">${sLogo?`<img src="${sLogo}" style="max-height:60px;margin-bottom:6px"><br>`:''}<div class="store-name">${sName}</div>${sCnpj?`<div class="store-info">CNPJ: ${sCnpj}</div>`:''} ${sAddr?`<div class="store-info">${sAddr}</div>`:''} ${sTel?`<div class="store-info">Tel: ${sTel}</div>`:''}</div><div class="title">ORDEM DE SERVIÇO #${os.os_number}</div><div class="section"><div class="section-title">Dados</div><div class="grid2"><div><div class="field-label">Cliente</div><div class="field-value">${os.customer_name}</div></div><div><div class="field-label">Status</div><div class="field-value">${STATUS_LABELS[os.status]||os.status}</div></div><div><div class="field-label">Entrada</div><div class="field-value">${fmtD(os.created_at?.split('T')[0]||'')}</div></div><div><div class="field-label">Entrega</div><div class="field-value">${fmtD(os.delivery_date||'')}</div></div></div></div>${(os.od_esf||os.oe_esf)?`<div class="section"><div class="section-title">Receitário</div><table class="rx-table"><tr><th>Olho</th><th>ESF</th><th>CIL</th><th>EIXO</th><th>Adição</th></tr><tr><td>OD</td><td>${fmtRxVal(os.od_esf,'esf')}</td><td>${fmtRxVal(os.od_cil,'cil')}</td><td>${fmtRxVal(os.od_eixo,'eixo')}</td><td>${fmtRxVal(os.od_adicao,'adicao')}</td></tr><tr><td>OE</td><td>${fmtRxVal(os.oe_esf,'esf')}</td><td>${fmtRxVal(os.oe_cil,'cil')}</td><td>${fmtRxVal(os.oe_eixo,'eixo')}</td><td>${fmtRxVal(os.oe_adicao,'adicao')}</td></tr></table>${os.medico?`<div style="margin-top:8px"><div class="field-label">Médico</div><div class="field-value">${os.medico}</div></div>`:''}</div>`:''}<div class="section"><div class="section-title">Observações</div><div style="font-size:12px;min-height:30px">${os.notes||'—'}</div></div>${osItensData.length>0?`<div class="section"><div class="section-title">Produtos e Servicos</div><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="background:#f0f4f8"><th style="padding:5px 8px;text-align:left;border:1px solid #ddd">Item</th><th style="padding:5px 8px;text-align:center;border:1px solid #ddd">Qtd</th><th style="padding:5px 8px;text-align:right;border:1px solid #ddd">Unit.</th><th style="padding:5px 8px;text-align:right;border:1px solid #ddd">Total</th></tr>${osItensData.map(it=>`<tr><td style="padding:5px 8px;border:1px solid #eee">${it.descricao||''}</td><td style="padding:5px 8px;text-align:center;border:1px solid #eee">${it.quantidade||1}</td><td style="padding:5px 8px;text-align:right;border:1px solid #eee">${fmtV(it.valor_unitario||0)}</td><td style="padding:5px 8px;text-align:right;border:1px solid #eee">${fmtV(it.valor_total||0)}</td></tr>`).join('')}</table></div>`:''}<div class="total-box"><div class="field-label">VALOR TOTAL</div><div class="total-value">${fmtV(os.total||0)}</div>${os.entrada?`<div style="display:flex;justify-content:center;gap:32px;margin-top:8px"><div><div class="field-label">Entrada paga</div><div style="font-size:14px;font-weight:700;color:#22c55e">${fmtV(os.entrada)}</div></div><div><div class="field-label">Saldo restante</div><div style="font-size:14px;font-weight:700;color:#f59e0b">${fmtV((os.total||0)-(os.entrada||0))}</div></div></div>`:''}</div><div class="sig"><div class="sig-line"><hr><span style="font-size:12px">${os.customer_name}</span><br><span style="font-size:10px;color:#888">Assinatura do Cliente</span></div><div class="sig-line"><hr><span style="font-size:12px">${sName}</span><br><span style="font-size:10px;color:#888">Assinatura da Empresa</span></div></div>`;
+
+    // Não tentamos adivinhar qual item é "armação" ou "lente" por palavra-chave no nome do produto
+    // (nomes reais como "Mf Foto Blu" não contêm essas palavras) — listamos os itens como estão.
+
+    const css = `
+      @page{size:A4;margin:12mm}
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:Arial,sans-serif;color:#1a1a1a;font-size:12px}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1e3a5f;padding-bottom:12px;margin-bottom:14px}
+      .store-block{display:flex;gap:10px;align-items:center}
+      .store-name{font-size:18px;font-weight:800;color:#1e3a5f}
+      .store-info{font-size:10.5px;color:#555;margin-top:2px}
+      .os-box{text-align:right}
+      .os-num{font-size:16px;font-weight:800;color:#1e3a5f}
+      .field-label{color:#888;font-size:9px;text-transform:uppercase;letter-spacing:.02em}
+      .field-value{font-weight:600;font-size:12px;margin-top:1px}
+      .section{margin-bottom:12px}
+      .section-title{font-size:10px;font-weight:700;color:#1e3a5f;text-transform:uppercase;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:3px}
+      .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+      .rx-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px}
+      .rx-table th{background:#f0f4f8;padding:6px;text-align:center;font-weight:600;border:1px solid #ddd}
+      .rx-table td{padding:9px 6px;text-align:center;border:1px solid #ddd}
+      .itens-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px}
+      .itens-table th{background:#f0f4f8;padding:6px 8px;text-align:left;border:1px solid #ddd}
+      .itens-table td{padding:7px 8px;border:1px solid #ddd}
+      .pagamento{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+      .forma-chip{border:1px solid #ccc;border-radius:5px;padding:5px 12px;font-size:11px;color:#999}
+      .forma-chip.ativa{border:2px solid #1e3a5f;background:#eaf1f8;color:#1e3a5f;font-weight:700}
+      .total-box{display:flex;justify-content:flex-end;border-top:2px solid #1e3a5f;padding-top:8px;margin-top:8px}
+      .total-value{font-size:20px;font-weight:800;color:#1e3a5f}
+      .obs-box{border:1px solid #ddd;border-radius:6px;padding:8px 10px;font-size:11px;min-height:34px;margin-top:4px}
+      .sig{display:flex;justify-content:space-around;margin-top:36px}
+      .sig-line{text-align:center;width:220px}
+      .sig-line hr{border:none;border-top:1px solid #333;margin-bottom:6px}
+    `;
+
+    const html = `
+      <div class="header">
+        <div class="store-block">
+          ${sLogo ? `<img src="${sLogo}" style="max-height:50px">` : ''}
+          <div>
+            <div class="store-name">${sName}</div>
+            ${sAddr ? `<div class="store-info">${sAddr}</div>` : ''}
+            ${sTel ? `<div class="store-info">Tel: ${sTel}</div>` : ''}
+          </div>
+        </div>
+        <div class="os-box">
+          <div class="field-label">OS</div>
+          <div class="os-num">Nº ${String(os.os_number).padStart(6,'0')}</div>
+          <div class="field-label" style="margin-top:6px">Compra: ${fmtD(os.created_at?.split('T')[0]||'')}</div>
+          <div class="field-label">Entrega: ${fmtD(os.delivery_date||'')}</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Cliente</div>
+        <div class="grid2">
+          <div><div class="field-label">Nome</div><div class="field-value">${os.customer_name || ''}</div></div>
+          <div><div class="field-label">Telefone</div><div class="field-value">${customerFull?.phone || ''}</div></div>
+          <div><div class="field-label">CPF</div><div class="field-value">${customerFull?.cpf || ''}</div></div>
+          <div><div class="field-label">Data de nascimento</div><div class="field-value">${customerFull?.birth_date ? fmtD(customerFull.birth_date) : ''}</div></div>
+          <div><div class="field-label">Endereço</div><div class="field-value">${[customerFull?.address, customerFull?.city].filter(Boolean).join(', ')}</div></div>
+          <div><div class="field-label">CEP</div><div class="field-value">${customerFull?.cep || ''}</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Grau</div>
+        <table class="rx-table">
+          <tr><th></th><th>ESF</th><th>CIL</th><th>EIXO</th><th>ADIÇÃO</th><th>DNP</th></tr>
+          <tr><td>OD</td><td>${fmtRxVal(os.od_esf,'esf')}</td><td>${fmtRxVal(os.od_cil,'cil')}</td><td>${fmtRxVal(os.od_eixo,'eixo')}</td><td>${fmtRxVal(os.od_adicao,'adicao')}</td><td>${os.od_dnp ?? ''}</td></tr>
+          <tr><td>OE</td><td>${fmtRxVal(os.oe_esf,'esf')}</td><td>${fmtRxVal(os.oe_cil,'cil')}</td><td>${fmtRxVal(os.oe_eixo,'eixo')}</td><td>${fmtRxVal(os.oe_adicao,'adicao')}</td><td>${os.oe_dnp ?? ''}</td></tr>
+        </table>
+        ${os.medico ? `<div style="margin-top:6px"><span class="field-label">Médico/Optometrista: </span><span class="field-value">${os.medico}</span></div>` : ''}
+      </div>
+
+      <div class="section">
+        <div class="section-title">Armação e lente</div>
+        ${os.tipo_lente ? `<div style="margin-bottom:6px"><span class="field-label">Tipo de lente: </span><span class="field-value">${os.tipo_lente}</span></div>` : ''}
+        <table class="itens-table">
+          <tr><th>Descrição</th><th style="width:90px;text-align:right">Valor</th></tr>
+          ${osItensData.length > 0
+            ? osItensData.map(i => `<tr><td>${i.descricao||''}${i.quantidade>1?` (x${i.quantidade})`:''}</td><td style="text-align:right">${fmtV(i.valor_total)}</td></tr>`).join('')
+            : `<tr><td colspan="2" style="color:#999;text-align:center">Nenhum item lançado ainda</td></tr>`}
+        </table>
+        <div class="total-box">
+          <div style="display:flex;gap:28px;align-items:flex-end">
+            ${(os.discount||0) > 0 ? `<div style="text-align:right"><div class="field-label">Desconto</div><div style="font-size:13px;font-weight:700;color:#e24b4a">-${fmtV(os.discount)}</div></div>` : ''}
+            ${(os.entrada||0) > 0 ? `<div style="text-align:right"><div class="field-label">Entrada paga</div><div style="font-size:13px;font-weight:700;color:#639922">${fmtV(os.entrada)}</div></div>
+            <div style="text-align:right"><div class="field-label">Saldo restante</div><div style="font-size:13px;font-weight:700;color:#ba7517">${fmtV(Math.max(0,(os.total||0)-(os.entrada||0)))}</div></div>` : ''}
+            <div style="text-align:right"><div class="field-label">Total</div><div class="total-value">${fmtV(os.total||0)}</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Forma de pagamento</div>
+        <div class="pagamento">
+          ${FORMAS_PAGAMENTO.map(f => `<span class="forma-chip ${os.forma_pagamento===f?'ativa':''}">${f}</span>`).join('')}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Obs.</div>
+        <div class="obs-box">${os.obs_cliente || os.notes || ''}</div>
+      </div>
+
+      <div class="sig">
+        <div class="sig-line"><hr><span style="font-size:12px">${os.customer_name}</span><br><span style="font-size:10px;color:#888">Assinatura do cliente</span></div>
+        <div class="sig-line"><hr><span style="font-size:12px">${sName}</span><br><span style="font-size:10px;color:#888">Assinatura da loja</span></div>
+      </div>
+    `;
 
     abrirDocumentoImprimivel({
       title: 'OS #' + os.os_number,
@@ -533,6 +661,8 @@ export default function OrdemServicoPage() {
                   {[['Cliente',viewing.customer_name],['Status',getStatus(viewing.status).label],
                     ['Laboratório',viewing.lab_name||'—'],
                     ['Entrega',viewing.delivery_date?formatDate(viewing.delivery_date):'—'],
+                    ['Tipo de lente', viewing.tipo_lente||'—'],
+                    ['Forma de pagamento', viewing.forma_pagamento||'—'],
                     ['Desconto','-'+formatBRL(viewing.discount)],['TOTAL',formatBRL(viewing.total)],
                   ].map(([label,val]) => (
                     <div key={label+val} style={{ padding:'10px 14px', background:'var(--bg-card)', borderRadius:8 }}>
@@ -629,16 +759,30 @@ export default function OrdemServicoPage() {
                           </tr>
                         </tbody>
                       </table>
-                      <div style={{ marginTop:8 }}>
-                        <label className="form-label">DP Total</label>
-                        <input className="form-input" value={form.dp_total} onChange={e => set('dp_total', e.target.value)} style={{ width:120 }} placeholder="DP"/>
+                      <div style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:12, marginTop:8 }}>
+                        <div>
+                          <label className="form-label">DP Total</label>
+                          <input className="form-input" value={form.dp_total} onChange={e => set('dp_total', e.target.value)} placeholder="DP"/>
+                        </div>
+                        <div>
+                          <label className="form-label">Tipo de lente</label>
+                          <select className="form-input" value={form.tipo_lente} onChange={e => set('tipo_lente', e.target.value)}>
+                            <option value="">Selecione...</option>
+                            {TIPOS_LENTE.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   {/* PRODUTOS E SERVIÇOS */}
                   <div>
-                    <SectionTitle icon={<ShoppingBag size={15}/>} title="Produtos e Serviços" />
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <SectionTitle icon={<ShoppingBag size={15}/>} title="Produtos e Serviços" />
+                      <button type="button" className="btn btn-secondary" onClick={() => setShowVitrine(true)} style={{ fontSize:12, marginBottom:12 }}>
+                        Escolher lente na vitrine
+                      </button>
+                    </div>
                     <div style={{ position:'relative', marginBottom:12 }}>
                       <div style={{ position:'relative' }}>
                         <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)' }}/>
@@ -745,13 +889,36 @@ export default function OrdemServicoPage() {
                         <div style={{ fontSize:18, fontWeight:700, color:'#f87171' }}>{formatBRL(saldo)}</div>
                       </div>
                     </div>
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
                       {inp('Desconto (R$)','discount','number')}
                       <div>
                         <label className="form-label">Status</label>
                         <select className="form-input" value={form.status} onChange={e => set('status', e.target.value)}>
                           {STATUS_LIST.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="form-label" style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <CreditCard size={13}/> Forma de pagamento
+                      </label>
+                      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                        {FORMAS_PAGAMENTO.map(f => (
+                          <button
+                            key={f}
+                            type="button"
+                            onClick={() => set('forma_pagamento', f)}
+                            style={{
+                              padding:'7px 14px', borderRadius:8, fontSize:13, cursor:'pointer',
+                              border: form.forma_pagamento === f ? '2px solid #6366f1' : '1px solid var(--border)',
+                              background: form.forma_pagamento === f ? 'rgba(99,102,241,.12)' : 'transparent',
+                              color: form.forma_pagamento === f ? '#6366f1' : 'var(--text)',
+                              fontWeight: form.forma_pagamento === f ? 700 : 400,
+                            }}
+                          >
+                            {f}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -788,6 +955,17 @@ export default function OrdemServicoPage() {
             )}
           </div>
         </div>
+      )}
+      {showVitrine && (
+        <VitrineLentes
+          onClose={() => setShowVitrine(false)}
+          onConfirm={({ descricao, obsLab }) => {
+            setOsItens(prev => [...prev, { descricao, quantidade: 1, valor_unitario: 0, valor_total: 0 }]);
+            set('obs_lab', (form.obs_lab ? form.obs_lab + ' ' : '') + obsLab);
+            setShowVitrine(false);
+            toast.success('Lente adicionada. Ajuste o valor no item.');
+          }}
+        />
       )}
     </div>
   );
