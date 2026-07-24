@@ -11,7 +11,6 @@ import toast from 'react-hot-toast';
 import { formatBRL, formatDate } from '../types/index';
 import { norm } from '../utils/normalize';
 import { abrirDocumentoImprimivel } from '../utils/printDoc';
-import VitrineLentes from '../components/VitrineLentes';
 
 const STATUS_LIST = [
   { value:'orcamento',  label:'Orçamento',        color:'#94a3b8', bg:'rgba(148,163,184,.15)' },
@@ -102,7 +101,6 @@ export default function OrdemServicoPage() {
   const [showProdSug, setShowProdSug] = useState(false);
   const prodSearchRef = useRef<HTMLInputElement>(null);
   const avancandoRef = useRef(false);
-  const [showVitrine, setShowVitrine] = useState(false);
 
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
@@ -496,7 +494,7 @@ export default function OrdemServicoPage() {
         <div class="total-box">
           <div style="display:flex;gap:28px;align-items:flex-end">
             ${(os.discount||0) > 0 ? `<div style="text-align:right"><div class="field-label">Desconto</div><div style="font-size:13px;font-weight:700;color:#e24b4a">-${fmtV(os.discount)}</div></div>` : ''}
-            ${(os.entrada||0) > 0 ? `<div style="text-align:right"><div class="field-label">Entrada paga</div><div style="font-size:13px;font-weight:700;color:#639922">${fmtV(os.entrada)}</div></div>
+            ${(os.entrada||0) > 0 ? `<div style="text-align:right"><div class="field-label">Entrada paga</div><div style="font-size:13px;font-weight:700;color:#639922">${fmtV(os.entrada||0)}</div></div>
             <div style="text-align:right"><div class="field-label">Saldo restante</div><div style="font-size:13px;font-weight:700;color:#ba7517">${fmtV(Math.max(0,(os.total||0)-(os.entrada||0)))}</div></div>` : ''}
             <div style="text-align:right"><div class="field-label">Total</div><div class="total-value">${fmtV(os.total||0)}</div></div>
           </div>
@@ -777,12 +775,7 @@ export default function OrdemServicoPage() {
 
                   {/* PRODUTOS E SERVIÇOS */}
                   <div>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <SectionTitle icon={<ShoppingBag size={15}/>} title="Produtos e Serviços" />
-                      <button type="button" className="btn btn-secondary" onClick={() => setShowVitrine(true)} style={{ fontSize:12, marginBottom:12 }}>
-                        Escolher lente na vitrine
-                      </button>
-                    </div>
+                    <SectionTitle icon={<ShoppingBag size={15}/>} title="Produtos e Serviços" />
                     <div style={{ position:'relative', marginBottom:12 }}>
                       <div style={{ position:'relative' }}>
                         <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)' }}/>
@@ -955,17 +948,6 @@ export default function OrdemServicoPage() {
             )}
           </div>
         </div>
-      )}
-      {showVitrine && (
-        <VitrineLentes
-          onClose={() => setShowVitrine(false)}
-          onConfirm={({ descricao, obsLab }) => {
-            setOsItens(prev => [...prev, { descricao, quantidade: 1, valor_unitario: 0, valor_total: 0 }]);
-            set('obs_lab', (form.obs_lab ? form.obs_lab + ' ' : '') + obsLab);
-            setShowVitrine(false);
-            toast.success('Lente adicionada. Ajuste o valor no item.');
-          }}
-        />
       )}
     </div>
   );
