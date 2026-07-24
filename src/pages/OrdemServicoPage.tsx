@@ -436,7 +436,7 @@ export default function OrdemServicoPage() {
       .forma-chip.ativa{border:2px solid #1e3a5f;background:#eaf1f8;color:#1e3a5f;font-weight:700}
       .total-box{display:flex;justify-content:flex-end;border-top:2px solid #1e3a5f;padding-top:8px;margin-top:8px}
       .total-value{font-size:20px;font-weight:800;color:#1e3a5f}
-      .obs-box{border:1px solid #ddd;border-radius:6px;padding:8px 10px;font-size:11px;min-height:34px;margin-top:4px}
+      .obs-box{border:1px solid #ddd;border-radius:6px;padding:8px 10px;font-size:11px;min-height:90px;margin-top:4px}
       .sig{display:flex;justify-content:space-around;margin-top:36px}
       .sig-line{text-align:center;width:220px}
       .sig-line hr{border:none;border-top:1px solid #333;margin-bottom:6px}
