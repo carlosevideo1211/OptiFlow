@@ -382,6 +382,8 @@ export default function OrdemServicoPage() {
   const printOS = async (os: OS) => {
     const { data: itens } = await supabase.from('os_itens').select('*').eq('os_id', os.id).order('created_at');
     const osItensData: OsItem[] = itens || [];
+    const somaItens = osItensData.reduce((s, i) => s + (i.valor_total||0), 0);
+    const totalPedido = Math.max(0, somaItens - (os.discount||0));
 
     let customerFull: any = null;
     if (os.customer_id) {
@@ -413,7 +415,7 @@ export default function OrdemServicoPage() {
     const css = `
       @page{size:A4;margin:12mm}
       *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:Arial,sans-serif;color:#1a1a1a;font-size:12px}
+      body{font-family:Arial,sans-serif;color:#1a1a1a;font-size:12px;padding:14mm 12mm}
       .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1e3a5f;padding-bottom:12px;margin-bottom:14px}
       .store-block{display:flex;gap:10px;align-items:center}
       .store-name{font-size:18px;font-weight:800;color:#1e3a5f}
@@ -493,10 +495,10 @@ export default function OrdemServicoPage() {
         </table>
         <div class="total-box">
           <div style="display:flex;gap:28px;align-items:flex-end">
+            <div style="text-align:right"><div class="field-label">Total do pedido</div><div style="font-size:13px;font-weight:700">${fmtV(totalPedido)}</div></div>
             ${(os.discount||0) > 0 ? `<div style="text-align:right"><div class="field-label">Desconto</div><div style="font-size:13px;font-weight:700;color:#e24b4a">-${fmtV(os.discount)}</div></div>` : ''}
-            ${(os.entrada||0) > 0 ? `<div style="text-align:right"><div class="field-label">Entrada paga</div><div style="font-size:13px;font-weight:700;color:#639922">${fmtV(os.entrada||0)}</div></div>
-            <div style="text-align:right"><div class="field-label">Saldo restante</div><div style="font-size:13px;font-weight:700;color:#ba7517">${fmtV(Math.max(0,(os.total||0)-(os.entrada||0)))}</div></div>` : ''}
-            <div style="text-align:right"><div class="field-label">Total</div><div class="total-value">${fmtV(os.total||0)}</div></div>
+            ${(os.entrada||0) > 0 ? `<div style="text-align:right"><div class="field-label">Entrada paga</div><div style="font-size:13px;font-weight:700;color:#639922">${fmtV(os.entrada||0)}</div></div>` : ''}
+            <div style="text-align:right"><div class="field-label">${(os.entrada||0) > 0 ? 'Saldo restante' : 'Total'}</div><div class="total-value">${fmtV(os.total||0)}</div></div>
           </div>
         </div>
       </div>
