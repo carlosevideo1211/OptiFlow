@@ -296,7 +296,7 @@ export default function DashboardPage() {
           ) : osRecentes.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Nenhuma OS ativa.</p>
           ) : osRecentes.map(os => {
-            const st = OS_STATUS[os.status] || OS_STATUS.aprovada;
+            const st = OS_STATUS[os.status] || OS_STATUS.orcamento;
             return (
               <div key={os.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
                 onClick={() => navigate('/os')}>
