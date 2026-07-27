@@ -319,8 +319,6 @@ export default function AtendimentoPage() {
   const [docIdade, setDocIdade] = useState('');
   const [docCidade, setDocCidade] = useState('Rio de Janeiro');
   const [docProfissional, setDocProfissional] = useState('');
-  const [partnerships, setPartnerships] = useState<any[]>([]);
-  const [partnershipId, setPartnershipId] = useState('');
 
   useEffect(() => {
     if (!tenantId) return;
@@ -344,12 +342,6 @@ export default function AtendimentoPage() {
 
   useEffect(() => {
     if (!tenantId) return;
-    supabase.from('partnerships').select('id,name,commission_percent').eq('tenant_id', tenantId).eq('active', true).order('name')
-      .then(({ data }) => setPartnerships(data || []));
-  }, [tenantId]);
-
-  useEffect(() => {
-    if (!tenantId) return;
     if (isNew) {
       if (newData) {
         setConsultation({ customer_name: newData.customerName, professional_name: newData.professionalName, date: newData.date, status: newData.status });
@@ -366,13 +358,6 @@ export default function AtendimentoPage() {
       if (error || !data) { toast.error('Consulta não encontrada'); navigate('/consulta'); return; }
       setConsultation(data);
       populate(data);
-      if (data.partnership_id) setPartnershipId(data.partnership_id);
-      if (data.valor_cobrado != null) {
-        setDocValorExame(String(Number(data.valor_cobrado).toFixed(2)).replace('.', ','));
-      } else if (data.procedure_id) {
-        const { data: proc } = await supabase.from('procedures').select('default_price').eq('id', data.procedure_id).maybeSingle();
-        if (proc?.default_price != null) setDocValorExame(String(Number(proc.default_price).toFixed(2)).replace('.', ','));
-      }
       setLoading(false);
     };
     load();
@@ -757,8 +742,6 @@ export default function AtendimentoPage() {
         lc_re_esf: num(lcOd.ESF), lc_re_cil: num(lcOd.CIL), lc_re_eixo: num(lcOd.EIXO), lc_re_av: lcOd.AV||null,
         lc_le_esf: num(lcOe.ESF), lc_le_cil: num(lcOe.CIL), lc_le_eixo: num(lcOe.EIXO), lc_le_av: lcOe.AV||null,
         lc_lente: lcLente||null, lc_obs: lcObs||null, status, date: date||null,
-        partnership_id: partnershipId || null,
-        valor_cobrado: num(docValorExame),
       };
       const { error } = await supabase.from('consultations').update(payload).eq('id', id);
       if (error) throw error;
@@ -1290,12 +1273,6 @@ export default function AtendimentoPage() {
                   </Field>
                   <Field label="Valor do exame (R$)">
                     <FInput value={docValorExame} onChange={setDocValorExame} placeholder="Ex: 80,00" />
-                  </Field>
-                  <Field label="Convênio (opcional)">
-                    <select className="form-input" value={partnershipId} onChange={e => setPartnershipId(e.target.value)}>
-                      <option value="">Particular</option>
-                      {partnerships.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
                   </Field>
                   <Field label="Cidade">
                     <FInput value={docCidade} onChange={setDocCidade} placeholder="Ex: Rio de Janeiro" />
