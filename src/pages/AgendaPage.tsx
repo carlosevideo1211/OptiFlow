@@ -72,6 +72,7 @@ export default function AgendaPage() {
   const [searchClient, setSearchClient] = useState('');
   const [horarios, setHorarios] = useState<string[]>(HORARIOS_PADRAO);
   const [diasAbertos, setDiasAbertos] = useState<number[] | null>(null);
+  const [profissionalFiltro, setProfissionalFiltro] = useState('');
 
   const weekDates = getWeekDates(baseDate);
   const weekStart = fmt(weekDates[0]);
@@ -119,7 +120,7 @@ export default function AgendaPage() {
   };
 
   const getSlot = (date: string, hora: string) =>
-    consultas.filter(c => c.date === date && c.time === hora);
+    consultas.filter(c => c.date === date && c.time === hora && (!profissionalFiltro || c.professional_name === profissionalFiltro));
 
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
@@ -179,10 +180,14 @@ export default function AgendaPage() {
           <button onClick={() => setBaseDate(new Date())} style={{ background: 'rgba(99,102,241,.15)', border: '1px solid #6366f1', borderRadius: 8, padding: '4px 12px', cursor: 'pointer', color: '#a5b4fc', fontSize: 12, fontWeight: 600 }}>
             Hoje
           </button>
+          <select className="form-input" style={{ width: 200, fontSize: 12 }} value={profissionalFiltro} onChange={e => setProfissionalFiltro(e.target.value)}>
+            <option value="">Todos os profissionais</option>
+            {professionals.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+          </select>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {loading && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Carregando...</span>}
-          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{consultas.length} na semana</span>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{(profissionalFiltro ? consultas.filter(c => c.professional_name === profissionalFiltro).length : consultas.length)} na semana</span>
           <button className="btn btn-primary" onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
             <Plus size={14} /> Novo Agendamento
           </button>
@@ -197,7 +202,7 @@ export default function AgendaPage() {
               <th style={{ width: 64, padding: '10px 8px', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)' }}>HORA</th>
               {weekDates.map((d, i) => {
                 const isToday = fmt(d) === today;
-                const count = consultas.filter(c => c.date === fmt(d)).length;
+                const count = consultas.filter(c => c.date === fmt(d) && (!profissionalFiltro || c.professional_name === profissionalFiltro)).length;
                 return (
                   <th key={i} style={{ padding: '8px 4px', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)', textAlign: 'center', background: isToday ? 'rgba(99,102,241,.08)' : undefined }}>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{DIAS[i]}</div>
