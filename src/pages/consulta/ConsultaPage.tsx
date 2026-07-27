@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAll';
@@ -12,6 +12,7 @@ import NovaConsultaModal from './NovaConsultaModal';
 import AgendaPage from '../AgendaPage';
 import ConfiguracoesConsultas from './ConfiguracoesConsultas';
 import InicioConsultas from './InicioConsultas';
+import PacientesTab from './PacientesTab';
 import toast from 'react-hot-toast';
 import { norm } from '../../utils/normalize';
 
@@ -25,7 +26,7 @@ export default function ConsultaPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'inicio'|'consultas'|'agenda'|'ajustes'>('inicio');
+  const [tab, setTab] = useState<'inicio'|'pacientes'|'consultas'|'agenda'|'ajustes'>('inicio');
   const navigate = useNavigate();
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
@@ -110,7 +111,7 @@ export default function ConsultaPage() {
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border)' }}>
-        {[{k:'inicio',l:'🏠 Início'},{k:'consultas',l:'👁 Consultas / Rx'},{k:'agenda',l:'📅 Agenda'},{k:'ajustes',l:'⚙️ Configurações'}].map(t => (
+        {[{k:'inicio',l:'🏠 Início'},{k:'pacientes',l:'🧑 Pacientes'},{k:'consultas',l:'👁 Consultas / Rx'},{k:'agenda',l:'📅 Agenda'},{k:'ajustes',l:'⚙️ Configurações'}].map(t => (
           <button key={t.k} onClick={() => setTab(t.k as any)}
             style={{ padding:'10px 20px', background:'none', border:'none', cursor:'pointer',
               fontSize:14, fontWeight:600,
@@ -123,6 +124,9 @@ export default function ConsultaPage() {
 
       {/* Início (Dashboard do módulo, Fase 2) */}
       {tab === 'inicio' && <InicioConsultas onVerTodasConsultas={() => setTab('consultas')} />}
+
+      {/* Pacientes (Fase 3) */}
+      {tab === 'pacientes' && <PacientesTab/>}
 
       {/* Agenda */}
       {tab === 'agenda' && <AgendaPage/>}
