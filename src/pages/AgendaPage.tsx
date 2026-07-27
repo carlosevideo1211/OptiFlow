@@ -9,7 +9,22 @@ import { norm } from '../utils/normalize';
 
 const DIAS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-const HORARIOS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00'];
+const HORARIOS_PADRAO = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00'];
+
+function toMin(t: string) { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+function toHHMM(min: number) { return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0'); }
+function buildHorarios(inicio?: string, fim?: string, possuiIntervalo?: boolean, intInicio?: string, intFim?: string) {
+  const start = toMin((inicio || '07:00').slice(0, 5));
+  const end = toMin((fim || '19:00').slice(0, 5));
+  const intS = possuiIntervalo && intInicio ? toMin(intInicio.slice(0, 5)) : null;
+  const intE = possuiIntervalo && intFim ? toMin(intFim.slice(0, 5)) : null;
+  const lista: string[] = [];
+  for (let m = start; m < end; m += 30) {
+    if (intS !== null && intE !== null && m >= intS && m < intE) continue;
+    lista.push(toHHMM(m));
+  }
+  return lista.length > 0 ? lista : HORARIOS_PADRAO;
+}
 const PROCEDIMENTOS = ['Consulta','Retorno','Segunda Via da Receita'];
 
 const STATUS_COLORS: Record<string, { bg: string; color: string; border: string }> = {
@@ -55,6 +70,8 @@ export default function AgendaPage() {
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [searchClient, setSearchClient] = useState('');
+  const [horarios, setHorarios] = useState<string[]>(HORARIOS_PADRAO);
+  const [diasAbertos, setDiasAbertos] = useState<number[] | null>(null);
 
   const weekDates = getWeekDates(baseDate);
   const weekStart = fmt(weekDates[0]);
@@ -82,6 +99,13 @@ export default function AgendaPage() {
       .then(({ data }) => setProfessionals(data || []));
     fetchAllRows<{id:string;name:string}>((from, to) => supabase.from('customers').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to))
       .then(data => setCustomers(data || []));
+    supabase.from('clinic_settings').select('horario_inicio,horario_fim,dias_semana,possui_intervalo,intervalo_inicio,intervalo_fim').eq('tenant_id', tenantId).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setHorarios(buildHorarios(data.horario_inicio, data.horario_fim, data.possui_intervalo, data.intervalo_inicio, data.intervalo_fim));
+          setDiasAbertos(Array.isArray(data.dias_semana) ? data.dias_semana : null);
+        }
+      });
   }, [tenantId, weekStart, weekEnd]);
 
   const prevWeek = () => { const d = new Date(baseDate); d.setDate(d.getDate()-7); setBaseDate(d); };
@@ -182,13 +206,14 @@ export default function AgendaPage() {
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{d.getDate()}/{d.getMonth()+1}</div>
                     {count > 0 && <div style={{ fontSize: 10, color: '#6366f1', fontWeight: 600, marginTop: 2 }}>{count} consulta{count > 1 ? 's' : ''}</div>}
+                    {diasAbertos !== null && !diasAbertos.includes(d.getDay()) && <div style={{ fontSize: 10, color: '#f87171', fontWeight: 600, marginTop: 2 }}>Fechado</div>}
                   </th>
                 );
               })}
             </tr>
           </thead>
           <tbody>
-            {HORARIOS.map(hora => (
+            {horarios.map(hora => (
               <tr key={hora} style={{ height: 52 }}>
                 <td style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', verticalAlign: 'top', paddingTop: 6, whiteSpace: 'nowrap' }}>
                   {hora}
@@ -306,6 +331,9 @@ export default function AgendaPage() {
               <div>
                 <label className="form-label">Data *</label>
                 <input className="form-input" type="date" value={form.date} onChange={e => set('date', e.target.value)} />
+                {diasAbertos !== null && form.date && !diasAbertos.includes(new Date(form.date + 'T12:00:00').getDay()) && (
+                  <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>⚠ A loja normalmente nao abre neste dia. Pode agendar assim mesmo se for uma excecao.</div>
+                )}
               </div>
 
               {/* Horários */}
@@ -313,13 +341,13 @@ export default function AgendaPage() {
                 <div>
                   <label className="form-label">Horário de Início *</label>
                   <select className="form-input" value={form.time} onChange={e => set('time', e.target.value)}>
-                    {HORARIOS.map(h => <option key={h} value={h}>{h}</option>)}
+                    {horarios.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="form-label">Horário de Fim *</label>
                   <select className="form-input" value={form.time_end} onChange={e => set('time_end', e.target.value)}>
-                    {HORARIOS.map(h => <option key={h} value={h}>{h}</option>)}
+                    {horarios.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
                   {form.time >= form.time_end && (
                     <div style={{ fontSize: 11, color: '#f87171', marginTop: 3 }}>Horário fim deve ser maior que início</div>
