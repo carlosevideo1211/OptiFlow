@@ -25,6 +25,7 @@ interface Tenant {
   city?: string;
   state?: string;
   created_at: string;
+  boleto_habilitado?: boolean;
 }
 
 const PLANS: Plan[] = ['trial','basico','profissional','clinica','lancamento','cancelado'];
@@ -203,6 +204,16 @@ export default function AdminPanelPage() {
     await supabase.from('tenants').delete().eq('id', t.id);
     setTenants(prev=>prev.filter(x=>x.id!==t.id));
     toast.success('Tenant excluido');
+  };
+
+  const toggleBoleto = async (t: Tenant) => {
+    const novoValor = !t.boleto_habilitado;
+    setUpdating(t.id);
+    const { error } = await supabase.from('tenants').update({ boleto_habilitado: novoValor }).eq('id', t.id);
+    setUpdating(null);
+    if (error) { toast.error('Erro ao atualizar boleto: '+error.message); return; }
+    setTenants(prev => prev.map(x => x.id===t.id ? {...x, boleto_habilitado: novoValor} : x));
+    toast.success(novoValor ? 'Boleto habilitado para '+t.company_name : 'Boleto desabilitado para '+t.company_name);
   };
 
   const salvar = async () => {
@@ -471,6 +482,17 @@ export default function AdminPanelPage() {
    <button onClick={()=>window.open('/contrato/'+t.id,'_blank')} title="Contrato"
                         style={{background:'rgba(59,130,246,.1)',border:'1px solid rgba(59,130,246,.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'#3b82f6',display:'flex',alignItems:'center',marginRight:4}}>
                         <span style={{fontSize:12}}>Contrato</span>
+                      </button>
+                      <button onClick={()=>toggleBoleto(t)} title={t.boleto_habilitado ? 'Clique para desabilitar boleto' : 'Clique para habilitar boleto'}
+                        disabled={updating===t.id}
+                        style={{
+                          background: t.boleto_habilitado ? 'rgba(34,197,94,.1)' : 'rgba(148,163,184,.1)',
+                          border: t.boleto_habilitado ? '1px solid rgba(34,197,94,.3)' : '1px solid rgba(148,163,184,.3)',
+                          borderRadius:6, padding:'5px 8px', cursor:'pointer',
+                          color: t.boleto_habilitado ? '#22c55e' : '#94a3b8',
+                          display:'flex', alignItems:'center', marginRight:4, fontSize:12, fontWeight:700
+                        }}>
+                        Boleto: {t.boleto_habilitado ? 'On' : 'Off'}
                       </button>
                       <button onClick={()=>acessarLoja(t.id)} title="Acessar Loja"
                             style={{background:'rgba(34,197,94,.1)',border:'1px solid rgba(34,197,94,.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'#22c55e',display:'flex',alignItems:'center'}}>
