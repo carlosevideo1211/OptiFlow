@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import type { UserProfile } from '../types/index';
 
@@ -80,23 +80,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     if (error) {
-      // Tentar login como funcionario
-      const { data: func } = await supabase
-        .from('funcionarios')
-        .select('id, name, email, cargo, access_password, tenant_id, active')
-        .ilike('email', email.trim())
-        .eq('active', true)
-        .single();
-      if (!func) throw error;
-      // Banco armazena hash SHA-256 via trigger
+      // Tentar login como funcionario.
+      // IMPORTANTE: não consulta `funcionarios` direto — o RLS dessa
+      // tabela exige auth.uid() (sessão já autenticada) pra resolver
+      // get_tenant_id(), mas aqui ainda NÃO existe sessão. Por isso a
+      // verificação roda dentro de uma função SECURITY DEFINER
+      // (verify_funcionario_login), que ignora RLS internamente e
+      // nunca devolve o hash da senha pro navegador.
       const encoder = new TextEncoder();
       const data = encoder.encode(password);
       const hashBuffer = await crypto.subtle.digest("SHA-256", data);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashedInput = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-      const storedPwd = func.access_password || "";
-      const pwdMatch = storedPwd === hashedInput || storedPwd === password;
-      if (!pwdMatch) throw error;
+
+      let { data: funcRows } = await supabase.rpc('verify_funcionario_login', {
+        p_email: email.trim(),
+        p_password_hash: hashedInput,
+      });
+      let func = funcRows?.[0];
+
+      // Fallback: contas antigas que ainda não passaram pelo hash (senha em texto puro)
+      if (!func) {
+        const { data: funcRowsPlain } = await supabase.rpc('verify_funcionario_login', {
+          p_email: email.trim(),
+          p_password_hash: password,
+        });
+        func = funcRowsPlain?.[0];
+      }
+
+      if (!func) throw error;
       // Buscar dados da loja
       const { data: store } = await supabase
         .from('tenants')

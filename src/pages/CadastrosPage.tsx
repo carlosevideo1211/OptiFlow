@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { BookUser, Plus, Search, Edit2, Trash2, X, Save, Users, Package, Stethoscope, UserCheck } from 'lucide-react';
+import { BookUser, Plus, Search, Edit2, Trash2, X, Save, Users, Package, Stethoscope, UserCheck, Upload, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { norm } from '../utils/normalize';
 
@@ -22,6 +22,8 @@ interface Supplier {
 interface Professional {
   id: string; tenant_id: string; name: string; cro?: string;
   specialty?: string; phone?: string; email?: string; active: boolean; created_at: string;
+  funcionario_id?: string | null; conselho_numero?: string; conselho_uf?: string;
+  foto_url?: string; assinatura_url?: string;
 }
 interface Funcionario {
   id: string; tenant_id: string; name: string; cargo?: string;
@@ -37,7 +39,11 @@ function emptyForm() {
   return { name:'', cnpj:'', category:'Outros', email:'', phone:'', address:'', city:'', state:'', notes:'', active:true };
 }
 function emptyProfForm() {
-  return { name:'', cro:'', specialty:'Optometria', phone:'', email:'' };
+  return {
+    name:'', cro:'', specialty:'Optometria', phone:'', email:'',
+    conselho_numero:'', conselho_uf:'', foto_url:'', assinatura_url:'',
+    login_email:'', login_senha:'',
+  };
 }
 function emptyFuncForm() {
   return { name:'', cargo:'Vendedor(a)', cpf:'', phone:'', email:'', access_password:'', comissao:0 };
@@ -64,6 +70,7 @@ export default function CadastrosPage() {
   const [editingProf, setEditingProf] = useState<Professional | null>(null);
   const [profForm, setProfForm] = useState(emptyProfForm());
   const [savingProf, setSavingProf] = useState(false);
+  const [profLoginAtual, setProfLoginAtual] = useState<string | null>(null);
 
   // Funcionários
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
@@ -147,19 +154,68 @@ export default function CadastrosPage() {
   };
 
   // ── Profissionais ──
-  const openNewProf = () => { setEditingProf(null); setProfForm(emptyProfForm()); setShowProfModal(true); };
-  const openEditProf = (p: Professional) => {
+  const openNewProf = () => { setEditingProf(null); setProfForm(emptyProfForm()); setProfLoginAtual(null); setShowProfModal(true); };
+  const openEditProf = async (p: Professional) => {
     setEditingProf(p);
-    setProfForm({ name:p.name, cro:p.cro||'', specialty:p.specialty||'Optometria', phone:p.phone||'', email:p.email||'' });
+    setProfForm({
+      name:p.name, cro:p.cro||'', specialty:p.specialty||'Optometria', phone:p.phone||'', email:p.email||'',
+      conselho_numero:p.conselho_numero||'', conselho_uf:p.conselho_uf||'',
+      foto_url:p.foto_url||'', assinatura_url:p.assinatura_url||'',
+      login_email:'', login_senha:'',
+    });
+    setProfLoginAtual(null);
+    if (p.funcionario_id) {
+      const { data: func } = await supabase.from('funcionarios').select('email').eq('id', p.funcionario_id).maybeSingle();
+      if (func?.email) setProfLoginAtual(func.email);
+    }
     setShowProfModal(true);
+  };
+  const handleUploadProf = (field: 'foto_url' | 'assinatura_url') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setP(field, ev.target?.result as string);
+    reader.readAsDataURL(file);
   };
   const handleSaveProf = async (e: React.FormEvent) => {
     e.preventDefault();
     if (savingProf) return;
-      if (!profForm.name.trim()) { toast.error('Nome obrigatório'); return; }
+    if (!profForm.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSavingProf(true);
     try {
-      const payload = { ...profForm, tenant_id: tenantId, active: true };
+      let funcionarioId: string | null = editingProf?.funcionario_id ?? null;
+
+      // Se um e-mail de acesso foi informado, cria ou atualiza o funcionário vinculado
+      // (login real passa por `funcionarios`, nunca por uma senha própria em `professionals`).
+      if (profForm.login_email.trim()) {
+        if (funcionarioId) {
+          const funcPayload: any = { email: profForm.login_email.trim() };
+          if (profForm.login_senha.trim()) {
+            funcPayload.access_password = await hashPassword(profForm.login_senha.trim());
+          }
+          const { error } = await supabase.from('funcionarios').update(funcPayload).eq('id', funcionarioId);
+          if (error) throw error;
+        } else {
+          const { data: novoFunc, error } = await supabase.from('funcionarios').insert([{
+            name: profForm.name.trim(),
+            cargo: 'Profissional de Saúde',
+            email: profForm.login_email.trim(),
+            access_password: profForm.login_senha.trim() ? await hashPassword(profForm.login_senha.trim()) : '',
+            tenant_id: tenantId,
+            active: true,
+          }]).select('id').single();
+          if (error) throw error;
+          funcionarioId = novoFunc.id;
+        }
+      }
+
+      const payload = {
+        name: profForm.name, cro: profForm.cro, specialty: profForm.specialty,
+        phone: profForm.phone, email: profForm.email,
+        conselho_numero: profForm.conselho_numero, conselho_uf: profForm.conselho_uf,
+        foto_url: profForm.foto_url, assinatura_url: profForm.assinatura_url,
+        funcionario_id: funcionarioId,
+        tenant_id: tenantId, active: true,
+      };
       if (editingProf) {
         const { error } = await supabase.from('professionals').update(payload).eq('id', editingProf.id);
         if (error) throw error; toast.success('Profissional atualizado!');
@@ -510,20 +566,58 @@ export default function CadastrosPage() {
                     <input className="form-input" value={profForm.phone} onChange={e=>setP('phone',e.target.value)}/>
                   </div>
                   <div>
-                    <label className="form-label">E-mail</label>
+                    <label className="form-label">E-mail (contato)</label>
                     <input className="form-input" value={profForm.email} onChange={e=>setP('email',e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="form-label">Conselho — Número</label>
+                    <input className="form-input" value={profForm.conselho_numero} onChange={e=>setP('conselho_numero',e.target.value)} placeholder="Ex: 12345"/>
+                  </div>
+                  <div>
+                    <label className="form-label">Conselho — UF</label>
+                    <select className="form-input" value={profForm.conselho_uf} onChange={e=>setP('conselho_uf',e.target.value)}>
+                      <option value="">...</option>
+                      {ESTADOS.map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label">Foto</label>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(99,102,241,.1)', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0, border:'2px dashed rgba(99,102,241,.3)' }}>
+                        {profForm.foto_url ? <img src={profForm.foto_url} alt="foto" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <User size={18} style={{ color:'rgba(99,102,241,.4)' }}/>}
+                      </div>
+                      <label style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 10px', borderRadius:8, background:'rgba(99,102,241,.15)', color:'#6366f1', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                        <Upload size={13}/> Enviar
+                        <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleUploadProf('foto_url')}/>
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label">Assinatura Digital</label>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <div style={{ width:70, height:36, borderRadius:6, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0, border:'2px dashed rgba(99,102,241,.3)' }}>
+                        {profForm.assinatura_url ? <img src={profForm.assinatura_url} alt="assinatura" style={{ width:'100%', height:'100%', objectFit:'contain' }}/> : <span style={{ fontSize:9, color:'#94a3b8' }}>Vazio</span>}
+                      </div>
+                      <label style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 10px', borderRadius:8, background:'rgba(99,102,241,.15)', color:'#6366f1', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                        <Upload size={13}/> Enviar
+                        <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleUploadProf('assinatura_url')}/>
+                      </label>
+                    </div>
                   </div>
                 </div>
                 <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:4}}>
-                  <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:10}}>Acesso ao sistema (login)</div>
+                  <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:10}}>
+                    Acesso ao sistema (login) — cria/atualiza um funcionário vinculado (cargo "Profissional de Saúde")
+                    {profLoginAtual && <><br/>Login atual: <strong>{profLoginAtual}</strong></>}
+                  </div>
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                     <div>
                       <label className="form-label">E-mail de acesso</label>
-                      <input className="form-input" type="email" value={funcForm.email||''} onChange={e=>setF('email',e.target.value)} placeholder="email@exemplo.com"/>
+                      <input className="form-input" type="email" value={profForm.login_email} onChange={e=>setP('login_email',e.target.value)} placeholder={profLoginAtual || 'email@exemplo.com'}/>
                     </div>
                     <div>
-                      <label className="form-label">Senha de acesso</label>
-                      <input className="form-input" type="password" value={funcForm.access_password||''} onChange={e=>setF('access_password',e.target.value)} placeholder="Senha para login"/>
+                      <label className="form-label">Senha {profLoginAtual ? '(deixe em branco para manter)' : ''}</label>
+                      <input className="form-input" type="password" value={profForm.login_senha} onChange={e=>setP('login_senha',e.target.value)} placeholder="Senha para login"/>
                     </div>
                   </div>
                 </div>

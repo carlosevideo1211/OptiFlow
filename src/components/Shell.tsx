@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Eye, ClipboardList, ShoppingCart, Calendar,
@@ -10,15 +10,29 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 // Cargos com acesso restrito (nao veem financeiro/relatorios/config)
-const CARGOS_RESTRITOS = ['Vendedor(a)', 'Atendente', 'Caixa', 'Recepcionista', 'Estoquista'];
+const CARGOS_RESTRITOS = ['Vendedor(a)', 'Atendente', 'Caixa', 'Recepcionista', 'Estoquista', 'Profissional de Saúde'];
 
-const ALL_NAV_SECTIONS = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: React.ComponentType<any>;
+  sub: boolean;
+  roles: string[];
+  requiresModule?: string;
+};
+
+type NavSection = {
+  label: string;
+  items: NavItem[];
+};
+
+const ALL_NAV_SECTIONS: NavSection[] = [
   {
     label: 'Principal',
     items: [
       { to: '/dashboard',  label: 'Dashboard',       icon: LayoutDashboard, sub: false, roles: [] },
       { to: '/clientes',   label: 'Clientes',         icon: Users,           sub: false, roles: [] },
-      { to: '/consulta',   label: 'Consulta / Rx',    icon: Eye,             sub: false, roles: [] },
+      { to: '/consulta',   label: 'Consulta / Rx',    icon: Eye,             sub: false, roles: [], requiresModule: 'consultas' },
       { to: '/os',         label: 'Ordem de Serviço', icon: ClipboardList,   sub: false, roles: [] },
       { to: '/vendas',     label: 'Vendas / PDV',     icon: ShoppingCart,    sub: false, roles: [] },
     ]
@@ -53,18 +67,20 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const { user, tenantId, signOut } = useAuth();
   const userRole = (user as any)?.role || (user as any)?.cargo || 'master';
   const isMaster = userRole === 'master' || !CARGOS_RESTRITOS.includes(userRole);
-  const navSections = ALL_NAV_SECTIONS.map(section => ({
-    ...section,
-    items: section.items.filter(item =>
-      item.roles.length === 0 || isMaster || item.roles.includes(userRole)
-    )
-  })).filter(section => section.items.length > 0);
   const navigate = useNavigate();
   const [collapsed, setCollapsed]   = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [badges, setBadges]         = useState({ os: 0, parcelas: 0 });
   const [trialDays, setTrialDays]   = useState<number | null>(null);
   const [tooltip, setTooltip]       = useState<{ label: string; y: number } | null>(null);
+  const [moduloConsultasAtivo, setModuloConsultasAtivo] = useState<boolean>(false);
+  const navSections = ALL_NAV_SECTIONS.map(section => ({
+    ...section,
+    items: section.items.filter(item =>
+      (item.roles.length === 0 || isMaster || item.roles.includes(userRole)) &&
+      (!item.requiresModule || (item.requiresModule === 'consultas' && moduloConsultasAtivo))
+    )
+  })).filter(section => section.items.length > 0);
 
   useEffect(() => {
     if (!tenantId || !user) return;
@@ -83,7 +99,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         .neq('status', 'cancelado');
       const { data: tenant } = await supabase
         .from('tenants')
-        .select('trial_end_date, status, plan')
+        .select('trial_end_date, status, plan, modulo_consultas_ativo')
         .eq('id', tenantId)
         .single();
       if (tenant?.trial_end_date && tenant.status === 'trial') {
@@ -92,6 +108,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         setTrialDays(Math.max(0, diff));
       }
+      setModuloConsultasAtivo(tenant?.modulo_consultas_ativo === true);
       setBadges({ os: osCount || 0, parcelas: parcCount || 0 });
     };
     loadData();

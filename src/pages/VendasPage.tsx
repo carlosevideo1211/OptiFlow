@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -58,6 +58,7 @@ export default function VendasPage() {
   const [orders, setOrders]       = useState<OS[]>([]);
   const [profissionais, setProfissionais] = useState<{id:string;name:string}[]>([]);
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+  const [boletoHabilitado, setBoletoHabilitado] = useState(false);
   const [loading, setLoading]     = useState(true);
   const [tab, setTab]             = useState<'lista' | 'pdv' | 'caixa'>('lista');
   const [caixaData, setCaixaData] = useState<any[]>([]);
@@ -120,6 +121,8 @@ export default function VendasPage() {
       .then(({ data }) => setProfissionais((data || []) as {id:string;name:string}[]));
     supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single()
       .then(({ data }) => { if (data) setStoreSettings(data as StoreSettings); });
+    supabase.from('tenants').select('boleto_habilitado').eq('id', tenantId).single()
+      .then(({ data }) => { setBoletoHabilitado(!!data?.boleto_habilitado); });
   }, [tenantId]);
 
   // Caixa do Dia - adicionado 22/07/2026, pedido da Larissa (Otica Evangelista Castanho).
@@ -835,7 +838,7 @@ export default function VendasPage() {
             <div className="card" style={{ padding: 20 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Dados de Pagamento</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-                {PAGAMENTOS.map(p => (
+                {PAGAMENTOS.filter(p => p.value !== 'boleto' || boletoHabilitado).map(p => (
                   <button key={p.value} onClick={() => setPayment(p.value)} style={{ padding: '10px 8px', borderRadius: 8, border: '2px solid', borderColor: payment === p.value ? '#6366f1' : 'var(--border)', background: payment === p.value ? 'rgba(99,102,241,.12)' : 'var(--bg-card)', color: payment === p.value ? '#6366f1' : 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'all .15s' }}>
                     {p.icon} {p.label}
                   </button>

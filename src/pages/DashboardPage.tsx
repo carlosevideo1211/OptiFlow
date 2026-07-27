@@ -47,13 +47,13 @@ export default function DashboardPage() {
 
     const [clients, os, sales, crediario, consultas, produtos, receita, osRec, storeData, salesHistory] = await Promise.all([
       supabase.from('customers').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('active', true),
-      supabase.from('service_orders').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['aprovada', 'em_producao']),
+      supabase.from('service_orders').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).not('status', 'in', '(entregue,cancelada)'),
       supabase.from('sales').select('total').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', today),
       supabase.from('crediario_parcelas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'pendente').lt('due_date', today),
       supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('date', today),
       supabase.from('products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('active', true).lt('stock', 5),
       supabase.from('sales').select('total').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', monthStart),
-      supabase.from('service_orders').select('id, os_number, customer_name, status, delivery_date').eq('tenant_id', tenantId).in('status', ['aprovada', 'em_producao', 'pronta']).order('created_at', { ascending: false }).limit(5),
+      supabase.from('service_orders').select('id, os_number, customer_name, status, delivery_date').eq('tenant_id', tenantId).not('status', 'in', '(entregue,cancelada)').order('created_at', { ascending: false }).limit(5),
       supabase.from('store_settings').select('name').eq('tenant_id', tenantId).single(),
       supabase.from('sales').select('total, created_at').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', months[0].key + '-01').order('created_at', { ascending: true }),
     ]);
@@ -91,12 +91,13 @@ export default function DashboardPage() {
   };
 
   const OS_STATUS: Record<string, { label: string; color: string }> = {
-    orcamento:   { label: 'Orçamento',   color: '#94a3b8' },
-    aprovada:    { label: 'Aprovada',    color: '#6366f1' },
-    em_producao: { label: 'Em Produção', color: '#f59e0b' },
-    pronta:      { label: 'Pronta',      color: '#22c55e' },
-    entregue:    { label: 'Entregue',    color: '#a855f7' },
-    cancelada:   { label: 'Cancelada',   color: '#f87171' },
+    orcamento:  { label: 'Orçamento',        color: '#94a3b8' },
+    confirmada: { label: 'Confirmada',       color: '#6366f1' },
+    lab:        { label: 'No Laboratório',   color: '#f59e0b' },
+    montagem:   { label: 'Em Montagem',      color: '#06b6d4' },
+    pronta:     { label: 'Pronta p/ Entrega',color: '#22c55e' },
+    entregue:   { label: 'Entregue',         color: '#a855f7' },
+    cancelada:  { label: 'Cancelada',        color: '#f87171' },
   };
 
   // Gráfico SVG
