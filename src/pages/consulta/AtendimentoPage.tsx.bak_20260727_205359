@@ -672,58 +672,6 @@ export default function AtendimentoPage() {
     });
   };
 
-  // ── Fase 6: lançamentos financeiros automáticos ───────────────────────────────
-  const syncLancamentosFinanceiros = async (consultationId: string) => {
-    // Idempotente: sempre limpa os lançamentos antigos desta consulta antes de
-    // recriar, assim salvar de novo (ex: corrigindo valor) não duplica nada.
-    await supabase.from('clinic_financial_entries').delete().eq('consultation_id', consultationId);
-
-    const valor = num(docValorExame);
-    if (valor == null || valor <= 0 || status !== 'realizada') return;
-
-    const entries: any[] = [{
-      tenant_id: tenantId, type: 'receita', category: 'consulta',
-      description: 'Receita de atendimento', amount: valor,
-      due_date: date || null, status: 'pendente',
-      consultation_id: consultationId, partnership_id: partnershipId || null,
-      procedure_id: consultation?.procedure_id || null,
-    }];
-
-    if (partnershipId) {
-      const partner = partnerships.find(p => p.id === partnershipId);
-      if (partner?.commission_percent) {
-        entries.push({
-          tenant_id: tenantId, type: 'despesa', category: 'comissao_convenio',
-          description: 'Comissão do convênio', amount: valor * partner.commission_percent / 100,
-          due_date: date || null, status: 'pendente',
-          consultation_id: consultationId, partnership_id: partnershipId,
-        });
-      }
-    }
-
-    const profId = consultation?.professional_id;
-    if (profId) {
-      const { data: prof } = await supabase.from('professionals').select('tipo_pagamento,valor_fixo,percentual_comissao').eq('id', profId).maybeSingle();
-      if (prof?.tipo_pagamento === 'fixo' && prof.valor_fixo) {
-        entries.push({
-          tenant_id: tenantId, type: 'despesa', category: 'comissao_profissional',
-          description: 'Comissão do profissional (fixo)', amount: prof.valor_fixo,
-          due_date: date || null, status: 'pendente',
-          consultation_id: consultationId, professional_id: profId,
-        });
-      } else if (prof?.tipo_pagamento === 'comissao' && prof.percentual_comissao) {
-        entries.push({
-          tenant_id: tenantId, type: 'despesa', category: 'comissao_profissional',
-          description: 'Comissão do profissional', amount: valor * prof.percentual_comissao / 100,
-          due_date: date || null, status: 'pendente',
-          consultation_id: consultationId, professional_id: profId,
-        });
-      }
-    }
-
-    await supabase.from('clinic_financial_entries').insert(entries);
-  };
-
   // ── salvar ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (creatingRef.current) return;
@@ -814,7 +762,6 @@ export default function AtendimentoPage() {
       };
       const { error } = await supabase.from('consultations').update(payload).eq('id', id);
       if (error) throw error;
-      await syncLancamentosFinanceiros(id);
       toast.success('Salvo com sucesso!');
     } catch (err: any) {
       creatingRef.current = false;

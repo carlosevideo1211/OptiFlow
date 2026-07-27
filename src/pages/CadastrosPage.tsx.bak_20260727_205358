@@ -24,7 +24,6 @@ interface Professional {
   specialty?: string; phone?: string; email?: string; active: boolean; created_at: string;
   funcionario_id?: string | null; conselho_numero?: string; conselho_uf?: string;
   foto_url?: string; assinatura_url?: string;
-  tipo_pagamento?: string | null; valor_fixo?: number | null; percentual_comissao?: number | null;
 }
 interface Funcionario {
   id: string; tenant_id: string; name: string; cargo?: string;
@@ -44,7 +43,6 @@ function emptyProfForm() {
     name:'', cro:'', specialty:'Optometria', phone:'', email:'',
     conselho_numero:'', conselho_uf:'', foto_url:'', assinatura_url:'',
     login_email:'', login_senha:'',
-    tipo_pagamento:'', valor_fixo:null as number | null, percentual_comissao:null as number | null,
   };
 }
 function emptyFuncForm() {
@@ -164,7 +162,6 @@ export default function CadastrosPage() {
       conselho_numero:p.conselho_numero||'', conselho_uf:p.conselho_uf||'',
       foto_url:p.foto_url||'', assinatura_url:p.assinatura_url||'',
       login_email:'', login_senha:'',
-      tipo_pagamento:p.tipo_pagamento||'', valor_fixo:p.valor_fixo ?? null, percentual_comissao:p.percentual_comissao ?? null,
     });
     setProfLoginAtual(null);
     if (p.funcionario_id) {
@@ -217,9 +214,6 @@ export default function CadastrosPage() {
         conselho_numero: profForm.conselho_numero, conselho_uf: profForm.conselho_uf,
         foto_url: profForm.foto_url, assinatura_url: profForm.assinatura_url,
         funcionario_id: funcionarioId,
-        tipo_pagamento: profForm.tipo_pagamento || null,
-        valor_fixo: profForm.tipo_pagamento === 'fixo' ? profForm.valor_fixo : null,
-        percentual_comissao: profForm.tipo_pagamento === 'comissao' ? profForm.percentual_comissao : null,
         tenant_id: tenantId, active: true,
       };
       if (editingProf) {
@@ -625,35 +619,6 @@ export default function CadastrosPage() {
                       <label className="form-label">Senha {profLoginAtual ? '(deixe em branco para manter)' : ''}</label>
                       <input className="form-input" type="password" value={profForm.login_senha} onChange={e=>setP('login_senha',e.target.value)} placeholder="Senha para login"/>
                     </div>
-                  </div>
-                </div>
-                <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:14}}>
-                  <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:10}}>
-                    Acerto financeiro por atendimento (usado no lançamento automático da Fase 6)
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                    <div>
-                      <label className="form-label">Forma de pagamento</label>
-                      <select className="form-input" value={profForm.tipo_pagamento} onChange={e=>setP('tipo_pagamento', e.target.value)}>
-                        <option value="">Nenhum (não gera comissão)</option>
-                        <option value="fixo">Valor fixo por atendimento</option>
-                        <option value="comissao">Comissão (%)</option>
-                      </select>
-                    </div>
-                    {profForm.tipo_pagamento === 'fixo' && (
-                      <div>
-                        <label className="form-label">Valor fixo (R$)</label>
-                        <input className="form-input" type="number" step="0.01" value={profForm.valor_fixo ?? ''}
-                          onChange={e=>setP('valor_fixo', e.target.value === '' ? null : parseFloat(e.target.value))} placeholder="0.00"/>
-                      </div>
-                    )}
-                    {profForm.tipo_pagamento === 'comissao' && (
-                      <div>
-                        <label className="form-label">Percentual de comissão (%)</label>
-                        <input className="form-input" type="number" step="0.01" value={profForm.percentual_comissao ?? ''}
-                          onChange={e=>setP('percentual_comissao', e.target.value === '' ? null : parseFloat(e.target.value))} placeholder="0.00"/>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
