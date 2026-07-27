@@ -50,8 +50,8 @@ function fmt(d: Date) { return d.toISOString().split('T')[0]; }
 function emptyForm() {
   return {
     customer_id: '', customer_name: '',
-    professional_name: '', professional_id: '',
-    procedure_type: 'Consulta', procedure_id: '',
+    professional_name: '',
+    procedure_type: 'Consulta',
     date: new Date().toISOString().split('T')[0],
     time: '08:00',
     time_end: '08:30',
@@ -66,7 +66,6 @@ export default function AgendaPage() {
   const [consultas, setConsultas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [professionals, setProfessionals] = useState<any[]>([]);
-  const [procedures, setProcedures] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm());
@@ -105,8 +104,6 @@ export default function AgendaPage() {
     loadConsultas();
     supabase.from('professionals').select('id,name,specialty').eq('tenant_id', tenantId).eq('active', true).order('name')
       .then(({ data }) => setProfessionals(data || []));
-    supabase.from('procedures').select('id,name,default_price').eq('tenant_id', tenantId).eq('active', true).order('name')
-      .then(({ data }) => setProcedures(data || []));
     fetchAllRows<{id:string;name:string}>((from, to) => supabase.from('customers').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to))
       .then(data => setCustomers(data || []));
     supabase.from('clinic_settings').select('horario_inicio,horario_fim,dias_semana,possui_intervalo,intervalo_inicio,intervalo_fim,intervalo_consulta').eq('tenant_id', tenantId).maybeSingle()
@@ -153,9 +150,7 @@ export default function AgendaPage() {
         customer_id: form.customer_id || null,
         customer_name: form.customer_name,
         professional_name: form.professional_name,
-        professional_id: form.professional_id || null,
         procedure_type: form.procedure_type,
-        procedure_id: form.procedure_id || null,
         date: form.date,
         time: form.time,
         time_end: form.time_end,
@@ -297,7 +292,7 @@ export default function AgendaPage() {
               <div>
                 <label className="form-label">Selecione o profissional *</label>
                 {professionals.length > 0 ? (
-                  <select className="form-input" value={form.professional_name} onChange={e => { const sel = professionals.find(pr => pr.name === e.target.value); set('professional_name', e.target.value); set('professional_id', sel?.id || ''); }}>
+                  <select className="form-input" value={form.professional_name} onChange={e => set('professional_name', e.target.value)}>
                     <option value="">Selecione um profissional...</option>
                     {professionals.map(p => (
                       <option key={p.id} value={p.name}>{p.name}{p.specialty ? ' — ' + p.specialty : ''}</option>
@@ -311,16 +306,9 @@ export default function AgendaPage() {
               {/* Procedimento */}
               <div>
                 <label className="form-label">Selecione o procedimento *</label>
-                {procedures.length > 0 ? (
-                  <select className="form-input" value={form.procedure_id} onChange={e => { const sel = procedures.find(pr => pr.id === e.target.value); set('procedure_id', e.target.value); set('procedure_type', sel?.name || ''); }}>
-                    <option value="">Selecione...</option>
-                    {procedures.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                ) : (
-                  <select className="form-input" value={form.procedure_type} onChange={e => set('procedure_type', e.target.value)}>
-                    {PROCEDIMENTOS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                )}
+                <select className="form-input" value={form.procedure_type} onChange={e => set('procedure_type', e.target.value)}>
+                  {PROCEDIMENTOS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
               </div>
 
               {/* Paciente */}

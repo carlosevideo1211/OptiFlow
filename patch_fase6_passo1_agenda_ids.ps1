@@ -1,0 +1,57 @@
+$ErrorActionPreference = "Stop"
+$path = "D:\optiflow\src\pages\AgendaPage.tsx"
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$backup = "D:\optiflow\src\pages\AgendaPage.tsx.bak_$stamp"
+Copy-Item $path $backup
+Write-Host "Backup criado em $backup"
+
+$bytes = [System.IO.File]::ReadAllBytes($path)
+$hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+$content = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+
+# --- Bloco 1 ---
+$old1 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ZnVuY3Rpb24gZW1wdHlGb3JtKCkgewogIHJldHVybiB7CiAgICBjdXN0b21lcl9pZDogJycsIGN1c3RvbWVyX25hbWU6ICcnLAogICAgcHJvZmVzc2lvbmFsX25hbWU6ICcnLAogICAgcHJvY2VkdXJlX3R5cGU6ICdDb25zdWx0YScsCiAgICBkYXRlOiBuZXcgRGF0ZSgpLnRvSVNPU3RyaW5nKCkuc3BsaXQoJ1QnKVswXSwKICAgIHRpbWU6ICcwODowMCcsCiAgICB0aW1lX2VuZDogJzA4OjMwJywKICAgIG5vdGVzOiAnJywKICB9Owp9'))
+$new1 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ZnVuY3Rpb24gZW1wdHlGb3JtKCkgewogIHJldHVybiB7CiAgICBjdXN0b21lcl9pZDogJycsIGN1c3RvbWVyX25hbWU6ICcnLAogICAgcHJvZmVzc2lvbmFsX25hbWU6ICcnLCBwcm9mZXNzaW9uYWxfaWQ6ICcnLAogICAgcHJvY2VkdXJlX3R5cGU6ICdDb25zdWx0YScsIHByb2NlZHVyZV9pZDogJycsCiAgICBkYXRlOiBuZXcgRGF0ZSgpLnRvSVNPU3RyaW5nKCkuc3BsaXQoJ1QnKVswXSwKICAgIHRpbWU6ICcwODowMCcsCiAgICB0aW1lX2VuZDogJzA4OjMwJywKICAgIG5vdGVzOiAnJywKICB9Owp9'))
+if ($content.IndexOf($old1) -lt 0) { throw "Bloco 1 nao encontrado no arquivo - patch abortado, nada foi alterado." }
+$content = $content.Replace($old1, $new1)
+
+# --- Bloco 2 ---
+$old2 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICBjb25zdCBbcHJvZmVzc2lvbmFscywgc2V0UHJvZmVzc2lvbmFsc10gPSB1c2VTdGF0ZTxhbnlbXT4oW10pOwogIGNvbnN0IFtjdXN0b21lcnMsIHNldEN1c3RvbWVyc10gPSB1c2VTdGF0ZTxhbnlbXT4oW10pOw=='))
+$new2 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICBjb25zdCBbcHJvZmVzc2lvbmFscywgc2V0UHJvZmVzc2lvbmFsc10gPSB1c2VTdGF0ZTxhbnlbXT4oW10pOwogIGNvbnN0IFtwcm9jZWR1cmVzLCBzZXRQcm9jZWR1cmVzXSA9IHVzZVN0YXRlPGFueVtdPihbXSk7CiAgY29uc3QgW2N1c3RvbWVycywgc2V0Q3VzdG9tZXJzXSA9IHVzZVN0YXRlPGFueVtdPihbXSk7'))
+if ($content.IndexOf($old2) -lt 0) { throw "Bloco 2 nao encontrado no arquivo - patch abortado, nada foi alterado." }
+$content = $content.Replace($old2, $new2)
+
+# --- Bloco 3 ---
+$old3 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICAgIHN1cGFiYXNlLmZyb20oJ3Byb2Zlc3Npb25hbHMnKS5zZWxlY3QoJ2lkLG5hbWUsc3BlY2lhbHR5JykuZXEoJ3RlbmFudF9pZCcsIHRlbmFudElkKS5lcSgnYWN0aXZlJywgdHJ1ZSkub3JkZXIoJ25hbWUnKQogICAgICAudGhlbigoeyBkYXRhIH0pID0+IHNldFByb2Zlc3Npb25hbHMoZGF0YSB8fCBbXSkpOw=='))
+$new3 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICAgIHN1cGFiYXNlLmZyb20oJ3Byb2Zlc3Npb25hbHMnKS5zZWxlY3QoJ2lkLG5hbWUsc3BlY2lhbHR5JykuZXEoJ3RlbmFudF9pZCcsIHRlbmFudElkKS5lcSgnYWN0aXZlJywgdHJ1ZSkub3JkZXIoJ25hbWUnKQogICAgICAudGhlbigoeyBkYXRhIH0pID0+IHNldFByb2Zlc3Npb25hbHMoZGF0YSB8fCBbXSkpOwogICAgc3VwYWJhc2UuZnJvbSgncHJvY2VkdXJlcycpLnNlbGVjdCgnaWQsbmFtZSxkZWZhdWx0X3ByaWNlJykuZXEoJ3RlbmFudF9pZCcsIHRlbmFudElkKS5lcSgnYWN0aXZlJywgdHJ1ZSkub3JkZXIoJ25hbWUnKQogICAgICAudGhlbigoeyBkYXRhIH0pID0+IHNldFByb2NlZHVyZXMoZGF0YSB8fCBbXSkpOw=='))
+if ($content.IndexOf($old3) -lt 0) { throw "Bloco 3 nao encontrado no arquivo - patch abortado, nada foi alterado." }
+$content = $content.Replace($old3, $new3)
+
+# --- Bloco 4 ---
+$old4 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICAgICAgICAgICAgICAgIHtwcm9mZXNzaW9uYWxzLmxlbmd0aCA+IDAgPyAoCiAgICAgICAgICAgICAgICAgIDxzZWxlY3QgY2xhc3NOYW1lPSJmb3JtLWlucHV0IiB2YWx1ZT17Zm9ybS5wcm9mZXNzaW9uYWxfbmFtZX0gb25DaGFuZ2U9e2UgPT4gc2V0KCdwcm9mZXNzaW9uYWxfbmFtZScsIGUudGFyZ2V0LnZhbHVlKX0+CiAgICAgICAgICAgICAgICAgICAgPG9wdGlvbiB2YWx1ZT0iIj5TZWxlY2lvbmUgdW0gcHJvZmlzc2lvbmFsLi4uPC9vcHRpb24+CiAgICAgICAgICAgICAgICAgICAge3Byb2Zlc3Npb25hbHMubWFwKHAgPT4gKAogICAgICAgICAgICAgICAgICAgICAgPG9wdGlvbiBrZXk9e3AuaWR9IHZhbHVlPXtwLm5hbWV9PntwLm5hbWV9e3Auc3BlY2lhbHR5ID8gJyDigJQgJyArIHAuc3BlY2lhbHR5IDogJyd9PC9vcHRpb24+CiAgICAgICAgICAgICAgICAgICAgKSl9CiAgICAgICAgICAgICAgICAgIDwvc2VsZWN0PgogICAgICAgICAgICAgICAgKSA6ICg='))
+$new4 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICAgICAgICAgICAgICAgIHtwcm9mZXNzaW9uYWxzLmxlbmd0aCA+IDAgPyAoCiAgICAgICAgICAgICAgICAgIDxzZWxlY3QgY2xhc3NOYW1lPSJmb3JtLWlucHV0IiB2YWx1ZT17Zm9ybS5wcm9mZXNzaW9uYWxfbmFtZX0gb25DaGFuZ2U9e2UgPT4geyBjb25zdCBzZWwgPSBwcm9mZXNzaW9uYWxzLmZpbmQocHIgPT4gcHIubmFtZSA9PT0gZS50YXJnZXQudmFsdWUpOyBzZXQoJ3Byb2Zlc3Npb25hbF9uYW1lJywgZS50YXJnZXQudmFsdWUpOyBzZXQoJ3Byb2Zlc3Npb25hbF9pZCcsIHNlbD8uaWQgfHwgJycpOyB9fT4KICAgICAgICAgICAgICAgICAgICA8b3B0aW9uIHZhbHVlPSIiPlNlbGVjaW9uZSB1bSBwcm9maXNzaW9uYWwuLi48L29wdGlvbj4KICAgICAgICAgICAgICAgICAgICB7cHJvZmVzc2lvbmFscy5tYXAocCA9PiAoCiAgICAgICAgICAgICAgICAgICAgICA8b3B0aW9uIGtleT17cC5pZH0gdmFsdWU9e3AubmFtZX0+e3AubmFtZX17cC5zcGVjaWFsdHkgPyAnIOKAlCAnICsgcC5zcGVjaWFsdHkgOiAnJ308L29wdGlvbj4KICAgICAgICAgICAgICAgICAgICApKX0KICAgICAgICAgICAgICAgICAgPC9zZWxlY3Q+CiAgICAgICAgICAgICAgICApIDogKA=='))
+if ($content.IndexOf($old4) -lt 0) { throw "Bloco 4 nao encontrado no arquivo - patch abortado, nada foi alterado." }
+$content = $content.Replace($old4, $new4)
+
+# --- Bloco 5 ---
+$old5 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICAgICAgICAgICAgICB7LyogUHJvY2VkaW1lbnRvICovfQogICAgICAgICAgICAgIDxkaXY+CiAgICAgICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPSJmb3JtLWxhYmVsIj5TZWxlY2lvbmUgbyBwcm9jZWRpbWVudG8gKjwvbGFiZWw+CiAgICAgICAgICAgICAgICA8c2VsZWN0IGNsYXNzTmFtZT0iZm9ybS1pbnB1dCIgdmFsdWU9e2Zvcm0ucHJvY2VkdXJlX3R5cGV9IG9uQ2hhbmdlPXtlID0+IHNldCgncHJvY2VkdXJlX3R5cGUnLCBlLnRhcmdldC52YWx1ZSl9PgogICAgICAgICAgICAgICAgICB7UFJPQ0VESU1FTlRPUy5tYXAocCA9PiA8b3B0aW9uIGtleT17cH0gdmFsdWU9e3B9PntwfTwvb3B0aW9uPil9CiAgICAgICAgICAgICAgICA8L3NlbGVjdD4KICAgICAgICAgICAgICA8L2Rpdj4='))
+$new5 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICAgICAgICAgICAgICB7LyogUHJvY2VkaW1lbnRvICovfQogICAgICAgICAgICAgIDxkaXY+CiAgICAgICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPSJmb3JtLWxhYmVsIj5TZWxlY2lvbmUgbyBwcm9jZWRpbWVudG8gKjwvbGFiZWw+CiAgICAgICAgICAgICAgICB7cHJvY2VkdXJlcy5sZW5ndGggPiAwID8gKAogICAgICAgICAgICAgICAgICA8c2VsZWN0IGNsYXNzTmFtZT0iZm9ybS1pbnB1dCIgdmFsdWU9e2Zvcm0ucHJvY2VkdXJlX2lkfSBvbkNoYW5nZT17ZSA9PiB7IGNvbnN0IHNlbCA9IHByb2NlZHVyZXMuZmluZChwciA9PiBwci5pZCA9PT0gZS50YXJnZXQudmFsdWUpOyBzZXQoJ3Byb2NlZHVyZV9pZCcsIGUudGFyZ2V0LnZhbHVlKTsgc2V0KCdwcm9jZWR1cmVfdHlwZScsIHNlbD8ubmFtZSB8fCAnJyk7IH19PgogICAgICAgICAgICAgICAgICAgIDxvcHRpb24gdmFsdWU9IiI+U2VsZWNpb25lLi4uPC9vcHRpb24+CiAgICAgICAgICAgICAgICAgICAge3Byb2NlZHVyZXMubWFwKHAgPT4gPG9wdGlvbiBrZXk9e3AuaWR9IHZhbHVlPXtwLmlkfT57cC5uYW1lfTwvb3B0aW9uPil9CiAgICAgICAgICAgICAgICAgIDwvc2VsZWN0PgogICAgICAgICAgICAgICAgKSA6ICgKICAgICAgICAgICAgICAgICAgPHNlbGVjdCBjbGFzc05hbWU9ImZvcm0taW5wdXQiIHZhbHVlPXtmb3JtLnByb2NlZHVyZV90eXBlfSBvbkNoYW5nZT17ZSA9PiBzZXQoJ3Byb2NlZHVyZV90eXBlJywgZS50YXJnZXQudmFsdWUpfT4KICAgICAgICAgICAgICAgICAgICB7UFJPQ0VESU1FTlRPUy5tYXAocCA9PiA8b3B0aW9uIGtleT17cH0gdmFsdWU9e3B9PntwfTwvb3B0aW9uPil9CiAgICAgICAgICAgICAgICAgIDwvc2VsZWN0PgogICAgICAgICAgICAgICAgKX0KICAgICAgICAgICAgICA8L2Rpdj4='))
+if ($content.IndexOf($old5) -lt 0) { throw "Bloco 5 nao encontrado no arquivo - patch abortado, nada foi alterado." }
+$content = $content.Replace($old5, $new5)
+
+# --- Bloco 6 ---
+$old6 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICAgICAgY29uc3QgeyBlcnJvciB9ID0gYXdhaXQgc3VwYWJhc2UuZnJvbSgnY29uc3VsdGF0aW9ucycpLmluc2VydChbewogICAgICAgIHRlbmFudF9pZDogdGVuYW50SWQsCiAgICAgICAgY3VzdG9tZXJfaWQ6IGZvcm0uY3VzdG9tZXJfaWQgfHwgbnVsbCwKICAgICAgICBjdXN0b21lcl9uYW1lOiBmb3JtLmN1c3RvbWVyX25hbWUsCiAgICAgICAgcHJvZmVzc2lvbmFsX25hbWU6IGZvcm0ucHJvZmVzc2lvbmFsX25hbWUsCiAgICAgICAgcHJvY2VkdXJlX3R5cGU6IGZvcm0ucHJvY2VkdXJlX3R5cGUsCiAgICAgICAgZGF0ZTogZm9ybS5kYXRlLAogICAgICAgIHRpbWU6IGZvcm0udGltZSwKICAgICAgICB0aW1lX2VuZDogZm9ybS50aW1lX2VuZCwKICAgICAgICBzdGF0dXM6ICdhZ2VuZGFkYScsCiAgICAgICAgbm90ZXM6IGZvcm0ubm90ZXMgfHwgbnVsbCwKICAgICAgfV0pOw=='))
+$new6 = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('ICAgICAgY29uc3QgeyBlcnJvciB9ID0gYXdhaXQgc3VwYWJhc2UuZnJvbSgnY29uc3VsdGF0aW9ucycpLmluc2VydChbewogICAgICAgIHRlbmFudF9pZDogdGVuYW50SWQsCiAgICAgICAgY3VzdG9tZXJfaWQ6IGZvcm0uY3VzdG9tZXJfaWQgfHwgbnVsbCwKICAgICAgICBjdXN0b21lcl9uYW1lOiBmb3JtLmN1c3RvbWVyX25hbWUsCiAgICAgICAgcHJvZmVzc2lvbmFsX25hbWU6IGZvcm0ucHJvZmVzc2lvbmFsX25hbWUsCiAgICAgICAgcHJvZmVzc2lvbmFsX2lkOiBmb3JtLnByb2Zlc3Npb25hbF9pZCB8fCBudWxsLAogICAgICAgIHByb2NlZHVyZV90eXBlOiBmb3JtLnByb2NlZHVyZV90eXBlLAogICAgICAgIHByb2NlZHVyZV9pZDogZm9ybS5wcm9jZWR1cmVfaWQgfHwgbnVsbCwKICAgICAgICBkYXRlOiBmb3JtLmRhdGUsCiAgICAgICAgdGltZTogZm9ybS50aW1lLAogICAgICAgIHRpbWVfZW5kOiBmb3JtLnRpbWVfZW5kLAogICAgICAgIHN0YXR1czogJ2FnZW5kYWRhJywKICAgICAgICBub3RlczogZm9ybS5ub3RlcyB8fCBudWxsLAogICAgICB9XSk7'))
+if ($content.IndexOf($old6) -lt 0) { throw "Bloco 6 nao encontrado no arquivo - patch abortado, nada foi alterado." }
+$content = $content.Replace($old6, $new6)
+
+if ($hasBom) {
+  $utf8Bom = New-Object System.Text.UTF8Encoding($true)
+  [System.IO.File]::WriteAllText($path, $content, $utf8Bom)
+} else {
+  $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
+}
+
+Write-Host "AgendaPage.tsx atualizado com sucesso: professional_id e procedure_id agora sao capturados no agendamento."
+Write-Host "Rode: npm run build"
