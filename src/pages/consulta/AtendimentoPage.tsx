@@ -135,12 +135,14 @@ function FTextarea({ value, onChange, rows = 3, placeholder = '' }: any) {
   );
 }
 
-function AccordionSection({ id, label, open, toggle, children }: {
+function AccordionSection({ id, label, open, toggle, children, order, hidden }: {
   id: Accordion; label: string; open: boolean;
   toggle: (id: Accordion) => void; children: React.ReactNode;
+  order?: number; hidden?: boolean;
 }) {
+  if (hidden) return null;
   return (
-    <div style={{ borderBottom: '1px solid var(--border)' }}>
+    <div style={{ borderBottom: '1px solid var(--border)', order }}>
       <button
         onClick={() => toggle(id)}
         style={{
@@ -251,6 +253,10 @@ export default function AtendimentoPage() {
     adicao: false, ppc: false, reflexos: false, reservas: false,
     subjetivo: false, ambulatorial: false
   });
+  const [secaoOrder, setSecaoOrder] = useState<Accordion[]>([]);
+  const [rodapeConfig, setRodapeConfig] = useState<{ ativo: boolean; html: string }>({ ativo: false, html: '' });
+  const secOrder = (a: Accordion) => { const i = secaoOrder.indexOf(a); return i === -1 ? 999 : i; };
+  const secVisible = (a: Accordion) => secaoOrder.length === 0 || secaoOrder.includes(a);
 
   const [queixa, setQueixa] = useState('');
   const [ultExameData, setUltExameData] = useState('');
@@ -313,6 +319,26 @@ export default function AtendimentoPage() {
   const [docIdade, setDocIdade] = useState('');
   const [docCidade, setDocCidade] = useState('Rio de Janeiro');
   const [docProfissional, setDocProfissional] = useState('');
+
+  useEffect(() => {
+    if (!tenantId) return;
+    const SECAO_KEY_MAP: Record<string, Accordion | null> = {
+      secao_1: 'anamnese', secao_2: 'ult_prescricao', secao_3: 'acuidade', secao_4: 'biomicroscopia',
+      secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
+      secao_9: 'retin_din', secao_10: 'retin_est', secao_11: null, secao_12: 'rx_final',
+      secao_13: null, secao_14: null, secao_15: 'dx', secao_16: null, secao_17: null,
+      secao_18: null, secao_19: null, secao_20: null, secao_21: null, secao_22: null,
+    };
+    supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
+      .then(({ data }) => {
+        const fl = (data as any)?.ficha_layout;
+        if (fl && Array.isArray(fl.secoes)) {
+          const ordem = fl.secoes.filter((s: any) => s.ativo).map((s: any) => SECAO_KEY_MAP[s.key]).filter(Boolean) as Accordion[];
+          setSecaoOrder(ordem);
+          setRodapeConfig({ ativo: !!fl.rodape_ativo, html: fl.rodape_html || '' });
+        }
+      });
+  }, [tenantId]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -436,11 +462,26 @@ export default function AtendimentoPage() {
       <div style="font-size:18px; font-weight:900; color:#1a3a6b; letter-spacing:0.12em;">OPTOMETRIA</div>
     </div>`;
 
-  const rodapeDoc = (cidade: string, dt: string) => `
+  const rodapeDoc = (cidade: string, dt: string) => {
+    if (rodapeConfig.ativo && rodapeConfig.html) {
+      const hoje = new Date();
+      const meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+      const prof = docProfissional || consultation?.professional_name || '';
+      const htmlFinal = rodapeConfig.html
+        .replace(/\{profissional\.nome\}/g, prof)
+        .replace(/\{profissional\.conselho\}/g, '')
+        .replace(/\{clinica\.cidade\}/g, docCidade || cidade)
+        .replace(/\{dia\}/g, String(hoje.getDate()))
+        .replace(/\{mes\}/g, meses[hoje.getMonth()])
+        .replace(/\{ano\}/g, String(hoje.getFullYear()));
+      return `<div style="position:fixed; bottom:40px; left:40px; right:40px; border-top:1px solid #ccc; padding-top:8px; font-size:10px; color:#888; text-align:center; line-height:1.5;">${htmlFinal}</div>`;
+    }
+    return `
     <div style="position:fixed; bottom:40px; left:40px; right:40px; border-top:1px solid #ccc; padding-top:8px; font-size:9px; color:#888; text-align:center; line-height:1.5;">
       O presente exame realizado pelo optometrista tem por finalidade a correção dos defeitos refrativos, a avaliação sensorial e motora, através da indicação de lentes corretivas e/ou exercícios ortópticos. O diagnóstico de doenças oculares e seu tratamento são de competência do profissional médico.
       <br/><div style="margin-top:4px; border-top:1px solid #ddd; padding-top:4px;">${docCidade || cidade}</div>
     </div>`;
+  };
 
   const assinaturaDoc = (prof: string, dt: string) => `
     <div style="margin-top:60px; text-align:center;">
@@ -942,7 +983,9 @@ export default function AtendimentoPage() {
                 <strong style={{ color: '#a5b4fc' }}>Formato obrigatório:</strong> ESF com sinal (+0,50 / -0,50) · CIL sempre negativo (-1,00) · EIXO entre 1–180 · Adição sem sinal (2,75)
               </div>
 
-              <AccordionSection id="anamnese" label="Anamnese" open={open.anamnese} toggle={toggle}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+
+              <AccordionSection id="anamnese" label="Anamnese" open={open.anamnese} toggle={toggle} order={secOrder('anamnese')} hidden={!secVisible('anamnese')}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                   <Field label="Motivo principal da consulta"><FTextarea value={queixa} onChange={setQueixa} rows={2} /></Field>
                   <Field label="Data do último exame"><FInput type="date" value={ultExameData} onChange={setUltExameData} /></Field>
@@ -976,7 +1019,7 @@ export default function AtendimentoPage() {
                 </div>
               </AccordionSection>
 
-              <AccordionSection id="ult_prescricao" label="Prescrição do Último Exame" open={open.ult_prescricao} toggle={toggle}>
+              <AccordionSection id="ult_prescricao" label="Prescrição do Último Exame" open={open.ult_prescricao} toggle={toggle} order={secOrder('ult_prescricao')} hidden={!secVisible('ult_prescricao')}>
                 <RxTable
                   cols={['ESF', 'CIL', 'EIXO', 'ADIÇÃO', 'DNP']}
                   od={{ ESF: ultRx.re_esf, CIL: ultRx.re_cil, EIXO: ultRx.re_eixo, ADIÇÃO: ultRx.re_adicao, DNP: ultRx.re_dnp }}
@@ -989,7 +1032,7 @@ export default function AtendimentoPage() {
                 <Field label="Lentes"><FInput value={ultRx.lente} onChange={(v: string) => setUltRx(p => ({ ...p, lente: v }))} /></Field>
               </AccordionSection>
 
-              <AccordionSection id="acuidade" label="Acuidade Visual" open={open.acuidade} toggle={toggle}>
+              <AccordionSection id="acuidade" label="Acuidade Visual" open={open.acuidade} toggle={toggle} order={secOrder('acuidade')} hidden={!secVisible('acuidade')}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
@@ -1023,7 +1066,7 @@ export default function AtendimentoPage() {
                 </div>
               </AccordionSection>
 
-              <AccordionSection id="biomicroscopia" label="Biomicroscopia" open={open.biomicroscopia} toggle={toggle}>
+              <AccordionSection id="biomicroscopia" label="Biomicroscopia" open={open.biomicroscopia} toggle={toggle} order={secOrder('biomicroscopia')} hidden={!secVisible('biomicroscopia')}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
@@ -1051,7 +1094,7 @@ export default function AtendimentoPage() {
                 </div>
               </AccordionSection>
 
-              <AccordionSection id="ceratometria" label="Ceratometria" open={open.ceratometria} toggle={toggle}>
+              <AccordionSection id="ceratometria" label="Ceratometria" open={open.ceratometria} toggle={toggle} order={secOrder('ceratometria')} hidden={!secVisible('ceratometria')}>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Técnica: AutoRefratômetro</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                   <Field label="OD"><FInput value={cerat.od} onChange={(v:string)=>setCerat(p=>({...p,od:v}))} /></Field>
@@ -1060,7 +1103,7 @@ export default function AtendimentoPage() {
                 </div>
               </AccordionSection>
 
-              <AccordionSection id="tonometria" label="Tonometria" open={open.tonometria} toggle={toggle}>
+              <AccordionSection id="tonometria" label="Tonometria" open={open.tonometria} toggle={toggle} order={secOrder('tonometria')} hidden={!secVisible('tonometria')}>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Técnica: Transpalpebral</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                   <Field label="OD"><FInput value={tono.od} onChange={(v:string)=>setTono(p=>({...p,od:v}))} /></Field>
@@ -1069,7 +1112,7 @@ export default function AtendimentoPage() {
                 </div>
               </AccordionSection>
 
-              <AccordionSection id="forometria" label="Forometria" open={open.forometria} toggle={toggle}>
+              <AccordionSection id="forometria" label="Forometria" open={open.forometria} toggle={toggle} order={secOrder('forometria')} hidden={!secVisible('forometria')}>
                 <Field label="Técnica"><FInput value={foro.tecnica} onChange={(v:string)=>setForo(p=>({...p,tecnica:v}))} /></Field>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 12 }}>
                   <thead><tr><th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}></th><th style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>S/C</th><th style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>C/C</th></tr></thead>
@@ -1085,7 +1128,7 @@ export default function AtendimentoPage() {
                 </table>
               </AccordionSection>
 
-              <AccordionSection id="oftalmoscopia" label="Oftalmoscopia" open={open.oftalmoscopia} toggle={toggle}>
+              <AccordionSection id="oftalmoscopia" label="Oftalmoscopia" open={open.oftalmoscopia} toggle={toggle} order={secOrder('oftalmoscopia')} hidden={!secVisible('oftalmoscopia')}>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Técnica: Direta</div>
                 <Field label="Reflexo de Bruckner"><FTextarea value={oftal.bruckner??''} onChange={(v:string)=>setOftalField('bruckner',v)} rows={2} /></Field>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 12 }}>
@@ -1107,7 +1150,7 @@ export default function AtendimentoPage() {
                 </table>
               </AccordionSection>
 
-              <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle}>
+              <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
                 <OdOeGrid>
                   <ColHeader labels={['Rx','AV']} />
                   <div style={{ fontWeight: 700, fontSize: 12 }}>OD</div>
@@ -1119,7 +1162,7 @@ export default function AtendimentoPage() {
                 </OdOeGrid>
               </AccordionSection>
 
-              <AccordionSection id="retin_est" label="Retinoscopia Estática" open={open.retin_est} toggle={toggle}>
+              <AccordionSection id="retin_est" label="Retinoscopia Estática" open={open.retin_est} toggle={toggle} order={secOrder('retin_est')} hidden={!secVisible('retin_est')}>
                 <OdOeGrid>
                   <ColHeader labels={['Rx','AV']} />
                   <div style={{ fontWeight: 700, fontSize: 12 }}>OD</div>
@@ -1131,7 +1174,7 @@ export default function AtendimentoPage() {
                 </OdOeGrid>
               </AccordionSection>
 
-              <AccordionSection id="rx_final" label="RX Final" open={open.rx_final} toggle={toggle}>
+              <AccordionSection id="rx_final" label="RX Final" open={open.rx_final} toggle={toggle} order={secOrder('rx_final')} hidden={!secVisible('rx_final')}>
                 {hasRxErrors && (
                   <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(239,68,68,.1)', border: '1px solid #ef4444', borderRadius: 6 }}>
                     {rxErrors.map((e, i) => <div key={i} style={{ fontSize: 12, color: '#ef4444' }}>⚠ {e}</div>)}
@@ -1153,7 +1196,7 @@ export default function AtendimentoPage() {
                 </div>
               </AccordionSection>
 
-              <AccordionSection id="dx" label="DX" open={open.dx} toggle={toggle}>
+              <AccordionSection id="dx" label="DX" open={open.dx} toggle={toggle} order={secOrder('dx')} hidden={!secVisible('dx')}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
                   <Field label="Refrativo"><FInput value={dxRefrativo} onChange={setDxRefrativo} /></Field>
                   <Field label="Motor"><FInput value={dxMotor} onChange={setDxMotor} /></Field>
@@ -1169,6 +1212,8 @@ export default function AtendimentoPage() {
                 </div>
                 <Field label="Obs."><FTextarea value={dxObs} onChange={setDxObs} rows={3} /></Field>
               </AccordionSection>
+
+              </div>
 
               <div style={{ padding: '20px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button className="btn btn-secondary" onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Printer size={14} /> Imprimir Receita</button>
