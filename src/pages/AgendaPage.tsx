@@ -252,6 +252,9 @@ export default function AgendaPage() {
                             {c.procedure_type && (
                               <div style={{ color: colors.color, fontSize: 10, opacity: 0.8 }}>{c.procedure_type}</div>
                             )}
+                            {c.time && c.time_end && (
+                              <div style={{ color: 'var(--text-muted)', fontSize: 9, marginTop: 1 }}>{c.time} - {c.time_end}</div>
+                            )}
                           </div>
                         );
                       })}
