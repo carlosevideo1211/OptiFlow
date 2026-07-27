@@ -13,13 +13,14 @@ const HORARIOS_PADRAO = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00'
 
 function toMin(t: string) { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
 function toHHMM(min: number) { return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0'); }
-function buildHorarios(inicio?: string, fim?: string, possuiIntervalo?: boolean, intInicio?: string, intFim?: string) {
+function buildHorarios(inicio?: string, fim?: string, possuiIntervalo?: boolean, intInicio?: string, intFim?: string, passoMin?: number) {
   const start = toMin((inicio || '07:00').slice(0, 5));
   const end = toMin((fim || '19:00').slice(0, 5));
   const intS = possuiIntervalo && intInicio ? toMin(intInicio.slice(0, 5)) : null;
   const intE = possuiIntervalo && intFim ? toMin(intFim.slice(0, 5)) : null;
+  const passo = passoMin && passoMin > 0 ? passoMin : 30;
   const lista: string[] = [];
-  for (let m = start; m < end; m += 30) {
+  for (let m = start; m < end; m += passo) {
     if (intS !== null && intE !== null && m >= intS && m < intE) continue;
     lista.push(toHHMM(m));
   }
@@ -105,10 +106,10 @@ export default function AgendaPage() {
       .then(({ data }) => setProfessionals(data || []));
     fetchAllRows<{id:string;name:string}>((from, to) => supabase.from('customers').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to))
       .then(data => setCustomers(data || []));
-    supabase.from('clinic_settings').select('horario_inicio,horario_fim,dias_semana,possui_intervalo,intervalo_inicio,intervalo_fim').eq('tenant_id', tenantId).maybeSingle()
+    supabase.from('clinic_settings').select('horario_inicio,horario_fim,dias_semana,possui_intervalo,intervalo_inicio,intervalo_fim,intervalo_consulta').eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => {
         if (data) {
-          setHorarios(buildHorarios(data.horario_inicio, data.horario_fim, data.possui_intervalo, data.intervalo_inicio, data.intervalo_fim));
+          setHorarios(buildHorarios(data.horario_inicio, data.horario_fim, data.possui_intervalo, data.intervalo_inicio, data.intervalo_fim, data.intervalo_consulta));
           setDiasAbertos(Array.isArray(data.dias_semana) ? data.dias_semana : null);
         }
       });

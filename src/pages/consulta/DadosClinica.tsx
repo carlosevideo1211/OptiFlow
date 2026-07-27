@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Building2, Clock, Save, Upload, X } from 'lucide-react';
@@ -29,6 +29,7 @@ interface ClinicSettings {
   possui_intervalo: boolean;
   intervalo_inicio: string;
   intervalo_fim: string;
+  intervalo_consulta: number;
 }
 
 const DEFAULT_FORM: ClinicSettings = {
@@ -38,6 +39,7 @@ const DEFAULT_FORM: ClinicSettings = {
   horario_inicio: '08:00', horario_fim: '18:00',
   dias_semana: [1, 2, 3, 4, 5], possui_intervalo: false,
   intervalo_inicio: '12:00', intervalo_fim: '13:00',
+  intervalo_consulta: 30,
 };
 
 // Colunas jsonb (ajustes_financeiro/pacientes/lentes, ficha_layout) existem na tabela
@@ -65,6 +67,7 @@ export default function DadosClinica() {
             intervalo_inicio: (data.intervalo_inicio || '12:00:00').slice(0, 5),
             intervalo_fim: (data.intervalo_fim || '13:00:00').slice(0, 5),
             dias_semana: data.dias_semana ?? [1, 2, 3, 4, 5],
+            intervalo_consulta: data.intervalo_consulta ?? 30,
           });
         }
         setLoading(false);
@@ -232,6 +235,17 @@ export default function DadosClinica() {
             <div>
               <label className="form-label">Fim</label>
               <input type="time" className="form-input" value={form.horario_fim} onChange={e => set('horario_fim', e.target.value)} />
+            </div>
+            <div>
+              <label className="form-label">Intervalo entre consultas</label>
+              <select className="form-input" value={form.intervalo_consulta} onChange={e => set('intervalo_consulta', parseInt(e.target.value))}>
+                <option value={10}>10 minutos</option>
+                <option value={15}>15 minutos</option>
+                <option value={20}>20 minutos</option>
+                <option value={30}>30 minutos</option>
+                <option value={45}>45 minutos</option>
+                <option value={60}>60 minutos</option>
+              </select>
             </div>
           </div>
 
