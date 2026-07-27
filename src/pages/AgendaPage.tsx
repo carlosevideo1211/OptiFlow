@@ -73,6 +73,11 @@ export default function AgendaPage() {
   const [horarios, setHorarios] = useState<string[]>(HORARIOS_PADRAO);
   const [diasAbertos, setDiasAbertos] = useState<number[] | null>(null);
   const [profissionalFiltro, setProfissionalFiltro] = useState('');
+  const matchProfissional = (nomeConsulta?: string) => {
+    if (!profissionalFiltro) return true;
+    if (!nomeConsulta) return false;
+    return nomeConsulta.split('/')[0].trim() === profissionalFiltro;
+  };
 
   const weekDates = getWeekDates(baseDate);
   const weekStart = fmt(weekDates[0]);
@@ -120,7 +125,7 @@ export default function AgendaPage() {
   };
 
   const getSlot = (date: string, hora: string) =>
-    consultas.filter(c => c.date === date && c.time === hora && (!profissionalFiltro || c.professional_name === profissionalFiltro));
+    consultas.filter(c => c.date === date && c.time === hora && matchProfissional(c.professional_name));
 
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
@@ -187,7 +192,7 @@ export default function AgendaPage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {loading && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Carregando...</span>}
-          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{(profissionalFiltro ? consultas.filter(c => c.professional_name === profissionalFiltro).length : consultas.length)} na semana</span>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{consultas.filter(c => matchProfissional(c.professional_name)).length} na semana</span>
           <button className="btn btn-primary" onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
             <Plus size={14} /> Novo Agendamento
           </button>
@@ -202,7 +207,7 @@ export default function AgendaPage() {
               <th style={{ width: 64, padding: '10px 8px', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)' }}>HORA</th>
               {weekDates.map((d, i) => {
                 const isToday = fmt(d) === today;
-                const count = consultas.filter(c => c.date === fmt(d) && (!profissionalFiltro || c.professional_name === profissionalFiltro)).length;
+                const count = consultas.filter(c => c.date === fmt(d) && matchProfissional(c.professional_name)).length;
                 return (
                   <th key={i} style={{ padding: '8px 4px', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)', textAlign: 'center', background: isToday ? 'rgba(99,102,241,.08)' : undefined }}>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{DIAS[i]}</div>
