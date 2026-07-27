@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { fetchAllRows } from '../../lib/fetchAll';
 import { Search, Users } from 'lucide-react';
 import { norm } from '../../utils/normalize';
 import FichaPaciente from './FichaPaciente';
@@ -14,59 +13,39 @@ interface PacienteResumo {
   ultima_consulta: string;
 }
 
+const POR_PAGINA = 50;
+
 export default function PacientesTab() {
   const { tenantId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [pacientes, setPacientes] = useState<PacienteResumo[]>([]);
   const [search, setSearch] = useState('');
+  const [pagina, setPagina] = useState(1);
   const [selecionado, setSelecionado] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
-    const cons = await fetchAllRows<any>((from, to) => supabase
-      .from('consultations')
-      .select('customer_id, customer_name, date')
-      .eq('tenant_id', tenantId)
-      .not('customer_id', 'is', null)
-      .order('date', { ascending: false })
-      .range(from, to));
-
-    const map = new Map<string, PacienteResumo>();
-    (cons || []).forEach((c: any) => {
-      const existing = map.get(c.customer_id);
-      if (existing) {
-        existing.qtd_consultas += 1;
-      } else {
-        map.set(c.customer_id, {
-          customer_id: c.customer_id,
-          name: c.customer_name,
-          qtd_consultas: 1,
-          ultima_consulta: c.date,
-        });
-      }
-    });
-
-    const ids = Array.from(map.keys());
-    if (ids.length > 0) {
-      const { data: custs } = await supabase.from('customers').select('id, phone, whatsapp').in('id', ids);
-      (custs || []).forEach((c: any) => {
-        const p = map.get(c.id);
-        if (p) p.phone = c.whatsapp || c.phone;
-      });
+    const { data, error } = await supabase.rpc('get_pacientes_resumo', { p_tenant_id: tenantId });
+    if (error) {
+      console.error('Erro ao carregar pacientes:', error);
+      setPacientes([]);
+    } else {
+      setPacientes((data as PacienteResumo[]) || []);
     }
-
-    const lista = Array.from(map.values()).sort((a, b) => (b.ultima_consulta || '').localeCompare(a.ultima_consulta || ''));
-    setPacientes(lista);
     setLoading(false);
   };
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
+  useEffect(() => { setPagina(1); }, [search]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return pacientes;
     const s = norm(search);
     return pacientes.filter(p => norm(p.name).includes(s) || (p.phone || '').includes(search.trim()));
   }, [pacientes, search]);
+
+  const totalPaginas = Math.max(1, Math.ceil(filtered.length / POR_PAGINA));
+  const pageItems = filtered.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
   if (selecionado) {
     return <FichaPaciente customerId={selecionado} onBack={() => { setSelecionado(null); load(); }} />;
@@ -102,7 +81,7 @@ export default function PacientesTab() {
                 <tr><th>Paciente</th><th>Telefone</th><th style={{ textAlign:'center' }}>Consultas</th><th style={{ textAlign:'center' }}>Última consulta</th></tr>
               </thead>
               <tbody>
-                {filtered.map(p => (
+                {pageItems.map(p => (
                   <tr key={p.customer_id} onClick={() => setSelecionado(p.customer_id)} style={{ cursor:'pointer' }}>
                     <td>
                       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -122,8 +101,22 @@ export default function PacientesTab() {
               </tbody>
             </table>
           </div>
+          <div style={{ padding:'10px 16px', fontSize:13, color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
+            {filtered.length} paciente(s) no total — Pag. {pagina}/{totalPaginas}
+            <div style={{ display:'flex', gap:6, marginTop:6, flexWrap:'wrap' }}>
+              <button onClick={() => setPagina(p => Math.max(1, p - 1))} disabled={pagina === 1}
+                style={{ padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:pagina===1?'transparent':'var(--primary)', color:pagina===1?'var(--text-muted)':'#fff', cursor:pagina===1?'not-allowed':'pointer', fontSize:12 }}>← Ant</button>
+              {Array.from({ length: totalPaginas }, (_, i) => i + 1).filter(n => Math.abs(n - pagina) <= 2).map(n => (
+                <button key={n} onClick={() => setPagina(n)}
+                  style={{ padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:n===pagina?'var(--primary)':'transparent', color:n===pagina?'#fff':'var(--text-muted)', cursor:'pointer', fontWeight:n===pagina?700:400, fontSize:12 }}>{n}</button>
+              ))}
+              <button onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))} disabled={pagina === totalPaginas}
+                style={{ padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:pagina===totalPaginas?'transparent':'var(--primary)', color:pagina===totalPaginas?'var(--text-muted)':'#fff', cursor:pagina===totalPaginas?'not-allowed':'pointer', fontSize:12 }}>Prox →</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
