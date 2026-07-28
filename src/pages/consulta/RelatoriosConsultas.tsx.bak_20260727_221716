@@ -2,7 +2,7 @@
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { fetchAllRows } from '../../lib/fetchAll';
-import { DollarSign, TrendingUp, TrendingDown, Award, Handshake, Stethoscope } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Award } from 'lucide-react';
 import { formatBRL } from '../../types/index';
 
 function KpiCard({ icon: Icon, color, value, label }: any) {
@@ -24,8 +24,6 @@ export default function RelatoriosConsultas() {
   const [totalReceita, setTotalReceita] = useState(0);
   const [totalDespesa, setTotalDespesa] = useState(0);
   const [porProfissional, setPorProfissional] = useState<any[]>([]);
-  const [porConvenio, setPorConvenio] = useState<any[]>([]);
-  const [porProcedimento, setPorProcedimento] = useState<any[]>([]);
 
   const getRange = () => {
     if (periodo === 'custom' && dateFrom && dateTo) return { from: dateFrom, to: dateTo };
@@ -41,20 +39,14 @@ export default function RelatoriosConsultas() {
   const loadData = async () => {
     setLoading(true);
     const { from, to } = getRange();
-    const [entries, professionals, partnershipsList, proceduresList] = await Promise.all([
+    const [entries, professionals] = await Promise.all([
       fetchAllRows<any>((rf, rt) => supabase.from('clinic_financial_entries').select('*')
         .eq('tenant_id', tenantId).gte('due_date', from).lte('due_date', to).range(rf, rt)),
       supabase.from('professionals').select('id,name').eq('tenant_id', tenantId).then(({ data }) => data || []),
-      supabase.from('partnerships').select('id,name').eq('tenant_id', tenantId).then(({ data }) => data || []),
-      supabase.from('procedures').select('id,name').eq('tenant_id', tenantId).then(({ data }) => data || []),
     ]);
 
     const profMap: Record<string, string> = {};
     (professionals as any[]).forEach(p => { profMap[p.id] = p.name; });
-    const partnerMap: Record<string, string> = {};
-    (partnershipsList as any[]).forEach(p => { partnerMap[p.id] = p.name; });
-    const procMap: Record<string, string> = {};
-    (proceduresList as any[]).forEach(p => { procMap[p.id] = p.name; });
 
     const receitas = (entries || []).filter(e => e.type === 'receita');
     const despesas = (entries || []).filter(e => e.type === 'despesa');
@@ -75,31 +67,6 @@ export default function RelatoriosConsultas() {
       g.comissao += Number(e.amount || 0);
     });
     setPorProfissional(Object.values(grupo).map(g => ({ ...g, consultas: g.consultas.size })).sort((a, b) => b.receita - a.receita));
-
-    // Agrupa por convênio: receita das consultas por convênio + repasse (comissão do convênio) devido
-    const grupoConv: Record<string, { nome: string; consultas: Set<string>; receita: number; repasse: number }> = {};
-    receitas.forEach(e => {
-      if (!e.partnership_id) return;
-      const g = grupoConv[e.partnership_id] || (grupoConv[e.partnership_id] = { nome: partnerMap[e.partnership_id] || 'Convênio removido', consultas: new Set(), receita: 0, repasse: 0 });
-      g.receita += Number(e.amount || 0);
-      if (e.consultation_id) g.consultas.add(e.consultation_id);
-    });
-    despesas.filter(e => e.category === 'comissao_convenio').forEach(e => {
-      if (!e.partnership_id) return;
-      const g = grupoConv[e.partnership_id] || (grupoConv[e.partnership_id] = { nome: partnerMap[e.partnership_id] || 'Convênio removido', consultas: new Set(), receita: 0, repasse: 0 });
-      g.repasse += Number(e.amount || 0);
-    });
-    setPorConvenio(Object.values(grupoConv).map(g => ({ ...g, consultas: g.consultas.size })).sort((a, b) => b.receita - a.receita));
-
-    // Agrupa por procedimento: quantidade e receita (só a receita carrega procedure_id)
-    const grupoProc: Record<string, { nome: string; consultas: Set<string>; receita: number }> = {};
-    receitas.forEach(e => {
-      if (!e.procedure_id) return;
-      const g = grupoProc[e.procedure_id] || (grupoProc[e.procedure_id] = { nome: procMap[e.procedure_id] || 'Procedimento removido', consultas: new Set(), receita: 0 });
-      g.receita += Number(e.amount || 0);
-      if (e.consultation_id) g.consultas.add(e.consultation_id);
-    });
-    setPorProcedimento(Object.values(grupoProc).map(g => ({ ...g, consultas: g.consultas.size })).sort((a, b) => b.receita - a.receita));
 
     setLoading(false);
   };
@@ -151,62 +118,6 @@ export default function RelatoriosConsultas() {
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>{p.consultas}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', color: '#22c55e' }}>{formatBRL(p.receita)}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', color: '#f87171' }}>{formatBRL(p.comissao)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <h3 style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 12 }}>
-          <Handshake size={16} /> Por convênio
-        </h3>
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%' }}>
-            <thead>
-              <tr>
-                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Convênio</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Consultas</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Receita gerada</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Repasse devido</th>
-              </tr>
-            </thead>
-            <tbody>
-              {porConvenio.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum atendimento por convênio no período.</td></tr>
-              )}
-              {porConvenio.map((c, i) => (
-                <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '10px 14px' }}>{c.nome}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>{c.consultas}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', color: '#22c55e' }}>{formatBRL(c.receita)}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', color: '#f87171' }}>{formatBRL(c.repasse)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <h3 style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 12 }}>
-          <Stethoscope size={16} /> Por procedimento
-        </h3>
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%' }}>
-            <thead>
-              <tr>
-                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Procedimento</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Quantidade</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Receita gerada</th>
-              </tr>
-            </thead>
-            <tbody>
-              {porProcedimento.length === 0 && (
-                <tr><td colSpan={3} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum lançamento no período.</td></tr>
-              )}
-              {porProcedimento.map((p, i) => (
-                <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '10px 14px' }}>{p.nome}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>{p.consultas}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', color: '#22c55e' }}>{formatBRL(p.receita)}</td>
                 </tr>
               ))}
             </tbody>
