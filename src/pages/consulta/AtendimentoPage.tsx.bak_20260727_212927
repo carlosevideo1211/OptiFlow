@@ -687,7 +687,6 @@ export default function AtendimentoPage() {
       due_date: date || null, status: 'pendente',
       consultation_id: consultationId, partnership_id: partnershipId || null,
       procedure_id: consultation?.procedure_id || null,
-      professional_id: consultation?.professional_id || null,
     }];
 
     if (partnershipId) {
