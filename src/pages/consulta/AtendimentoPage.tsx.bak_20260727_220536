@@ -673,13 +673,13 @@ export default function AtendimentoPage() {
   };
 
   // ── Fase 6: lançamentos financeiros automáticos ───────────────────────────────
-  const syncLancamentosFinanceiros = async (consultationId: string, statusFinal: string) => {
+  const syncLancamentosFinanceiros = async (consultationId: string) => {
     // Idempotente: sempre limpa os lançamentos antigos desta consulta antes de
     // recriar, assim salvar de novo (ex: corrigindo valor) não duplica nada.
     await supabase.from('clinic_financial_entries').delete().eq('consultation_id', consultationId);
 
     const valor = num(docValorExame);
-    if (valor == null || valor <= 0 || statusFinal !== 'realizada') return;
+    if (valor == null || valor <= 0 || status !== 'realizada') return;
 
     const entries: any[] = [{
       tenant_id: tenantId, type: 'receita', category: 'consulta',
@@ -726,9 +726,7 @@ export default function AtendimentoPage() {
   };
 
   // ── salvar ──────────────────────────────────────────────────────────────────
-  // finalizando=true (botão "Finalizar atendimento") força status para 'realizada'.
-  // Os botões "Salvar" de cada seção continuam respeitando o status escolhido em Ajustes.
-  const handleSave = async (finalizando: boolean = false) => {
+  const handleSave = async () => {
     if (creatingRef.current) return;
     const rxErrors = validateAllRx();
     if (rxErrors.length > 0) {
@@ -761,7 +759,6 @@ export default function AtendimentoPage() {
         return;
       }
       if (!id || id === 'novo') { setSaving(false); return; }
-      const statusFinal = finalizando ? 'realizada' : status;
       const payload: any = {
         queixa_principal: queixa || null, ultimo_exame_data: ultExameData || null, anamnese_obs: anamneseObs || null,
         sintomas, doencas_oculares: doencasOculares, doencas_sistemicas: doencasSistemicas, medicamentos,
@@ -812,15 +809,14 @@ export default function AtendimentoPage() {
         dx_conduta: dxConduta, dx_controle: dxControle||null, dx_obs: dxObs||null,
         lc_re_esf: num(lcOd.ESF), lc_re_cil: num(lcOd.CIL), lc_re_eixo: num(lcOd.EIXO), lc_re_av: lcOd.AV||null,
         lc_le_esf: num(lcOe.ESF), lc_le_cil: num(lcOe.CIL), lc_le_eixo: num(lcOe.EIXO), lc_le_av: lcOe.AV||null,
-        lc_lente: lcLente||null, lc_obs: lcObs||null, status: statusFinal, date: date||null,
+        lc_lente: lcLente||null, lc_obs: lcObs||null, status, date: date||null,
         partnership_id: partnershipId || null,
         valor_cobrado: num(docValorExame),
       };
       const { error } = await supabase.from('consultations').update(payload).eq('id', id);
       if (error) throw error;
-      await syncLancamentosFinanceiros(id, statusFinal);
-      if (finalizando) setStatus('realizada');
-      toast.success(finalizando ? 'Atendimento finalizado!' : 'Salvo com sucesso!');
+      await syncLancamentosFinanceiros(id);
+      toast.success('Salvo com sucesso!');
     } catch (err: any) {
       creatingRef.current = false;
       toast.error('Erro ao salvar: ' + err.message);
@@ -1025,7 +1021,7 @@ export default function AtendimentoPage() {
           <button className="btn btn-secondary" onClick={() => navigate('/consulta')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><User size={14} /> Cadastro</button>
           <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><History size={14} /> Histórico</button>
           <button className="btn btn-secondary" onClick={() => { const cid = consultation?.customer_id || newData?.customerId; if (cid) navigate('/consulta/prontuario/' + cid); else toast.error('Paciente não identificado'); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={14} /> Prontuário</button>
-          <button className="btn btn-primary" onClick={() => handleSave(true)} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <CheckCircle size={14} /> {saving ? 'Salvando...' : 'Finalizar atendimento'}
           </button>
         </div>
@@ -1050,7 +1046,7 @@ export default function AtendimentoPage() {
                 <h3 style={{ margin: 0, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}><Eye size={16} /> Prescrição para Óculos</h3>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-secondary" onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}><Printer size={13} /> Imprimir</button>
-                  <button className="btn btn-primary" onClick={() => handleSave()} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}><Save size={13} /> {saving ? 'Salvando...' : 'Salvar'}</button>
+                  <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}><Save size={13} /> {saving ? 'Salvando...' : 'Salvar'}</button>
                 </div>
               </div>
 
@@ -1292,7 +1288,7 @@ export default function AtendimentoPage() {
 
               <div style={{ padding: '20px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button className="btn btn-secondary" onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Printer size={14} /> Imprimir Receita</button>
-                <button className="btn btn-primary" onClick={() => handleSave()} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}</button>
+                <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}</button>
               </div>
             </div>
           )}
@@ -1307,7 +1303,7 @@ export default function AtendimentoPage() {
               </div>
               <Field label="Observações"><FTextarea value={lcObs} onChange={setLcObs} rows={4} /></Field>
               <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                <button className="btn btn-primary" onClick={() => handleSave()} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}</button>
+                <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}</button>
               </div>
             </div>
           )}
@@ -1410,7 +1406,7 @@ export default function AtendimentoPage() {
                 </Field>
               </div>
               <div style={{ marginTop: 16 }}>
-                <button className="btn btn-primary" onClick={() => handleSave()} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}</button>
+                <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}</button>
               </div>
             </div>
           )}
