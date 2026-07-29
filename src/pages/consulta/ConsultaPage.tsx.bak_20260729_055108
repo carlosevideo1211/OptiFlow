@@ -15,7 +15,6 @@ import InicioConsultas from './InicioConsultas';
 import PacientesTab from './PacientesTab';
 import RelatoriosConsultas from './RelatoriosConsultas';
 import FinanceiroConsultas from './FinanceiroConsultas';
-import FilaEsperaConsultas from './FilaEsperaConsultas';
 import toast from 'react-hot-toast';
 import { norm } from '../../utils/normalize';
 
@@ -29,7 +28,7 @@ export default function ConsultaPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'inicio'|'pacientes'|'consultas'|'agenda'|'fila'|'financeiro'|'relatorios'|'ajustes'>('inicio');
+  const [tab, setTab] = useState<'inicio'|'pacientes'|'consultas'|'agenda'|'financeiro'|'relatorios'|'ajustes'>('inicio');
   const navigate = useNavigate();
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
@@ -114,7 +113,7 @@ export default function ConsultaPage() {
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border)' }}>
-        {[{k:'inicio',l:'🏠 Início'},{k:'pacientes',l:'🧑 Pacientes'},{k:'consultas',l:'👁 Consultas / Rx'},{k:'agenda',l:'📅 Agenda'},{k:'fila',l:'⏳ Fila de Espera'},{k:'financeiro',l:'💰 Financeiro'},{k:'relatorios',l:'📊 Relatórios'},{k:'ajustes',l:'⚙️ Configurações'}].map(t => (
+        {[{k:'inicio',l:'🏠 Início'},{k:'pacientes',l:'🧑 Pacientes'},{k:'consultas',l:'👁 Consultas / Rx'},{k:'agenda',l:'📅 Agenda'},{k:'financeiro',l:'💰 Financeiro'},{k:'relatorios',l:'📊 Relatórios'},{k:'ajustes',l:'⚙️ Configurações'}].map(t => (
           <button key={t.k} onClick={() => setTab(t.k as any)}
             style={{ padding:'10px 20px', background:'none', border:'none', cursor:'pointer',
               fontSize:14, fontWeight:600,
@@ -133,9 +132,6 @@ export default function ConsultaPage() {
 
       {/* Agenda */}
       {tab === 'agenda' && <AgendaPage/>}
-
-      {/* Fila de Espera (visão do dia, separada da grade semanal da Agenda) */}
-      {tab === 'fila' && <FilaEsperaConsultas/>}
 
       {/* Financeiro (Contas a Receber/Pagar do módulo) */}
       {tab === 'financeiro' && <FinanceiroConsultas/>}
