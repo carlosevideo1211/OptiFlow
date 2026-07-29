@@ -4,8 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import {
   Eye, ClipboardList, FileText, ChevronDown, ChevronUp,
-  Save, Printer, ArrowLeft, CheckCircle, User, History, ShoppingBag,
-  Paperclip, Upload
+  Save, Printer, ArrowLeft, CheckCircle, User, History, ShoppingBag
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { abrirDocumentoImprimivel } from '../../utils/printDoc';
@@ -13,7 +12,7 @@ import { abrirDocumentoImprimivel } from '../../utils/printDoc';
 // ─── tipos ────────────────────────────────────────────────────────────────────
 type Section =
   | 'prescricao_oculos' | 'prescricao_lc' | 'anamnese'
-  | 'atestados' | 'anexos' | 'ajustes';
+  | 'atestados' | 'ajustes';
 
 type Accordion =
   | 'anamnese' | 'ult_prescricao' | 'acuidade' | 'biomicroscopia'
@@ -322,8 +321,6 @@ export default function AtendimentoPage() {
   const [docProfissional, setDocProfissional] = useState('');
   const [partnerships, setPartnerships] = useState<any[]>([]);
   const [partnershipId, setPartnershipId] = useState('');
-  const [anexos, setAnexos] = useState<any[]>([]);
-  const [uploadingAnexo, setUploadingAnexo] = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -376,43 +373,10 @@ export default function AtendimentoPage() {
         const { data: proc } = await supabase.from('procedures').select('default_price').eq('id', data.procedure_id).maybeSingle();
         if (proc?.default_price != null) setDocValorExame(String(Number(proc.default_price).toFixed(2)).replace('.', ','));
       }
-      const { data: anexosData } = await supabase.from('customer_attachments')
-        .select('id,file_name,file_path,created_at').eq('consultation_id', id).order('created_at', { ascending: false });
-      setAnexos(anexosData || []);
       setLoading(false);
     };
     load();
   }, [id, tenantId]);
-
-  const handleUploadAnexo = async (file: File) => {
-    if (!tenantId || !consultation) return;
-    setUploadingAnexo(true);
-    try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const path = `receitas/${consultation.customer_id}/${Date.now()}_${safeName}`;
-      const { error: upErr } = await supabase.storage.from('attachments').upload(path, file);
-      if (upErr) throw upErr;
-      const { error: insErr } = await supabase.from('customer_attachments').insert([{
-        tenant_id: tenantId, customer_id: consultation.customer_id, consultation_id: id,
-        file_name: file.name, file_path: path,
-      }]);
-      if (insErr) throw insErr;
-      toast.success('Arquivo anexado!');
-      const { data: anexosData } = await supabase.from('customer_attachments')
-        .select('id,file_name,file_path,created_at').eq('consultation_id', id).order('created_at', { ascending: false });
-      setAnexos(anexosData || []);
-    } catch (e: any) {
-      toast.error(e.message || 'Erro ao anexar arquivo');
-    } finally {
-      setUploadingAnexo(false);
-    }
-  };
-
-  const abrirAnexoAtendimento = async (a: any) => {
-    const { data } = await supabase.storage.from('attachments').createSignedUrl(a.file_path, 60);
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
-    else toast.error('Não foi possível abrir o arquivo');
-  };
 
   function populate(d: any) {
     setQueixa(inp(d.queixa_principal));
@@ -1027,7 +991,6 @@ export default function AtendimentoPage() {
     { id: 'prescricao_lc', label: 'Prescrição Lentes de Contato' },
     { id: 'anamnese', label: 'Anamnese e Ficha Clínica' },
     { id: 'atestados', label: 'Atestados e Documentos' },
-    { id: 'anexos', label: 'Anexos' },
     { id: 'ajustes', label: 'Ajustes' },
   ];
 
@@ -1429,30 +1392,6 @@ export default function AtendimentoPage() {
                     </div>
                   </button>
                 ))}
-              </div>
-            </div>
-          )}
-
-          {/* ══ ANEXOS ══ */}
-          {section === 'anexos' && (
-            <div style={{ padding: '20px' }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: 15 }}>Anexos deste atendimento</h3>
-              <div className="card" style={{ padding: 18 }}>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {anexos.length === 0 && (
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Nenhum anexo ainda.</div>
-                  )}
-                  {anexos.map(a => (
-                    <div key={a.id} onClick={() => abrirAnexoAtendimento(a)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>
-                      <Paperclip size={13} /> {a.file_name}
-                    </div>
-                  ))}
-                </div>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: '1px dashed var(--border)', color: '#818cf8', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer', marginTop: 12 }}>
-                  <Upload size={13} /> {uploadingAnexo ? 'Enviando...' : 'Anexar arquivo'}
-                  <input type="file" accept="image/*,.pdf" style={{ display: 'none' }} disabled={uploadingAnexo}
-                    onChange={e => { if (e.target.files?.[0]) handleUploadAnexo(e.target.files[0]); }} />
-                </label>
               </div>
             </div>
           )}

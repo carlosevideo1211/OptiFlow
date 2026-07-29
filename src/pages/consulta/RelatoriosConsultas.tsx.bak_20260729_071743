@@ -158,7 +158,7 @@ export default function RelatoriosConsultas() {
         </div>
 
         <h3 style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 12 }}>
-          <Handshake size={16} /> Por convênio (com ROI)
+          <Handshake size={16} /> Por convênio
         </h3>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table style={{ width: '100%' }}>
@@ -168,12 +168,11 @@ export default function RelatoriosConsultas() {
                 <th style={{ padding: '10px 14px', textAlign: 'right' }}>Consultas</th>
                 <th style={{ padding: '10px 14px', textAlign: 'right' }}>Receita gerada</th>
                 <th style={{ padding: '10px 14px', textAlign: 'right' }}>Repasse devido</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right' }}>ROI (líquido)</th>
               </tr>
             </thead>
             <tbody>
               {porConvenio.length === 0 && (
-                <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum atendimento por convênio no período.</td></tr>
+                <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum atendimento por convênio no período.</td></tr>
               )}
               {porConvenio.map((c, i) => (
                 <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
@@ -181,7 +180,6 @@ export default function RelatoriosConsultas() {
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>{c.consultas}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', color: '#22c55e' }}>{formatBRL(c.receita)}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', color: '#f87171' }}>{formatBRL(c.repasse)}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#6366f1' }}>{formatBRL(c.receita - c.repasse)}</td>
                 </tr>
               ))}
             </tbody>

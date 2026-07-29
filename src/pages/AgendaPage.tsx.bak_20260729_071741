@@ -52,7 +52,6 @@ function emptyForm() {
     customer_id: '', customer_name: '',
     professional_name: '', professional_id: '',
     procedure_type: 'Consulta', procedure_id: '',
-    partnership_id: '', prioridade: false,
     date: new Date().toISOString().split('T')[0],
     time: '08:00',
     time_end: '08:30',
@@ -68,7 +67,6 @@ export default function AgendaPage() {
   const [loading, setLoading] = useState(true);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [procedures, setProcedures] = useState<any[]>([]);
-  const [partnerships, setPartnerships] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm());
@@ -109,8 +107,6 @@ export default function AgendaPage() {
       .then(({ data }) => setProfessionals(data || []));
     supabase.from('procedures').select('id,name,default_price').eq('tenant_id', tenantId).eq('active', true).order('name')
       .then(({ data }) => setProcedures(data || []));
-    supabase.from('partnerships').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name')
-      .then(({ data }) => setPartnerships(data || []));
     fetchAllRows<{id:string;name:string}>((from, to) => supabase.from('customers').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to))
       .then(data => setCustomers(data || []));
     supabase.from('clinic_settings').select('horario_inicio,horario_fim,dias_semana,possui_intervalo,intervalo_inicio,intervalo_fim,intervalo_consulta').eq('tenant_id', tenantId).maybeSingle()
@@ -160,8 +156,6 @@ export default function AgendaPage() {
         professional_id: form.professional_id || null,
         procedure_type: form.procedure_type,
         procedure_id: form.procedure_id || null,
-        partnership_id: form.partnership_id || null,
-        prioridade: form.prioridade,
         date: form.date,
         time: form.time,
         time_end: form.time_end,
@@ -385,21 +379,6 @@ export default function AgendaPage() {
                     <div style={{ fontSize: 11, color: '#f87171', marginTop: 3 }}>Horário fim deve ser maior que início</div>
                   )}
                 </div>
-              </div>
-
-              {/* Convênio e Prioridade */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'end' }}>
-                <div>
-                  <label className="form-label">Convênio (opcional)</label>
-                  <select className="form-input" value={form.partnership_id} onChange={e => set('partnership_id', e.target.value)}>
-                    <option value="">Particular</option>
-                    {partnerships.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  <input type="checkbox" checked={form.prioridade} onChange={e => set('prioridade', e.target.checked)} />
-                  Prioridade
-                </label>
               </div>
 
               {/* Observação */}
