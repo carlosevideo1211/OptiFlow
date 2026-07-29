@@ -1,5 +1,4 @@
 ﻿import { useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -82,8 +81,6 @@ function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string })
 
 export default function OrdemServicoPage() {
   const { tenantId } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
   const [storeSettings, setStoreSettings] = useState<any>(null);
   const [orders, setOrders]       = useState<OS[]>([]);
   const [pagina, setPagina] = useState(1);
@@ -125,24 +122,6 @@ export default function OrdemServicoPage() {
   }, [tenantId]);
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
-
-  // Ponte vinda do módulo Consultas/Rx: "Gerar OS a partir da prescrição"
-  useEffect(() => {
-    const prefillId = (location.state as any)?.prefillConsultationId;
-    if (!tenantId || !prefillId) return;
-    (async () => {
-      const { data } = await supabase.from('consultations')
-        .select('id,date,professional_name,customer_id,customer_name,rx_re_esf,rx_re_cil,rx_re_eixo,rx_re_dnp,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_dnp,rx_adicao,rx_tipo_lente')
-        .eq('id', prefillId).eq('tenant_id', tenantId).maybeSingle();
-      if (!data) { toast.error('Consulta não encontrada para importar a prescrição'); return; }
-      openNew();
-      set('customer_id', data.customer_id || '');
-      set('customer_name', data.customer_name || '');
-      preencherRX(data as any);
-      if (data.customer_id) loadConsultations(data.customer_id);
-      navigate(location.pathname, { replace: true, state: {} });
-    })();
-  }, [tenantId, location.state]);
 
   const loadConsultations = async (customerId: string) => {
     const { data } = await supabase.from('consultations')

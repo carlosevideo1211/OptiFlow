@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import {
   Eye, ClipboardList, FileText, ChevronDown, ChevronUp,
-  Save, Printer, ArrowLeft, CheckCircle, User, History, ShoppingBag
+  Save, Printer, ArrowLeft, CheckCircle, User, History
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { abrirDocumentoImprimivel } from '../../utils/printDoc';
@@ -1025,7 +1025,6 @@ export default function AtendimentoPage() {
           <button className="btn btn-secondary" onClick={() => navigate('/consulta')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><User size={14} /> Cadastro</button>
           <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><History size={14} /> Histórico</button>
           <button className="btn btn-secondary" onClick={() => { const cid = consultation?.customer_id || newData?.customerId; if (cid) navigate('/consulta/prontuario/' + cid); else toast.error('Paciente não identificado'); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={14} /> Prontuário</button>
-          <button className="btn btn-secondary" onClick={() => navigate('/os', { state: { prefillConsultationId: id } })} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ShoppingBag size={14} /> Gerar OS</button>
           <button className="btn btn-primary" onClick={() => handleSave(true)} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <CheckCircle size={14} /> {saving ? 'Salvando...' : 'Finalizar atendimento'}
           </button>
