@@ -1,7 +1,6 @@
 ﻿import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { fetchAllRows } from '../../lib/fetchAll';
 import { Cake, AlertTriangle, DollarSign, MessageCircle } from 'lucide-react';
 import { formatBRL, formatDate } from '../../types/index';
 
@@ -37,8 +36,8 @@ export default function RelatoriosOperacionais() {
   const load = async () => {
     setLoading(true);
 
-    const todasConsultas = await fetchAllRows<any>((rf, rt) => supabase.from('consultations')
-      .select('customer_id, customer_name, date, status').eq('tenant_id', tenantId).range(rf, rt));
+    const { data: todasConsultas } = await supabase.from('consultations')
+      .select('customer_id, customer_name, date, status').eq('tenant_id', tenantId);
 
     const pacientesIds = [...new Set((todasConsultas ?? []).map((r: any) => r.customer_id).filter(Boolean))];
     let customersMap: Record<string, any> = {};
