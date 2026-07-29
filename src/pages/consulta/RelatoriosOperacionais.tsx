@@ -1,0 +1,189 @@
+﻿import { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
+import { Cake, AlertTriangle, DollarSign, MessageCircle } from 'lucide-react';
+import { formatBRL, formatDate } from '../../types/index';
+
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+function linkWhats(telefone: string | null | undefined, msg: string) {
+  if (!telefone) return null;
+  const digits = String(telefone).replace(/\D/g, '');
+  return `https://wa.me/55${digits}?text=${encodeURIComponent(msg)}`;
+}
+
+function WhatsButton({ href }: { href: string | null }) {
+  if (!href) return <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>sem telefone</span>;
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '5px 10px', borderRadius: 7, background: 'rgba(34,197,94,.15)', color: '#22c55e', textDecoration: 'none' }}>
+      <MessageCircle size={13} /> WhatsApp
+    </a>
+  );
+}
+
+export default function RelatoriosOperacionais() {
+  const { tenantId } = useAuth();
+  const [tab, setTab] = useState<'aniversariantes' | 'vencidas' | 'inadimplentes'>('aniversariantes');
+  const [loading, setLoading] = useState(true);
+  const [mes, setMes] = useState(new Date().getMonth());
+  const [aniversariantes, setAniversariantes] = useState<any[]>([]);
+  const [vencidas, setVencidas] = useState<any[]>([]);
+  const [inadimplentes, setInadimplentes] = useState<any[]>([]);
+
+  useEffect(() => { if (tenantId) load(); }, [tenantId, mes]);
+
+  const load = async () => {
+    setLoading(true);
+
+    const { data: todasConsultas } = await supabase.from('consultations')
+      .select('customer_id, customer_name, date, status').eq('tenant_id', tenantId);
+
+    const pacientesIds = [...new Set((todasConsultas ?? []).map((r: any) => r.customer_id).filter(Boolean))];
+    let customersMap: Record<string, any> = {};
+    if (pacientesIds.length > 0) {
+      const { data: customersData } = await supabase.from('customers')
+        .select('id, name, phone, whatsapp, birth_date').in('id', pacientesIds);
+      (customersData ?? []).forEach((c: any) => { customersMap[c.id] = c; });
+    }
+
+    const aniv = Object.values(customersMap).filter((c: any) => {
+      if (!c.birth_date) return false;
+      return new Date(c.birth_date + 'T00:00:00').getMonth() === mes;
+    }).sort((a: any, b: any) => new Date(a.birth_date + 'T00:00:00').getDate() - new Date(b.birth_date + 'T00:00:00').getDate());
+    setAniversariantes(aniv);
+
+    const hoje = new Date();
+    const doze_meses_atras = new Date(hoje.getFullYear() - 1, hoje.getMonth(), hoje.getDate()).toISOString().split('T')[0];
+    const realizadas = (todasConsultas ?? []).filter((c: any) => c.status === 'realizada' && c.customer_id);
+    const ultimaPorPaciente: Record<string, any> = {};
+    realizadas.forEach((c: any) => {
+      const atual = ultimaPorPaciente[c.customer_id];
+      if (!atual || c.date > atual.date) ultimaPorPaciente[c.customer_id] = c;
+    });
+    const venc = Object.values(ultimaPorPaciente)
+      .filter((c: any) => c.date <= doze_meses_atras)
+      .map((c: any) => ({ ...c, customer: customersMap[c.customer_id] }))
+      .sort((a: any, b: any) => a.date.localeCompare(b.date));
+    setVencidas(venc);
+
+    const { data: entriesPendentes } = await supabase.from('clinic_financial_entries')
+      .select('amount, consultation_id, due_date').eq('tenant_id', tenantId).eq('type', 'receita').eq('status', 'pendente');
+    const consultationIds = [...new Set((entriesPendentes ?? []).map((e: any) => e.consultation_id).filter(Boolean))];
+    let consultaCustomerMap: Record<string, string> = {};
+    if (consultationIds.length > 0) {
+      const { data: consultasData } = await supabase.from('consultations').select('id, customer_id').in('id', consultationIds);
+      (consultasData ?? []).forEach((c: any) => { consultaCustomerMap[c.id] = c.customer_id; });
+    }
+    const porPaciente: Record<string, { customer_id: string; total: number; vencidoMaisAntigo: string }> = {};
+    (entriesPendentes ?? []).forEach((e: any) => {
+      const custId = e.consultation_id ? consultaCustomerMap[e.consultation_id] : null;
+      if (!custId) return;
+      const g = porPaciente[custId] || (porPaciente[custId] = { customer_id: custId, total: 0, vencidoMaisAntigo: e.due_date });
+      g.total += Number(e.amount || 0);
+      if (e.due_date < g.vencidoMaisAntigo) g.vencidoMaisAntigo = e.due_date;
+    });
+    const inad = Object.values(porPaciente)
+      .map(g => ({ ...g, customer: customersMap[g.customer_id] }))
+      .sort((a, b) => b.total - a.total);
+    setInadimplentes(inad);
+
+    setLoading(false);
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+        {[
+          { k: 'aniversariantes', l: '🎂 Aniversariantes' },
+          { k: 'vencidas', l: '⏰ Consultas Vencidas' },
+          { k: 'inadimplentes', l: '💸 Inadimplentes' },
+        ].map(t => (
+          <button key={t.k} onClick={() => setTab(t.k as any)}
+            style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, background: tab === t.k ? 'var(--accent)' : 'rgba(255,255,255,.06)', color: tab === t.k ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}>
+            {t.l}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="empty-state"><p>Carregando...</p></div>
+      ) : tab === 'aniversariantes' ? (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <select className="form-input" style={{ width: 200 }} value={mes} onChange={e => setMes(Number(e.target.value))}>
+              {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+          </div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table style={{ width: '100%' }}>
+              <thead><tr>
+                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Paciente</th>
+                <th style={{ padding: '10px 14px', textAlign: 'center' }}>Dia</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Contato</th>
+              </tr></thead>
+              <tbody>
+                {aniversariantes.length === 0 && <tr><td colSpan={3} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum aniversariante em {MESES[mes]}.</td></tr>}
+                {aniversariantes.map((c: any) => (
+                  <tr key={c.id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '10px 14px' }}>{c.name}</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>{new Date(c.birth_date + 'T00:00:00').getDate()}</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                      <WhatsButton href={linkWhats(c.whatsapp || c.phone, `Olá ${c.name?.split(' ')[0]}! Passando para desejar um feliz aniversário 🎉`)} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : tab === 'vencidas' ? (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%' }}>
+            <thead><tr>
+              <th style={{ padding: '10px 14px', textAlign: 'left' }}>Paciente</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left' }}>Última consulta</th>
+              <th style={{ padding: '10px 14px', textAlign: 'right' }}>Contato</th>
+            </tr></thead>
+            <tbody>
+              {vencidas.length === 0 && <tr><td colSpan={3} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhuma consulta vencida (12+ meses sem retorno).</td></tr>}
+              {vencidas.map((v: any) => (
+                <tr key={v.customer_id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '10px 14px' }}>{v.customer_name}</td>
+                  <td style={{ padding: '10px 14px', color: '#f87171' }}>{formatDate(v.date)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                    <WhatsButton href={linkWhats(v.customer?.whatsapp || v.customer?.phone, `Olá ${v.customer_name?.split(' ')[0]}! Já faz um tempo desde sua última consulta — que tal agendar um retorno?`)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%' }}>
+            <thead><tr>
+              <th style={{ padding: '10px 14px', textAlign: 'left' }}>Paciente</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left' }}>Vencido desde</th>
+              <th style={{ padding: '10px 14px', textAlign: 'right' }}>Total pendente</th>
+              <th style={{ padding: '10px 14px', textAlign: 'right' }}>Contato</th>
+            </tr></thead>
+            <tbody>
+              {inadimplentes.length === 0 && <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum paciente com receita pendente.</td></tr>}
+              {inadimplentes.map((i: any) => (
+                <tr key={i.customer_id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '10px 14px' }}>{i.customer?.name || '—'}</td>
+                  <td style={{ padding: '10px 14px', color: '#f87171' }}>{formatDate(i.vencidoMaisAntigo)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>{formatBRL(i.total)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                    <WhatsButton href={linkWhats(i.customer?.whatsapp || i.customer?.phone, `Olá ${i.customer?.name?.split(' ')[0]}! Identificamos um valor pendente de ${formatBRL(i.total)} referente à sua consulta. Podemos ajudar a regularizar?`)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
