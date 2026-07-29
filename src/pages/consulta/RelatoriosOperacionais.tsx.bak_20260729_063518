@@ -40,12 +40,13 @@ export default function RelatoriosOperacionais() {
     const todasConsultas = await fetchAllRows<any>((rf, rt) => supabase.from('consultations')
       .select('customer_id, customer_name, date, status').eq('tenant_id', tenantId).range(rf, rt));
 
-    // Busca TODOS os clientes do tenant (paginado) em vez de filtrar por lista de IDs —
-    // evita tanto o limite de 1000 linhas quanto o limite de tamanho da URL com .in() gigante.
-    const todosCustomers = await fetchAllRows<any>((rf, rt) => supabase.from('customers')
-      .select('id, name, phone, whatsapp, birth_date').eq('tenant_id', tenantId).range(rf, rt));
+    const pacientesIds = [...new Set((todasConsultas ?? []).map((r: any) => r.customer_id).filter(Boolean))];
     let customersMap: Record<string, any> = {};
-    todosCustomers.forEach((c: any) => { customersMap[c.id] = c; });
+    if (pacientesIds.length > 0) {
+      const { data: customersData } = await supabase.from('customers')
+        .select('id, name, phone, whatsapp, birth_date').in('id', pacientesIds);
+      (customersData ?? []).forEach((c: any) => { customersMap[c.id] = c; });
+    }
 
     const aniv = Object.values(customersMap).filter((c: any) => {
       if (!c.birth_date) return false;
