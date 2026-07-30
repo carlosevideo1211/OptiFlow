@@ -7,14 +7,11 @@ export interface UserProfile {
   tenant_id: string;
   full_name: string;
   email: string;
-  // Aceita também o valor livre de funcionarios.cargo (ex: 'Vendedor(a)', 'Gerente')
-  // desde a Fase A do item 6, quando funcionário passou a ter perfil próprio.
-  role: 'master' | 'optometrista' | 'atendente' | 'caixa' | 'system_admin' | string;
+  role: 'master' | 'optometrista' | 'atendente' | 'caixa' | 'system_admin';
   active: boolean;
   crm?: string;
   specialty?: string;
   avatar_url?: string;
-  funcionario_id?: string;
 }
 
 // ── Tenant (Inquilino) ───────────────────────────────────────

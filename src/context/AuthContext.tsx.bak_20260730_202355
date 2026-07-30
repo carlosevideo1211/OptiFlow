@@ -80,60 +80,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     if (error) {
-      // Login como funcionário.
-      // Desde a Fase A do item 6: a senha continua validada pela mesma
-      // função SECURITY DEFINER de sempre (verify_funcionario_login,
-      // inalterada), mas agora, se validar, o funcionário ganha uma
-      // sessão Supabase de verdade (login anônimo) vinculada a ele via
-      // token de uso único. Isso resolve de raiz o fato de auth.uid() e
-      // get_tenant_id() não funcionarem pra funcionário — sem precisar
-      // mudar nenhuma política RLS existente no sistema.
+      // Tentar login como funcionario.
+      // IMPORTANTE: não consulta `funcionarios` direto — o RLS dessa
+      // tabela exige auth.uid() (sessão já autenticada) pra resolver
+      // get_tenant_id(), mas aqui ainda NÃO existe sessão. Por isso a
+      // verificação roda dentro de uma função SECURITY DEFINER
+      // (verify_funcionario_login), que ignora RLS internamente e
+      // nunca devolve o hash da senha pro navegador.
       const encoder = new TextEncoder();
       const data = encoder.encode(password);
       const hashBuffer = await crypto.subtle.digest("SHA-256", data);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashedInput = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 
-      let { data: token } = await supabase.rpc('issue_funcionario_login_token', {
+      let { data: funcRows } = await supabase.rpc('verify_funcionario_login', {
         p_email: email.trim(),
         p_password_hash: hashedInput,
       });
+      let func = funcRows?.[0];
 
       // Fallback: contas antigas que ainda não passaram pelo hash (senha em texto puro)
-      if (!token) {
-        const { data: tokenPlain } = await supabase.rpc('issue_funcionario_login_token', {
+      if (!func) {
+        const { data: funcRowsPlain } = await supabase.rpc('verify_funcionario_login', {
           p_email: email.trim(),
           p_password_hash: password,
         });
-        token = tokenPlain;
+        func = funcRowsPlain?.[0];
       }
 
-      if (!token) throw error;
-
-      // Trava o auto-load do listener onAuthStateChange: sem isso, ele
-      // pode tentar carregar o perfil ANTES de claim_funcionario_session
-      // terminar de criá-lo, e deslogaria por engano (corrida de estado).
-      profileLoadedRef.current = true;
-
-      const { error: anonErr } = await supabase.auth.signInAnonymously();
-      if (anonErr) { profileLoadedRef.current = false; throw anonErr; }
-
-      const { data: claimRows, error: claimErr } = await supabase.rpc('claim_funcionario_session', { p_token: token });
-      if (claimErr || !claimRows?.[0]) {
-        await supabase.auth.signOut();
-        profileLoadedRef.current = false;
-        throw claimErr || new Error('Falha ao iniciar sessão do funcionário');
-      }
-
-      const uid = (await supabase.auth.getUser()).data.user?.id;
-      if (!uid) {
-        await supabase.auth.signOut();
-        profileLoadedRef.current = false;
-        throw new Error('Sessão do funcionário não encontrada');
-      }
-
-      profileLoadedRef.current = false;
-      await loadProfile(uid);
+      if (!func) throw error;
+      // Buscar dados da loja
+      const { data: store } = await supabase
+        .from('tenants')
+        .select('company_name')
+        .eq('id', func.tenant_id)
+        .maybeSingle();
+      const storeName = store?.company_name || 'OptiFlow';
+      localStorage.setItem('func_session', JSON.stringify({
+        id: func.id,
+        name: func.name,
+        email: func.email,
+        cargo: func.cargo,
+        tenant_id: func.tenant_id,
+        store_name: storeName,
+        isFuncionario: true,
+        loginAt: new Date().toISOString()
+      }));
+      setUser({ id: func.id, full_name: func.name, email: func.email, tenant_id: func.tenant_id, role: func.cargo || 'operator', store_name: storeName } as any); setLoading(false);
       return;
     }
   };
