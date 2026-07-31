@@ -29,3 +29,8 @@ fix_*.py
 # Scripts de patch e backups automaticos (nao fazem parte do codigo-fonte)
 patch_*.ps1
 *.bak_*
+
+# Variaveis de ambiente (nunca versionar)
+.env
+.env.production
+.env.*
