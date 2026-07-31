@@ -25,3 +25,7 @@ dist-ssr
 
 *.backup_*
 fix_*.py
+
+# Scripts de patch e backups automaticos (nao fazem parte do codigo-fonte)
+patch_*.ps1
+*.bak_*
