@@ -29,6 +29,7 @@ interface Professional {
 interface Funcionario {
   id: string; tenant_id: string; name: string; cargo?: string;
   cpf?: string; phone?: string; email?: string; access_password?: string; comissao?: number; active: boolean; created_at: string;
+  perfil_id?: string | null;
 }
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -48,7 +49,7 @@ function emptyProfForm() {
   };
 }
 function emptyFuncForm() {
-  return { name:'', cargo:'Vendedor(a)', cpf:'', phone:'', email:'', access_password:'', comissao:0 };
+  return { name:'', cargo:'Vendedor(a)', cpf:'', phone:'', email:'', access_password:'', comissao:0, perfil_id:'' };
 }
 
 export default function CadastrosPage() {
@@ -76,6 +77,7 @@ export default function CadastrosPage() {
 
   // Funcionários
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [perfis, setPerfis] = useState<{ id: string; nome: string }[]>([]);
   const [loadingFunc, setLoadingFunc] = useState(false);
   const [searchFunc, setSearchFunc] = useState('');
   const [showFuncModal, setShowFuncModal] = useState(false);
@@ -102,7 +104,12 @@ export default function CadastrosPage() {
     setLoadingFunc(false);
   };
 
-  useEffect(() => { if (tenantId) { load(); loadProfessionals(); loadFuncionarios(); } }, [tenantId]);
+  useEffect(() => { if (tenantId) { load(); loadProfessionals(); loadFuncionarios(); loadPerfis(); } }, [tenantId]);
+
+  const loadPerfis = async () => {
+    const { data } = await supabase.from('clinic_permission_profiles').select('id,nome').eq('tenant_id', tenantId).eq('ativo', true).order('nome');
+    setPerfis(data || []);
+  };
 
   const filtered = useMemo(() => {
     if (!search.trim()) return suppliers;
@@ -243,7 +250,7 @@ export default function CadastrosPage() {
   const openNewFunc = () => { setEditingFunc(null); setFuncForm(emptyFuncForm()); setShowFuncModal(true); };
   const openEditFunc = (f: Funcionario) => {
     setEditingFunc(f);
-    setFuncForm({ name:f.name, cargo:f.cargo||'Vendedor(a)', cpf:f.cpf||'', phone:f.phone||'', email:f.email||'', access_password:f.access_password||'', comissao:f.comissao||0 });
+    setFuncForm({ name:f.name, cargo:f.cargo||'Vendedor(a)', cpf:f.cpf||'', phone:f.phone||'', email:f.email||'', access_password:f.access_password||'', comissao:f.comissao||0, perfil_id:f.perfil_id||'' });
     setShowFuncModal(true);
   };
   const handleSaveFunc = async (e: React.FormEvent) => {
@@ -252,7 +259,7 @@ export default function CadastrosPage() {
       if (!funcForm.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSavingFunc(true);
     try {
-      const payload = { name: funcForm.name, cargo: funcForm.cargo, cpf: funcForm.cpf, phone: funcForm.phone, email: funcForm.email, access_password: funcForm.access_password, tenant_id: tenantId, active: true };
+      const payload = { name: funcForm.name, cargo: funcForm.cargo, cpf: funcForm.cpf, phone: funcForm.phone, email: funcForm.email, access_password: funcForm.access_password, perfil_id: funcForm.perfil_id || null, tenant_id: tenantId, active: true };
       if (editingFunc) {
         const { error } = await supabase.from('funcionarios').update(payload).eq('id', editingFunc.id);
         if (error) throw error; toast.success('Funcionário atualizado!');
@@ -705,6 +712,14 @@ export default function CadastrosPage() {
                 <div>
                   <label className="form-label">Senha de acesso</label>
                   <input className="form-input" type="password" value={funcForm.access_password||''} onChange={e=>setF('access_password',e.target.value)} placeholder="Senha para login"/>
+                </div>
+                <div>
+                  <label className="form-label">Perfil de permissões (Consulta/Rx)</label>
+                  <select className="form-input" value={funcForm.perfil_id} onChange={e=>setF('perfil_id',e.target.value)}>
+                    <option value="">Sem restrição (vê tudo)</option>
+                    {perfis.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                  <p style={{ fontSize:11, color:'var(--text-muted)', margin:'4px 0 0' }}>Controla quais abas dentro de Consulta/Rx esse funcionário vê. Configurável em Consulta/Rx → Configurações → Permissões.</p>
                 </div>
               </div>
               <div className="modal-footer">

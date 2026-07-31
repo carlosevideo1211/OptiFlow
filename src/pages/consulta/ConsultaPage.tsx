@@ -21,7 +21,7 @@ import toast from 'react-hot-toast';
 import { norm } from '../../utils/normalize';
 
 export default function ConsultaPage() {
-  const { tenantId } = useAuth();
+  const { tenantId, user } = useAuth();
   const [consultations, setConsultations] = useState<any[]>([]);
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
@@ -113,9 +113,22 @@ export default function ConsultaPage() {
         </div>
       </div>
 
+      {/* Tabs — filtradas pelo perfil de permissões do funcionário (Fase B do
+          item 6). modulos_permitidos nulo/indefinido = sem restrição, vê tudo
+          (Master e funcionário sem perfil configurado, comportamento de sempre). */}
       {/* Tabs */}
-      <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border)' }}>
-        {[{k:'inicio',l:'🏠 Início'},{k:'pacientes',l:'🧑 Pacientes'},{k:'consultas',l:'👁 Consultas / Rx'},{k:'agenda',l:'📅 Agenda'},{k:'fila',l:'⏳ Fila de Espera'},{k:'financeiro',l:'💰 Financeiro'},{k:'relatorios',l:'📊 Relatórios'},{k:'acoes',l:'🎯 Ações'},{k:'ajustes',l:'⚙️ Configurações'}].map(t => (
+      <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border)', flexWrap:'wrap' }}>
+        {[
+          {k:'inicio',l:'🏠 Início',modulo:'inicio_widgets'},
+          {k:'pacientes',l:'🧑 Pacientes',modulo:'pacientes'},
+          {k:'consultas',l:'👁 Consultas / Rx',modulo:'consultas'},
+          {k:'agenda',l:'📅 Agenda',modulo:'agenda'},
+          {k:'fila',l:'⏳ Fila de Espera',modulo:'agenda'},
+          {k:'financeiro',l:'💰 Financeiro',modulo:'financeiro'},
+          {k:'relatorios',l:'📊 Relatórios',modulo:'relatorios'},
+          {k:'acoes',l:'🎯 Ações',modulo:'pacientes'},
+          {k:'ajustes',l:'⚙️ Configurações',modulo:'configuracoes'},
+        ].filter(t => !user?.modulos_permitidos || user.modulos_permitidos.includes(t.modulo)).map(t => (
           <button key={t.k} onClick={() => setTab(t.k as any)}
             style={{ padding:'10px 20px', background:'none', border:'none', cursor:'pointer',
               fontSize:14, fontWeight:600,

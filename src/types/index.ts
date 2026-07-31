@@ -15,6 +15,10 @@ export interface UserProfile {
   specialty?: string;
   avatar_url?: string;
   funcionario_id?: string;
+  // Módulos que o funcionário pode ver dentro de Consulta/Rx (Fase B do
+  // item 6). Nulo = sem restrição (vê tudo) — Master e funcionário sem
+  // perfil configurado continuam vendo tudo, sem mudança de comportamento.
+  modulos_permitidos?: string[] | null;
 }
 
 // ── Tenant (Inquilino) ───────────────────────────────────────
