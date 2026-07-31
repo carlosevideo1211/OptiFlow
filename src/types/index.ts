@@ -106,7 +106,7 @@ export interface ServiceOrder {
   total: number;
   discount?: number;
   // Status
-  status: 'orcamento' | 'aprovada' | 'em_producao' | 'pronta' | 'entregue' | 'cancelada';
+  status: 'orcamento' | 'confirmada' | 'lab' | 'montagem' | 'pronta' | 'entregue' | 'cancelada';
   lab_name?: string;
   delivery_date?: string;
   notes?: string;

@@ -346,7 +346,7 @@ export default function ImportacaoPage() {
                 customer_name: nomeCliente || cpf || 'Importado',
                 medico: row['Medico'] || row['medico'] || null,
                 total, discount, entrada,
-                status: row['Status'] || row['status'] || 'aprovada',
+                status: row['Status'] || row['status'] || 'orcamento',
                 delivery_date: deliveryDate,
                 notes: row['Descricao'] || row['Observacoes'] || 'Importado de sistema anterior',
                 obs_cliente: row['Observacoes'] || null,
