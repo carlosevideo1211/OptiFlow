@@ -127,6 +127,7 @@ export interface Product {
   stock: number;
   min_stock?: number;
   active: boolean;
+  refractive_index?: number;
   created_at: string;
 }
 

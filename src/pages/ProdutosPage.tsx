@@ -17,11 +17,11 @@ interface Product {
   id: string; tenant_id: string; name: string; code?: string;
   category: string; brand?: string; description?: string;
   cost_price: number; sale_price: number; stock: number; min_stock: number; active: boolean;
-  photo_url?: string; created_at: string;
+  photo_url?: string; refractive_index?: number; created_at: string;
 }
 
 function emptyForm() {
-  return { name:'', code:'', category:'Armação', brand:'', description:'', cost_price:0, sale_price:0, stock:0, min_stock:5, active:true, photo_url:'' };
+  return { name:'', code:'', category:'Armação', brand:'', description:'', cost_price:0, sale_price:0, stock:0, min_stock:5, active:true, photo_url:'', refractive_index:undefined as number|undefined };
 }
 
 export default function ProdutosPage() {
@@ -65,7 +65,7 @@ export default function ProdutosPage() {
     setEditing(p);
     setForm({ name:p.name, code:p.code||'', category:p.category, brand:p.brand||'',
               description:p.description||'', cost_price:p.cost_price, sale_price:p.sale_price,
-              stock:p.stock, min_stock:p.min_stock, active:p.active, photo_url:p.photo_url||'' });
+              stock:p.stock, min_stock:p.min_stock, active:p.active, photo_url:p.photo_url||'', refractive_index:p.refractive_index });
     setShowModal(true);
   };
 
@@ -345,6 +345,13 @@ export default function ProdutosPage() {
                       {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
+                  {(form.category === 'Lente de Grau' || form.category === 'Lente Solar') && (
+                  <div>
+                    <label className="form-label">Índice de Refração</label>
+                    <input className="form-input" type="number" step="0.01" min="1" placeholder="Ex: 1.50, 1.53, 1.59, 1.67, 1.74"
+                      value={form.refractive_index ?? ''} onChange={e => set('refractive_index', e.target.value ? parseFloat(e.target.value) : undefined)}/>
+                  </div>
+                  )}
                   <div>
                     <label className="form-label">Marca</label>
                     <input className="form-input" value={form.brand} onChange={e => set('brand', e.target.value)}/>

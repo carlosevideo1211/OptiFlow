@@ -1,17 +1,14 @@
-import { useState, useMemo } from 'react';
-import { X, Check } from 'lucide-react';
-
-const TIPOS = [
-  { id: 'simples', name: 'Visão Simples', icon: '○', desc: 'Uma única correção para longe ou perto.' },
-  { id: 'multifocal', name: 'Multifocal', icon: '◐', desc: 'Longe, meio e perto na mesma lente, sem linha visível.' },
-  { id: 'bifocal', name: 'Bifocal', icon: '◑', desc: 'Duas zonas de foco com linha visível, mais econômica.' },
-];
+import { useState, useMemo, useEffect } from 'react';
+import { X, Check, Search, EyeOff, Sun, MonitorSmartphone, ShieldCheck } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { norm } from '../utils/normalize';
 
 const TRATAMENTOS = [
-  { id: 'antirreflexo', name: 'Antirreflexo', icon: '✦', desc: 'Reduz reflexos, melhora a nitidez à noite e no computador.' },
-  { id: 'fotossensivel', name: 'Fotossensível', icon: '☀', desc: 'Escurece no sol e volta ao normal em ambiente fechado.' },
-  { id: 'blue', name: 'Filtro Luz Azul', icon: '⬒', desc: 'Filtra luz azul de telas, reduz o cansaço visual.' },
-  { id: 'antirrisco', name: 'Antirrisco', icon: '⛨', desc: 'Camada protetora que reduz riscos no dia a dia.' },
+  { id: 'antirreflexo', name: 'Antirreflexo', Icon: EyeOff, desc: 'Reduz reflexos, melhora a nitidez à noite e no computador.' },
+  { id: 'fotossensivel', name: 'Fotossensível', Icon: Sun, desc: 'Escurece no sol e volta ao normal em ambiente fechado.' },
+  { id: 'blue', name: 'Filtro Luz Azul', Icon: MonitorSmartphone, desc: 'Filtra luz azul de telas, reduz o cansaço visual.' },
+  { id: 'antirrisco', name: 'Antirrisco', Icon: ShieldCheck, desc: 'Camada protetora que reduz riscos no dia a dia.' },
 ];
 
 const MATERIAIS = [
@@ -29,8 +26,20 @@ const MATERIAIS = [
 const MIN_CENTRO_NEGATIVA = 1.5;
 const MIN_BORDA_POSITIVA = 1.0;
 
+const CATEGORIAS_LENTE = ['Lente de Grau', 'Lente Solar'];
+
+interface ProdutoLente {
+  id: string;
+  name: string;
+  brand?: string;
+  category: string;
+  sale_price: number;
+  refractive_index?: number;
+}
+
 function fmtMm(v: number) { return v.toFixed(2).replace('.', ',') + ' mm'; }
 function fmtD(v: number) { return (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ','); }
+function fmtBRL(v: number) { return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 
 interface Props {
   onClose: () => void;
@@ -38,12 +47,41 @@ interface Props {
 }
 
 export default function VitrineLentes({ onClose, onConfirm }: Props) {
-  const [tipo, setTipo] = useState('simples');
+  const { tenantId } = useAuth();
+  const [produtos, setProdutos] = useState<ProdutoLente[]>([]);
+  const [loadingProdutos, setLoadingProdutos] = useState(true);
+  const [busca, setBusca] = useState('');
+  const [categoriaAtiva, setCategoriaAtiva] = useState<string>('Lente de Grau');
+  const [produtoSelecionado, setProdutoSelecionado] = useState<ProdutoLente | null>(null);
+
   const [tratamentos, setTratamentos] = useState<Set<string>>(new Set());
   const [apresentacao, setApresentacao] = useState(false);
   const [materialId, setMaterialId] = useState('resina');
   const [diametro, setDiametro] = useState(52);
   const [dioptria, setDioptria] = useState(-2);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    (async () => {
+      setLoadingProdutos(true);
+      const { data } = await supabase.from('products')
+        .select('id,name,brand,category,sale_price,refractive_index')
+        .eq('tenant_id', tenantId).eq('active', true)
+        .in('category', CATEGORIAS_LENTE)
+        .order('name');
+      setProdutos((data as ProdutoLente[]) || []);
+      setLoadingProdutos(false);
+    })();
+  }, [tenantId]);
+
+  const produtosFiltrados = useMemo(() => {
+    let list = produtos.filter(p => p.category === categoriaAtiva);
+    if (busca.trim()) {
+      const b = norm(busca);
+      list = list.filter(p => norm(p.name).includes(b) || norm(p.brand || '').includes(b));
+    }
+    return list;
+  }, [produtos, categoriaAtiva, busca]);
 
   const toggleTratamento = (id: string) => {
     setTratamentos(prev => {
@@ -54,36 +92,23 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
     });
   };
 
-  const material = MATERIAIS.find(m => m.id === materialId) || MATERIAIS[0];
+  // Índice de refração: usa o do produto selecionado se existir; senão cai no material manual.
+  const materialManual = MATERIAIS.find(m => m.id === materialId) || MATERIAIS[0];
+  const indiceEfetivo = produtoSelecionado?.refractive_index || materialManual.n;
+  const usandoIndiceDoProduto = !!produtoSelecionado?.refractive_index;
 
   const { centro, borda } = useMemo(() => {
     const r = diametro / 2;
-    const delta = (Math.abs(dioptria) * r * r) / (2000 * (material.n - 1));
+    const delta = (Math.abs(dioptria) * r * r) / (2000 * (indiceEfetivo - 1));
     if (dioptria <= 0) return { centro: MIN_CENTRO_NEGATIVA, borda: MIN_CENTRO_NEGATIVA + delta };
     return { centro: MIN_BORDA_POSITIVA + delta, borda: MIN_BORDA_POSITIVA };
-  }, [diametro, dioptria, material]);
+  }, [diametro, dioptria, indiceEfetivo]);
 
-  const selecionados = [
-    TIPOS.find(t => t.id === tipo),
-    ...TRATAMENTOS.filter(t => tratamentos.has(t.id)),
-  ].filter(Boolean) as { id: string; name: string; desc: string }[];
-
-  const card = (item: { id: string; name: string; icon: string; desc: string }, ativo: boolean, onClick: () => void) => (
-    <div key={item.id} onClick={onClick}
-      style={{
-        cursor: 'pointer', textAlign: 'center', borderRadius: 12, padding: apresentacao ? '1.5rem 1rem' : '1rem',
-        background: ativo ? 'rgba(99,102,241,.1)' : 'rgba(255,255,255,.03)',
-        border: ativo ? '2px solid #6366f1' : '1px solid var(--border)',
-      }}>
-      <div style={{ fontSize: apresentacao ? 32 : 24, color: '#6366f1' }}>{item.icon}</div>
-      <div style={{ fontWeight: 600, fontSize: apresentacao ? 15 : 13, margin: '8px 0 4px' }}>{item.name}</div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.desc}</div>
-    </div>
-  );
+  const tratamentosSelecionados = TRATAMENTOS.filter(t => tratamentos.has(t.id));
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 820, width: '95%', maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 860, width: '95%', maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">Vitrine de Lentes e Tratamentos</h2>
           <button onClick={onClose}><X size={18} /></button>
@@ -91,33 +116,92 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tipo de Lente</div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Escolher lente</div>
             <button type="button" className="btn btn-secondary" onClick={() => setApresentacao(v => !v)} style={{ fontSize: 12 }}>
               {apresentacao ? 'Sair do modo apresentação' : 'Modo apresentação'}
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12 }}>
-            {TIPOS.map(t => card(t, tipo === t.id, () => setTipo(t.id)))}
+
+          <div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              {CATEGORIAS_LENTE.map(c => (
+                <button key={c} type="button" onClick={() => { setCategoriaAtiva(c); setProdutoSelecionado(null); }}
+                  className={categoriaAtiva === c ? 'btn btn-primary' : 'btn btn-secondary'} style={{ fontSize: 12 }}>
+                  {c}
+                </button>
+              ))}
+            </div>
+            <div className="search-bar" style={{ marginBottom: 10 }}>
+              <Search size={15} />
+              <input className="form-input" placeholder="Buscar por nome ou marca..." value={busca} onChange={e => setBusca(e.target.value)} />
+            </div>
+            <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+              {loadingProdutos ? (
+                <div style={{ padding: 14, fontSize: 13, color: 'var(--text-muted)' }}>Carregando produtos...</div>
+              ) : produtosFiltrados.length === 0 ? (
+                <div style={{ padding: 14, fontSize: 13, color: 'var(--text-muted)' }}>
+                  Nenhum produto cadastrado em "{categoriaAtiva}" ainda. Cadastre em Produtos para aparecer aqui.
+                </div>
+              ) : produtosFiltrados.map(p => (
+                <div key={p.id} onClick={() => setProdutoSelecionado(p)}
+                  style={{
+                    padding: '10px 14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: produtoSelecionado?.id === p.id ? 'rgba(99,102,241,.12)' : 'transparent',
+                    borderBottom: '1px solid var(--border)',
+                  }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {p.brand || 'Sem marca'}{p.refractive_index ? ` · índice ${p.refractive_index.toFixed(2)}` : ''}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#6366f1' }}>{fmtBRL(p.sale_price)}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Tratamentos</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12 }}>
-              {TRATAMENTOS.map(t => card(t, tratamentos.has(t.id), () => toggleTratamento(t.id)))}
+              {TRATAMENTOS.map(t => {
+                const ativo = tratamentos.has(t.id);
+                const Icon = t.Icon;
+                return (
+                  <div key={t.id} onClick={() => toggleTratamento(t.id)}
+                    style={{
+                      cursor: 'pointer', textAlign: 'center', borderRadius: 12, padding: apresentacao ? '1.5rem 1rem' : '1rem',
+                      background: ativo ? 'rgba(99,102,241,.1)' : 'rgba(255,255,255,.03)',
+                      border: ativo ? '2px solid #6366f1' : '1px solid var(--border)',
+                    }}>
+                    <Icon size={apresentacao ? 32 : 24} color="#6366f1" style={{ margin: '0 auto' }} />
+                    <div style={{ fontWeight: 600, fontSize: apresentacao ? 15 : 13, margin: '8px 0 4px' }}>{t.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.desc}</div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {selecionados.length >= 2 && (
+          {(produtoSelecionado || tratamentosSelecionados.length >= 2) && (
             <div style={{ background: 'rgba(255,255,255,.03)', borderRadius: 8, padding: '12px 14px' }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Comparando</div>
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${selecionados.length},1fr)`, gap: 10 }}>
-                {selecionados.map(s => (
-                  <div key={s.id}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.desc}</div>
-                  </div>
-                ))}
-              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Resumo da seleção</div>
+              {produtoSelecionado && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{produtoSelecionado.name} {produtoSelecionado.brand ? `— ${produtoSelecionado.brand}` : ''}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtBRL(produtoSelecionado.sale_price)}</div>
+                </div>
+              )}
+              {tratamentosSelecionados.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tratamentosSelecionados.length},1fr)`, gap: 10 }}>
+                  {tratamentosSelecionados.map(t => (
+                    <div key={t.id}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -125,10 +209,16 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
             <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Calculadora de Espessura</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
               <div>
-                <label className="form-label">Material</label>
-                <select className="form-input" value={materialId} onChange={e => setMaterialId(e.target.value)}>
-                  {MATERIAIS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                <label className="form-label">Índice de refração</label>
+                {usandoIndiceDoProduto ? (
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)' }}>
+                    {indiceEfetivo.toFixed(2)} (do produto selecionado)
+                  </div>
+                ) : (
+                  <select className="form-input" value={materialId} onChange={e => setMaterialId(e.target.value)}>
+                    {MATERIAIS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="form-label">Diâmetro da lente (mm)</label>
@@ -159,8 +249,13 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
         <div className="modal-footer">
           <button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button>
           <button type="button" className="btn btn-primary" onClick={() => {
-            const descricao = selecionados.map(s => s.name).join(' + ');
-            const obsLab = 'Espessura estimada (' + material.name + ', ' + fmtD(dioptria) + ', diâmetro ' + diametro + 'mm): centro ' + fmtMm(centro) + ' / borda ' + fmtMm(borda) + '.';
+            const partes = [
+              produtoSelecionado ? `${produtoSelecionado.name}${produtoSelecionado.brand ? ' — ' + produtoSelecionado.brand : ''}` : null,
+              ...tratamentosSelecionados.map(t => t.name),
+            ].filter(Boolean);
+            const descricao = partes.join(' + ');
+            const refProduto = produtoSelecionado ? `Produto: ${produtoSelecionado.name} (${fmtBRL(produtoSelecionado.sale_price)}). ` : '';
+            const obsLab = refProduto + 'Espessura estimada (índice ' + indiceEfetivo.toFixed(2) + ', ' + fmtD(dioptria) + ', diâmetro ' + diametro + 'mm): centro ' + fmtMm(centro) + ' / borda ' + fmtMm(borda) + '.';
             onConfirm({ descricao, obsLab });
           }}>
             <Check size={15} /> Usar esta seleção
