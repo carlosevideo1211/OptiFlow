@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { X, Check, Search, EyeOff, Sun, MonitorSmartphone, ShieldCheck } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { X, Check, Search, EyeOff, Sun, MonitorSmartphone, ShieldCheck, CloudFog } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { norm } from '../utils/normalize';
@@ -9,6 +9,7 @@ const TRATAMENTOS = [
   { id: 'fotossensivel', name: 'Fotossensível', Icon: Sun, desc: 'Escurece no sol e volta ao normal em ambiente fechado.' },
   { id: 'blue', name: 'Filtro Luz Azul', Icon: MonitorSmartphone, desc: 'Filtra luz azul de telas, reduz o cansaço visual.' },
   { id: 'antirrisco', name: 'Antirrisco', Icon: ShieldCheck, desc: 'Camada protetora que reduz riscos no dia a dia.' },
+  { id: 'antiembacante', name: 'Antiembaçante', Icon: CloudFog, desc: 'Evita embaçamento da lente em dias frios, chuva ou troca de ambiente.' },
 ];
 
 const MATERIAIS = [
@@ -28,6 +29,9 @@ const MIN_BORDA_POSITIVA = 1.0;
 
 const CATEGORIAS_LENTE = ['Lente de Grau', 'Lente Solar'];
 
+// Silhueta estilizada de lente (recorte usado nas cenas comparativas)
+const LENS_PATH = 'M20,110 Q22,42 100,28 Q220,10 298,55 Q316,110 298,165 Q220,210 100,192 Q22,178 20,110 Z';
+
 interface ProdutoLente {
   id: string;
   name: string;
@@ -40,6 +44,176 @@ interface ProdutoLente {
 function fmtMm(v: number) { return v.toFixed(2).replace('.', ',') + ' mm'; }
 function fmtD(v: number) { return (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ','); }
 function fmtBRL(v: number) { return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+// ── Cenas com foto real + filtro sobreposto (mesma foto nos dois lados) ────
+// As fotos ficam em public/vitrine/*.jpg (livres para uso comercial, baixadas
+// pelo lojista de Pexels/Unsplash/Pixabay). O efeito do tratamento e um filtro
+// desenhado por cima da MESMA foto — nao sao fotos diferentes lado a lado.
+
+const FOTOS: Record<string, string> = {
+  antirreflexo: '/vitrine/antirreflexo.jpg',
+  fotossensivel: '/vitrine/fotossensivel.jpg',
+  blue: '/vitrine/blue.jpg',
+  antirrisco: '/vitrine/antirrisco.jpg',
+  antiembacante: '/vitrine/antiembacante.jpg',
+};
+
+function FotoBase({ id }: { id: string }) {
+  return <image href={FOTOS[id]} x={0} y={0} width={320} height={220} preserveAspectRatio="xMidYMid slice" />;
+}
+
+function CenaAntirreflexo({ resolvido }: { resolvido: boolean }) {
+  return (
+    <g>
+      <FotoBase id="antirreflexo" />
+      {!resolvido && <rect x={0} y={0} width={320} height={220} fill="url(#glareGrad)" />}
+    </g>
+  );
+}
+
+function CenaFotossensivel({ resolvido }: { resolvido: boolean }) {
+  return (
+    <g>
+      <FotoBase id="fotossensivel" />
+      {resolvido && <rect x={0} y={0} width={320} height={220} fill="#3b2f22" opacity={0.68} />}
+    </g>
+  );
+}
+
+function CenaLuzAzul({ resolvido }: { resolvido: boolean }) {
+  return (
+    <g>
+      <FotoBase id="blue" />
+      <rect x={0} y={0} width={320} height={220} fill="#2a5bd6" opacity={resolvido ? 0.08 : 0.32} />
+    </g>
+  );
+}
+
+// Riscos na superficie da lente (posicoes fixas, nao aleatorias -- consistentes entre renders)
+const RISCOS = [
+  [15, 40, 90, 95], [140, 30, 200, 75], [40, 120, 110, 165],
+  [180, 100, 250, 145], [230, 165, 290, 145], [70, 170, 130, 150],
+];
+
+function CenaAntirrisco({ resolvido }: { resolvido: boolean }) {
+  return (
+    <g>
+      <FotoBase id="antirrisco" />
+      {!resolvido && RISCOS.map((r, i) => (
+        <line key={i} x1={r[0]} y1={r[1]} x2={r[2]} y2={r[3]} stroke="#ffffff" strokeWidth={1.3} opacity={0.55} />
+      ))}
+    </g>
+  );
+}
+
+// Gotas de chuva / embacado na lente (posicoes fixas)
+const GOTAS = [
+  [30, 40, 6], [70, 90, 8], [110, 35, 5], [150, 110, 9], [190, 55, 6],
+  [225, 130, 7], [260, 70, 5], [45, 150, 7], [280, 40, 6], [130, 170, 8],
+  [200, 175, 6], [20, 100, 5],
+];
+
+function CenaAntiembacante({ resolvido }: { resolvido: boolean }) {
+  return (
+    <g>
+      <FotoBase id="antiembacante" />
+      {!resolvido && (
+        <>
+          <rect x={0} y={0} width={320} height={220} fill="#ffffff" opacity={0.12} />
+          {GOTAS.map(([cx, cy, r], i) => (
+            <g key={i}>
+              <ellipse cx={cx} cy={cy} rx={r} ry={r * 1.25} fill="#bcd7ee" opacity={0.35} />
+              <ellipse cx={cx} cy={cy} rx={r} ry={r * 1.25} fill="none" stroke="#eaf4ff" strokeWidth={0.7} opacity={0.5} />
+              <ellipse cx={cx - r * 0.3} cy={cy - r * 0.4} rx={r * 0.3} ry={r * 0.4} fill="#ffffff" opacity={0.6} />
+            </g>
+          ))}
+        </>
+      )}
+    </g>
+  );
+}
+
+const CENAS: Record<string, React.ComponentType<{ resolvido: boolean }>> = {
+  antirreflexo: CenaAntirreflexo,
+  fotossensivel: CenaFotossensivel,
+  blue: CenaLuzAzul,
+  antirrisco: CenaAntirrisco,
+  antiembacante: CenaAntiembacante,
+};
+
+function LensCompare({ tratamentoId, big }: { tratamentoId: string; big?: boolean }) {
+  const Cena = CENAS[tratamentoId];
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [divisor, setDivisor] = useState(160);
+  const draggingRef = useRef(false);
+
+  const moverPara = (clientX: number) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const relX = ((clientX - rect.left) / rect.width) * 320;
+    setDivisor(Math.max(20, Math.min(300, relX)));
+  };
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => { if (draggingRef.current) moverPara(e.clientX); };
+    const onUp = () => { draggingRef.current = false; };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+  }, []);
+
+  if (!Cena) return null;
+  const clipId = `lensclip-${tratamentoId}`;
+  const revealId = `revealclip-${tratamentoId}`;
+  return (
+    <div style={{ background: '#0b1120', borderRadius: 12, overflow: 'hidden', touchAction: 'none' }}>
+      <svg ref={svgRef} viewBox="0 0 320 220" style={{ width: '100%', height: big ? 440 : 340, display: 'block', cursor: 'ew-resize' }}
+        onPointerDown={e => { draggingRef.current = true; moverPara(e.clientX); }}>
+        <defs>
+          <clipPath id={clipId}><path d={LENS_PATH} /></clipPath>
+          <clipPath id={revealId}><rect x={0} y={0} width={divisor} height={220} /></clipPath>
+          <radialGradient id="glareGrad" cx="50%" cy="55%" r="65%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity={0.55} />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
+          </radialGradient>
+        </defs>
+        <g clipPath={`url(#${clipId})`}>
+          <Cena resolvido={true} />
+          <g clipPath={`url(#${revealId})`}><Cena resolvido={false} /></g>
+        </g>
+        <path d={LENS_PATH} fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={2} />
+        <line x1={divisor} y1={14} x2={divisor} y2={206} stroke="#ffffff" strokeWidth={2} />
+        <circle cx={divisor} cy={110} r={13} fill="#ffffff" />
+        <path d={`M${divisor - 5},105 L${divisor - 10},110 L${divisor - 5},115 M${divisor + 5},105 L${divisor + 10},110 L${divisor + 5},115`}
+          stroke="#0b1120" strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <text x={Math.max(35, divisor - 40)} y={200} fontSize={12} fill="#ffffffcc" textAnchor="middle" style={{ paintOrder: 'stroke', stroke: '#0b1120', strokeWidth: 3 }}>Sem</text>
+        <text x={Math.min(285, divisor + 40)} y={200} fontSize={12} fill="#ffffffcc" textAnchor="middle" style={{ paintOrder: 'stroke', stroke: '#0b1120', strokeWidth: 3 }}>Com</text>
+      </svg>
+    </div>
+  );
+}
+
+// Diagrama do perfil da lente (corte transversal estilizado) para a calculadora de espessura.
+// Proporcoes sao exageradas para leitura visual -- os valores reais (mm) vao no texto ao lado.
+function PerfilLente({ centro, borda, positiva }: { centro: number; borda: number; positiva: boolean }) {
+  // Meia-espessura em px (proporcao ilustrativa, nao em escala real) em torno da linha central y=45.
+  // Positiva (convexa): centro bem mais grosso que a borda. Negativa (concava): borda bem mais grossa que o centro.
+  const centerHalf = positiva ? 20 : 4;
+  const edgeHalf = positiva ? 6 : 16;
+  const yTopEdge = 45 - edgeHalf, yBotEdge = 45 + edgeHalf;
+  const yTopCenter = 45 - centerHalf, yBotCenter = 45 + centerHalf;
+  const d = `M20,${yTopEdge} Q130,${yTopCenter} 240,${yTopEdge} L240,${yBotEdge} Q130,${yBotCenter} 20,${yBotEdge} Z`;
+  return (
+    <svg viewBox="0 0 260 90" style={{ width: '100%', height: 90 }}>
+      <path d={d} fill="rgba(99,102,241,.18)" stroke="#6366f1" strokeWidth={1.5} />
+      <line x1={130} y1={4} x2={130} y2={yTopCenter} stroke="var(--text-muted)" strokeWidth={1} strokeDasharray="2,2" />
+      <text x={130} y={12} fontSize={9} fill="var(--text-muted)" textAnchor="middle">{fmtMm(centro)} centro</text>
+      <line x1={20} y1={yTopEdge - 12} x2={20} y2={yTopEdge} stroke="var(--text-muted)" strokeWidth={1} strokeDasharray="2,2" />
+      <text x={20} y={yTopEdge - 15} fontSize={9} fill="var(--text-muted)" textAnchor="middle">{fmtMm(borda)} borda</text>
+    </svg>
+  );
+}
 
 interface Props {
   onClose: () => void;
@@ -55,6 +229,7 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
   const [produtoSelecionado, setProdutoSelecionado] = useState<ProdutoLente | null>(null);
 
   const [tratamentos, setTratamentos] = useState<Set<string>>(new Set());
+  const [tratamentoFoco, setTratamentoFoco] = useState<string | null>(null);
   const [apresentacao, setApresentacao] = useState(false);
   const [materialId, setMaterialId] = useState('resina');
   const [diametro, setDiametro] = useState(52);
@@ -86,8 +261,8 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
   const toggleTratamento = (id: string) => {
     setTratamentos(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else if (next.size < 4) next.add(id);
+      if (next.has(id)) { next.delete(id); if (tratamentoFoco === id) setTratamentoFoco([...next][0] || null); }
+      else if (next.size < 5) { next.add(id); setTratamentoFoco(id); }
       return next;
     });
   };
@@ -108,7 +283,7 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 860, width: '95%', maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 900, width: '95%', maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">Vitrine de Lentes e Tratamentos</h2>
           <button onClick={onClose}><X size={18} /></button>
@@ -122,6 +297,7 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
             </button>
           </div>
 
+          {!apresentacao && (
           <div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
               {CATEGORIAS_LENTE.map(c => (
@@ -160,6 +336,7 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
               ))}
             </div>
           </div>
+          )}
 
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Tratamentos</div>
@@ -183,28 +360,33 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
             </div>
           </div>
 
-          {(produtoSelecionado || tratamentosSelecionados.length >= 2) && (
-            <div style={{ background: 'rgba(255,255,255,.03)', borderRadius: 8, padding: '12px 14px' }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Resumo da seleção</div>
-              {produtoSelecionado && (
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{produtoSelecionado.name} {produtoSelecionado.brand ? `— ${produtoSelecionado.brand}` : ''}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtBRL(produtoSelecionado.sale_price)}</div>
-                </div>
-              )}
-              {tratamentosSelecionados.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tratamentosSelecionados.length},1fr)`, gap: 10 }}>
+          {tratamentoFoco && CENAS[tratamentoFoco] && (
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+                Simulação — {TRATAMENTOS.find(t => t.id === tratamentoFoco)?.name}
+              </div>
+              <LensCompare tratamentoId={tratamentoFoco} big={apresentacao} />
+              {tratamentosSelecionados.length > 1 && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                   {tratamentosSelecionados.map(t => (
-                    <div key={t.id}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.desc}</div>
-                    </div>
+                    <button key={t.id} type="button" onClick={() => setTratamentoFoco(t.id)}
+                      className={tratamentoFoco === t.id ? 'btn btn-primary' : 'btn btn-secondary'} style={{ fontSize: 11 }}>
+                      {t.name}
+                    </button>
                   ))}
                 </div>
               )}
             </div>
           )}
 
+          {produtoSelecionado && (
+            <div style={{ background: 'rgba(255,255,255,.03)', borderRadius: 8, padding: '12px 14px' }}>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{produtoSelecionado.name} {produtoSelecionado.brand ? `— ${produtoSelecionado.brand}` : ''}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtBRL(produtoSelecionado.sale_price)}</div>
+            </div>
+          )}
+
+          {!apresentacao && (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Calculadora de Espessura</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -232,7 +414,8 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
               </div>
               <input type="range" min="-12" max="12" step="0.25" value={dioptria} onChange={e => setDioptria(parseFloat(e.target.value))} style={{ width: '100%' }} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'center' }}>
+              <PerfilLente centro={centro} borda={borda} positiva={dioptria > 0} />
               <div style={{ background: 'rgba(99,102,241,.08)', borderRadius: 8, padding: 14, textAlign: 'center' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>ESPESSURA NO CENTRO</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: '#6366f1' }}>{fmtMm(centro)}</div>
@@ -242,8 +425,9 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
                 <div style={{ fontSize: 20, fontWeight: 700, color: '#6366f1' }}>{fmtMm(borda)}</div>
               </div>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>Estimativa aproximada, para orientar a conversa com o cliente. Não substitui o cálculo do laboratório.</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>Estimativa aproximada, para orientar a conversa com o cliente. Não substitui o cálculo do laboratório. Perfil ilustrativo, proporções exageradas para leitura.</div>
           </div>
+          )}
 
         </div>
         <div className="modal-footer">

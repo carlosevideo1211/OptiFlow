@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { formatBRL, formatDate } from '../types/index';
 import { norm } from '../utils/normalize';
 import { abrirDocumentoImprimivel } from '../utils/printDoc';
+import VitrineLentes from '../components/VitrineLentes';
 
 const STATUS_LIST = [
   { value:'orcamento',  label:'Orçamento',        color:'#94a3b8', bg:'rgba(148,163,184,.15)' },
@@ -94,6 +95,7 @@ export default function OrdemServicoPage() {
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showVitrine, setShowVitrine] = useState(false);
   const [viewing, setViewing]     = useState<OS|null>(null);
   const [editing, setEditing]     = useState<OS|null>(null);
   const [form, setForm]           = useState(emptyForm());
@@ -952,6 +954,11 @@ export default function OrdemServicoPage() {
                         value={form.obs_cliente} onChange={e => set('obs_cliente', e.target.value)}
                         placeholder="Observações para o cliente"/>
                     </div>
+                    <div style={{ marginBottom:12 }}>
+                      <button type="button" className="btn btn-secondary" onClick={() => setShowVitrine(true)} style={{ fontSize:12 }}>
+                        Vitrine de Lentes
+                      </button>
+                    </div>
                     <div>
                       <label className="form-label">Observações para o Laboratório</label>
                       <textarea className="form-input" rows={2} style={{ resize:'vertical' }}
@@ -971,6 +978,16 @@ export default function OrdemServicoPage() {
             )}
           </div>
         </div>
+      )}
+      {showVitrine && (
+        <VitrineLentes
+          onClose={() => setShowVitrine(false)}
+          onConfirm={(data) => {
+            set('obs_cliente', (form.obs_cliente ? form.obs_cliente + ' | ' : '') + data.descricao);
+            set('obs_lab', (form.obs_lab ? form.obs_lab + ' | ' : '') + data.obsLab);
+            setShowVitrine(false);
+          }}
+        />
       )}
     </div>
   );
