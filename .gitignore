@@ -26,8 +26,11 @@ dist-ssr
 *.backup_*
 fix_*.py
 
-# Scripts de patch e backups automaticos (nao fazem parte do codigo-fonte)
-patch_*.ps1
+# Scripts de patch e backups automaticos (nao fazem parte do codigo-fonte).
+# Qualquer .ps1 na raiz e sempre um script de patch gerado em sessao de chat,
+# nunca codigo-fonte real do sistema -- por isso o padrao e amplo (*.ps1),
+# nao so patch_*.ps1 (ja escapou um hotfix_*.ps1 antes por causa disso).
+*.ps1
 *.bak_*
 
 # Variaveis de ambiente (nunca versionar)
