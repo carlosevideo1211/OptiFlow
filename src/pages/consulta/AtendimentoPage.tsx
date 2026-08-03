@@ -358,6 +358,25 @@ export default function AtendimentoPage() {
         setConsultation({ customer_name: newData.customerName, professional_name: newData.professionalName, date: newData.date, status: newData.status });
         setDate(newData.date || new Date().toISOString().split('T')[0]);
         setStatus(newData.status || 'realizada');
+        // Pré-preenche "Prescrição do Último Exame" com o RX Final da consulta
+        // mais recente já registrada para esse paciente (se houver histórico).
+        // Evita digitação manual repetida do que o sistema já sabe.
+        if (newData.customerId) {
+          supabase.from('consultations')
+            .select('date,rx_re_esf,rx_re_cil,rx_re_eixo,rx_adicao,rx_re_dnp,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_dnp,rx_tipo_lente')
+            .eq('tenant_id', tenantId).eq('customer_id', newData.customerId)
+            .order('date', { ascending: false }).limit(1).maybeSingle()
+            .then(({ data: ultima }) => {
+              if (!ultima) return;
+              setUltRx({
+                re_esf: fmtRx(ultima.rx_re_esf), re_cil: fmtRx(ultima.rx_re_cil), re_eixo: inp(ultima.rx_re_eixo),
+                re_adicao: inp(ultima.rx_adicao), re_dnp: inp(ultima.rx_re_dnp),
+                le_esf: fmtRx(ultima.rx_le_esf), le_cil: fmtRx(ultima.rx_le_cil), le_eixo: inp(ultima.rx_le_eixo),
+                le_adicao: inp(ultima.rx_adicao), le_dnp: inp(ultima.rx_le_dnp), lente: inp(ultima.rx_tipo_lente)
+              });
+              if (ultima.date) setUltExameData(ultima.date);
+            });
+        }
       }
       setLoading(false);
       return;
