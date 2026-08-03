@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ArrowLeft, Printer, Eye } from 'lucide-react';
+import { abrirDocumentoImprimivel } from '../../utils/printDoc';
 
 function fmtRx(v: any): string {
   if (v == null || v === '') return '—';
@@ -61,13 +62,11 @@ export default function HistoricoPage() {
   }, [tenantId, customerId]);
 
   const handlePrint = (c: any) => {
-    const win = window.open('', '_blank');
-    if (!win) return;
     const validade = c.date ? new Date(new Date(c.date + 'T12:00:00').setFullYear(new Date(c.date + 'T12:00:00').getFullYear() + 1)).toLocaleDateString('pt-BR') : '—';
-    win.document.write(`
-      <html><head><title>Receita — ${c.customer_name}</title>
-      <style>
-        body { font-family: Arial, sans-serif; padding: 40px; color: #000; font-size: 13px; }
+
+    const css = `
+        body { font-family: Arial, sans-serif; color: #000; font-size: 13px; }
+        #__pd_content { padding: 40px; }
         h2 { text-align: center; margin-bottom: 4px; }
         .sub { text-align: center; color: #555; margin-bottom: 24px; font-size: 12px; }
         table { width: 100%; border-collapse: collapse; margin: 16px 0; }
@@ -76,8 +75,10 @@ export default function HistoricoPage() {
         .label { text-align: left; font-weight: bold; }
         .footer { margin-top: 40px; text-align: center; }
         .line { border-top: 1px solid #000; width: 200px; margin: 0 auto 4px; }
-        @media print { body { padding: 20px; } }
-      </style></head><body>
+    `;
+
+    const body = `
+      <div class="print-page">
       <h2>PRESCRIÇÃO PARA ÓCULOS</h2>
       <div class="sub">
         Paciente: <strong>${c.customer_name}</strong> &nbsp;|&nbsp;
@@ -109,10 +110,15 @@ export default function HistoricoPage() {
         <div>${c.professional_name || ''}</div>
         <div style="font-size:11px;color:#555">Médico / Optometrista</div>
       </div>
-      </body></html>
-    `);
-    win.document.close();
-    win.print();
+      </div>
+    `;
+
+    abrirDocumentoImprimivel({
+      title: `Receita — ${c.customer_name}`,
+      filename: `receita-${(c.customer_name || 'paciente').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${c.date || ''}.pdf`,
+      css,
+      body,
+    });
   };
 
   if (loading) return (

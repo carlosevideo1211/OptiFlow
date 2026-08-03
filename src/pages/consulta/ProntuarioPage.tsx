@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ArrowLeft, Printer, User, Eye, FileText, Activity } from 'lucide-react';
+import { abrirDocumentoImprimivel } from '../../utils/printDoc';
 
 function fmtRx(v: any): string {
   if (v == null || v === '') return '—';
@@ -83,16 +84,13 @@ export default function ProntuarioPage() {
 
   const handlePrint = () => {
     if (!customer) return;
-    const win = window.open('', '_blank');
-    if (!win) return;
     const c = customer;
     const rx = ultimaRx;
 
-    win.document.write(`
-      <html><head><title>Prontuário — ${c.name}</title>
-      <style>
+    const css = `
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, sans-serif; padding: 36px; color: #111; font-size: 12px; }
+        body { font-family: Arial, sans-serif; color: #111; font-size: 12px; }
+        #__pd_content { padding: 36px; }
         h1 { font-size: 16px; text-align: center; margin-bottom: 4px; }
         .sub { text-align: center; color: #555; font-size: 11px; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
         .secao { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; background: #f0f0f0; padding: 4px 8px; margin: 14px 0 6px; border-left: 3px solid #333; }
@@ -102,8 +100,10 @@ export default function ProntuarioPage() {
         .lbl { font-weight: 600; width: 140px; background: #fafafa; }
         .par { display: flex; gap: 8px; margin-bottom: 4px; font-size: 12px; }
         .par-lbl { color: #555; min-width: 130px; }
-        @media print { body { padding: 20px; } }
-      </style></head><body>
+    `;
+
+    const body = `
+      <div class="print-page">
       <h1>PRONTUÁRIO DO PACIENTE</h1>
       <div class="sub">Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
 
@@ -139,11 +139,15 @@ export default function ProntuarioPage() {
           <td style="text-align:center">${isValida(c.date) ? '✓' : '✗'}</td>
         </tr>`).join('')}
       </table>
+      </div>
+    `;
 
-      </body></html>
-    `);
-    win.document.close();
-    setTimeout(() => win.print(), 400);
+    abrirDocumentoImprimivel({
+      title: `Prontuário — ${c.name}`,
+      filename: `prontuario-${(c.name || 'paciente').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`,
+      css,
+      body,
+    });
   };
 
   if (loading) return (

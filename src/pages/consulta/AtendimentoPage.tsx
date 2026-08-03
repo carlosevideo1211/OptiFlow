@@ -764,6 +764,68 @@ export default function AtendimentoPage() {
   // ── salvar ──────────────────────────────────────────────────────────────────
   // finalizando=true (botão "Finalizar atendimento") força status para 'realizada'.
   // Os botões "Salvar" de cada seção continuam respeitando o status escolhido em Ajustes.
+  //
+  // buildFullPayload() reúne TODOS os campos da ficha (RX, Anamnese, Tonometria,
+  // Acuidade Visual, Biomicroscopia, Ceratometria, Forometria, Oftalmoscopia,
+  // Retinoscopia, DX, Lentes de Contato). É usado tanto no INSERT de criação
+  // quanto no UPDATE — assim os dois caminhos nunca voltam a ficar dessincronizados
+  // (bug corrigido em 02/08: o INSERT antigo só gravava RX Final + parte da
+  // Anamnese, perdendo o resto se preenchido antes do primeiro Salvar).
+  const buildFullPayload = (statusFinal: string) => ({
+    queixa_principal: queixa || null, ultimo_exame_data: ultExameData || null, anamnese_obs: anamneseObs || null,
+    sintomas, doencas_oculares: doencasOculares, doencas_sistemicas: doencasSistemicas, medicamentos,
+    usa_oculos: usaOculos, usa_lente_contato: usaLC, antecedentes_familiares: antFamiliares, antecedentes_obs: antObs || null,
+    ult_re_esf: num(ultRx.re_esf), ult_re_cil: num(ultRx.re_cil), ult_re_eixo: num(ultRx.re_eixo),
+    ult_re_adicao: num(ultRx.re_adicao), ult_re_dnp: num(ultRx.re_dnp),
+    ult_le_esf: num(ultRx.le_esf), ult_le_cil: num(ultRx.le_cil), ult_le_eixo: num(ultRx.le_eixo),
+    ult_le_adicao: num(ultRx.le_adicao), ult_le_dnp: num(ultRx.le_dnp), ult_lente: ultRx.lente || null,
+    av_sc_od_vl: av.sc_od_vl||null, av_sc_oe_vl: av.sc_oe_vl||null, av_sc_ao_vl: av.sc_ao_vl||null,
+    av_cc_od_vl: av.cc_od_vl||null, av_cc_oe_vl: av.cc_oe_vl||null, av_cc_ao_vl: av.cc_ao_vl||null,
+    av_sc_od_vp: av.sc_od_vp||null, av_sc_oe_vp: av.sc_oe_vp||null,
+    av_cc_od_vp: av.cc_od_vp||null, av_cc_oe_vp: av.cc_oe_vp||null,
+    av_ph_od: av.ph_od||null, av_ph_oe: av.ph_oe||null,
+    bio_cilios_od: bio.cilios_od||null, bio_cilios_oe: bio.cilios_oe||null,
+    bio_sobrancelhas_od: bio.sobrancelhas_od||null, bio_sobrancelhas_oe: bio.sobrancelhas_oe||null,
+    bio_palpebras_od: bio.palpebras_od||null, bio_palpebras_oe: bio.palpebras_oe||null,
+    bio_conjuntiva_od: bio.conjuntiva_od||null, bio_conjuntiva_oe: bio.conjuntiva_oe||null,
+    bio_esclerotica_od: bio.esclerotica_od||null, bio_esclerotica_oe: bio.esclerotica_oe||null,
+    bio_cornea_od: bio.cornea_od||null, bio_cornea_oe: bio.cornea_oe||null,
+    bio_iris_od: bio.iris_od||null, bio_iris_oe: bio.iris_oe||null,
+    bio_pupila_od: bio.pupila_od||null, bio_pupila_oe: bio.pupila_oe||null,
+    bio_cristalino_od: bio.cristalino_od||null, bio_cristalino_oe: bio.cristalino_oe||null,
+    bio_camara_od: bio.camara_od||null, bio_camara_oe: bio.camara_oe||null,
+    bio_obs_od: bio.obs_od||null, bio_obs_oe: bio.obs_oe||null,
+    cerat_od: cerat.od||null, cerat_oe: cerat.oe||null, cerat_miras: cerat.miras||null,
+    tono_od: tono.od||null, tono_oe: tono.oe||null, tono_hora: tono.hora||null,
+    foro_tecnica: foro.tecnica||null, foro_longe_sc: foro.longe_sc||null, foro_longe_cc: foro.longe_cc||null,
+    foro_40cm_sc: foro.cm40_sc||null, foro_40cm_cc: foro.cm40_cc||null,
+    foro_20cm_sc: foro.cm20_sc||null, foro_20cm_cc: foro.cm20_cc||null,
+    oftal_bruckner: oftal.bruckner||null, oftal_papila_od: oftal.papila_od||null, oftal_papila_oe: oftal.papila_oe||null,
+    oftal_escavacao_od: oftal.escavacao_od||null, oftal_escavacao_oe: oftal.escavacao_oe||null,
+    oftal_macula_od: oftal.macula_od||null, oftal_macula_oe: oftal.macula_oe||null,
+    oftal_fixacao_od: oftal.fixacao_od||null, oftal_fixacao_oe: oftal.fixacao_oe||null,
+    oftal_cor_od: oftal.cor_od||null, oftal_cor_oe: oftal.cor_oe||null,
+    oftal_relacao_od: oftal.relacao_od||null, oftal_relacao_oe: oftal.relacao_oe||null,
+    oftal_obs_od: oftal.obs_od||null, oftal_obs_oe: oftal.obs_oe||null,
+    retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
+    retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
+    retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
+    retin_est_av_od: retinEst.av_od||null, retin_est_av_oe: retinEst.av_oe||null,
+    rx_re_esf: num(rxOd.ESF), rx_re_cil: num(rxOd.CIL), rx_re_eixo: num(rxOd.EIXO),
+    rx_re_av: rxOd.AV||null, rx_re_prisma: rxOd.PRISMA||null, rx_re_dnp: rxOd.DNP||null,
+    rx_le_esf: num(rxOe.ESF), rx_le_cil: num(rxOe.CIL), rx_le_eixo: num(rxOe.EIXO),
+    rx_le_av: rxOe.AV||null, rx_le_prisma: rxOe.PRISMA||null, rx_le_dnp: rxOe.DNP||null,
+    rx_adicao: num(rxAdicao), rx_av_perto: rxAvPerto||null,
+    rx_tipo_lente: rxTipoLente||null, rx_tratamento: rxTratamento||null, rx_retorno: rxRetorno||null,
+    dx_refrativo: dxRefrativo||null, dx_motor: dxMotor||null, dx_ocular: dxOcular||null,
+    dx_conduta: dxConduta, dx_controle: dxControle||null, dx_obs: dxObs||null,
+    lc_re_esf: num(lcOd.ESF), lc_re_cil: num(lcOd.CIL), lc_re_eixo: num(lcOd.EIXO), lc_re_av: lcOd.AV||null,
+    lc_le_esf: num(lcOe.ESF), lc_le_cil: num(lcOe.CIL), lc_le_eixo: num(lcOe.EIXO), lc_le_av: lcOe.AV||null,
+    lc_lente: lcLente||null, lc_obs: lcObs||null, status: statusFinal, date: date||null,
+    partnership_id: partnershipId || null,
+    valor_cobrado: num(docValorExame),
+  });
+
   const handleSave = async (finalizando: boolean = false) => {
     if (creatingRef.current) return;
     const rxErrors = validateAllRx();
@@ -776,82 +838,23 @@ export default function AtendimentoPage() {
     try {
       if (isNew && newData) {
         creatingRef.current = true;
+        const statusFinalCreate = finalizando ? 'realizada' : (status || newData.status);
         const { data: created, error: createErr } = await supabase.from('consultations').insert([{
           tenant_id: tenantId, customer_id: newData.customerId, customer_name: newData.customerName,
           professional_id: newData.professionalId, professional_name: newData.professionalName,
-          date: date || newData.date, status: status || newData.status,
-          queixa_principal: queixa||null, rx_re_esf: num(rxOd.ESF), rx_re_cil: num(rxOd.CIL),
-          rx_re_eixo: num(rxOd.EIXO), rx_re_av: rxOd.AV||null, rx_re_prisma: rxOd.PRISMA||null,
-          rx_re_dnp: rxOd.DNP||null, rx_le_esf: num(rxOe.ESF), rx_le_cil: num(rxOe.CIL),
-          rx_le_eixo: num(rxOe.EIXO), rx_le_av: rxOe.AV||null, rx_le_prisma: rxOe.PRISMA||null,
-          rx_le_dnp: rxOe.DNP||null, rx_adicao: num(rxAdicao), rx_av_perto: rxAvPerto||null,
-          rx_tipo_lente: rxTipoLente||null, rx_tratamento: rxTratamento||null, rx_retorno: rxRetorno||null,
-          sintomas, doencas_oculares: doencasOculares, doencas_sistemicas: doencasSistemicas,
-          medicamentos, usa_oculos: usaOculos, usa_lente_contato: usaLC,
-          antecedentes_familiares: antFamiliares, antecedentes_obs: antObs||null,
+          ...buildFullPayload(statusFinalCreate),
+          date: date || newData.date,
         }]).select().single();
         if (createErr) throw createErr;
-        toast.success('Consulta salva!');
+        await syncLancamentosFinanceiros(created.id, statusFinalCreate);
+        toast.success(finalizando ? 'Atendimento finalizado!' : 'Consulta salva!');
         setSaving(false);
         navigate('/consulta/atendimento/' + created.id, { replace: true });
         return;
       }
       if (!id || id === 'novo') { setSaving(false); return; }
       const statusFinal = finalizando ? 'realizada' : status;
-      const payload: any = {
-        queixa_principal: queixa || null, ultimo_exame_data: ultExameData || null, anamnese_obs: anamneseObs || null,
-        sintomas, doencas_oculares: doencasOculares, doencas_sistemicas: doencasSistemicas, medicamentos,
-        usa_oculos: usaOculos, usa_lente_contato: usaLC, antecedentes_familiares: antFamiliares, antecedentes_obs: antObs || null,
-        ult_re_esf: num(ultRx.re_esf), ult_re_cil: num(ultRx.re_cil), ult_re_eixo: num(ultRx.re_eixo),
-        ult_re_adicao: num(ultRx.re_adicao), ult_re_dnp: num(ultRx.re_dnp),
-        ult_le_esf: num(ultRx.le_esf), ult_le_cil: num(ultRx.le_cil), ult_le_eixo: num(ultRx.le_eixo),
-        ult_le_adicao: num(ultRx.le_adicao), ult_le_dnp: num(ultRx.le_dnp), ult_lente: ultRx.lente || null,
-        av_sc_od_vl: av.sc_od_vl||null, av_sc_oe_vl: av.sc_oe_vl||null, av_sc_ao_vl: av.sc_ao_vl||null,
-        av_cc_od_vl: av.cc_od_vl||null, av_cc_oe_vl: av.cc_oe_vl||null, av_cc_ao_vl: av.cc_ao_vl||null,
-        av_sc_od_vp: av.sc_od_vp||null, av_sc_oe_vp: av.sc_oe_vp||null,
-        av_cc_od_vp: av.cc_od_vp||null, av_cc_oe_vp: av.cc_oe_vp||null,
-        av_ph_od: av.ph_od||null, av_ph_oe: av.ph_oe||null,
-        bio_cilios_od: bio.cilios_od||null, bio_cilios_oe: bio.cilios_oe||null,
-        bio_sobrancelhas_od: bio.sobrancelhas_od||null, bio_sobrancelhas_oe: bio.sobrancelhas_oe||null,
-        bio_palpebras_od: bio.palpebras_od||null, bio_palpebras_oe: bio.palpebras_oe||null,
-        bio_conjuntiva_od: bio.conjuntiva_od||null, bio_conjuntiva_oe: bio.conjuntiva_oe||null,
-        bio_esclerotica_od: bio.esclerotica_od||null, bio_esclerotica_oe: bio.esclerotica_oe||null,
-        bio_cornea_od: bio.cornea_od||null, bio_cornea_oe: bio.cornea_oe||null,
-        bio_iris_od: bio.iris_od||null, bio_iris_oe: bio.iris_oe||null,
-        bio_pupila_od: bio.pupila_od||null, bio_pupila_oe: bio.pupila_oe||null,
-        bio_cristalino_od: bio.cristalino_od||null, bio_cristalino_oe: bio.cristalino_oe||null,
-        bio_camara_od: bio.camara_od||null, bio_camara_oe: bio.camara_oe||null,
-        bio_obs_od: bio.obs_od||null, bio_obs_oe: bio.obs_oe||null,
-        cerat_od: cerat.od||null, cerat_oe: cerat.oe||null, cerat_miras: cerat.miras||null,
-        tono_od: tono.od||null, tono_oe: tono.oe||null, tono_hora: tono.hora||null,
-        foro_tecnica: foro.tecnica||null, foro_longe_sc: foro.longe_sc||null, foro_longe_cc: foro.longe_cc||null,
-        foro_40cm_sc: foro.cm40_sc||null, foro_40cm_cc: foro.cm40_cc||null,
-        foro_20cm_sc: foro.cm20_sc||null, foro_20cm_cc: foro.cm20_cc||null,
-        oftal_bruckner: oftal.bruckner||null, oftal_papila_od: oftal.papila_od||null, oftal_papila_oe: oftal.papila_oe||null,
-        oftal_escavacao_od: oftal.escavacao_od||null, oftal_escavacao_oe: oftal.escavacao_oe||null,
-        oftal_macula_od: oftal.macula_od||null, oftal_macula_oe: oftal.macula_oe||null,
-        oftal_fixacao_od: oftal.fixacao_od||null, oftal_fixacao_oe: oftal.fixacao_oe||null,
-        oftal_cor_od: oftal.cor_od||null, oftal_cor_oe: oftal.cor_oe||null,
-        oftal_relacao_od: oftal.relacao_od||null, oftal_relacao_oe: oftal.relacao_oe||null,
-        oftal_obs_od: oftal.obs_od||null, oftal_obs_oe: oftal.obs_oe||null,
-        retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
-        retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
-        retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
-        retin_est_av_od: retinEst.av_od||null, retin_est_av_oe: retinEst.av_oe||null,
-        rx_re_esf: num(rxOd.ESF), rx_re_cil: num(rxOd.CIL), rx_re_eixo: num(rxOd.EIXO),
-        rx_re_av: rxOd.AV||null, rx_re_prisma: rxOd.PRISMA||null, rx_re_dnp: rxOd.DNP||null,
-        rx_le_esf: num(rxOe.ESF), rx_le_cil: num(rxOe.CIL), rx_le_eixo: num(rxOe.EIXO),
-        rx_le_av: rxOe.AV||null, rx_le_prisma: rxOe.PRISMA||null, rx_le_dnp: rxOe.DNP||null,
-        rx_adicao: num(rxAdicao), rx_av_perto: rxAvPerto||null,
-        rx_tipo_lente: rxTipoLente||null, rx_tratamento: rxTratamento||null, rx_retorno: rxRetorno||null,
-        dx_refrativo: dxRefrativo||null, dx_motor: dxMotor||null, dx_ocular: dxOcular||null,
-        dx_conduta: dxConduta, dx_controle: dxControle||null, dx_obs: dxObs||null,
-        lc_re_esf: num(lcOd.ESF), lc_re_cil: num(lcOd.CIL), lc_re_eixo: num(lcOd.EIXO), lc_re_av: lcOd.AV||null,
-        lc_le_esf: num(lcOe.ESF), lc_le_cil: num(lcOe.CIL), lc_le_eixo: num(lcOe.EIXO), lc_le_av: lcOe.AV||null,
-        lc_lente: lcLente||null, lc_obs: lcObs||null, status: statusFinal, date: date||null,
-        partnership_id: partnershipId || null,
-        valor_cobrado: num(docValorExame),
-      };
+      const payload = buildFullPayload(statusFinal);
       const { error } = await supabase.from('consultations').update(payload).eq('id', id);
       if (error) throw error;
       await syncLancamentosFinanceiros(id, statusFinal);
@@ -1060,7 +1063,7 @@ export default function AtendimentoPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={() => navigate('/consulta')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><User size={14} /> Cadastro</button>
-          <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><History size={14} /> Histórico</button>
+          <button className="btn btn-secondary" onClick={() => { const cid = consultation?.customer_id || newData?.customerId; if (cid) navigate('/consulta/historico/' + cid); else toast.error('Paciente não identificado'); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><History size={14} /> Histórico</button>
           <button className="btn btn-secondary" onClick={() => { const cid = consultation?.customer_id || newData?.customerId; if (cid) navigate('/consulta/prontuario/' + cid); else toast.error('Paciente não identificado'); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={14} /> Prontuário</button>
           <button className="btn btn-secondary" onClick={() => navigate('/os', { state: { prefillConsultationId: id } })} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ShoppingBag size={14} /> Gerar OS</button>
           <button className="btn btn-primary" onClick={() => handleSave(true)} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
