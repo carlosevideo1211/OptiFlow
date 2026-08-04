@@ -292,6 +292,7 @@ export default function AtendimentoPage() {
   const setReflexField = (f: string, v: string) => setReflex(p => ({ ...p, [f]: v }));
   const [motor, setMotor] = useState<Record<string, string>>({});
   const setMotorField = (f: string, v: string) => setMotor(p => ({ ...p, [f]: v }));
+  const [ppc, setPpc] = useState({ or: '', luz: '', fv: '', obs: '' });
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -336,7 +337,7 @@ export default function AtendimentoPage() {
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
       secao_9: 'retin_din', secao_10: 'retin_est', secao_11: 'aval_motora', secao_12: 'rx_final',
       secao_13: null, secao_14: null, secao_15: 'dx', secao_16: null, secao_17: null,
-      secao_18: null, secao_19: 'reflexos', secao_20: null, secao_21: null, secao_22: null,
+      secao_18: 'ppc', secao_19: 'reflexos', secao_20: null, secao_21: null, secao_22: null,
     };
     supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => {
@@ -491,6 +492,7 @@ export default function AtendimentoPage() {
       versoes_od: inp(d.motor_versoes_od), versoes_oe: inp(d.motor_versoes_oe),
       obs: inp(d.motor_obs),
     });
+    setPpc({ or: inp(d.ppc_or), luz: inp(d.ppc_luz), fv: inp(d.ppc_fv), obs: inp(d.ppc_obs) });
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
     setRxOd({ ESF: fmtRx(d.rx_re_esf), CIL: fmtRx(d.rx_re_cil), EIXO: inp(d.rx_re_eixo), AV: inp(d.rx_re_av), PRISMA: inp(d.rx_re_prisma), DNP: inp(d.rx_re_dnp) });
@@ -850,6 +852,7 @@ export default function AtendimentoPage() {
     motor_ducoes_od: motor.ducoes_od||null, motor_ducoes_oe: motor.ducoes_oe||null,
     motor_versoes_od: motor.versoes_od||null, motor_versoes_oe: motor.versoes_oe||null,
     motor_obs: motor.obs||null,
+    ppc_or: ppc.or||null, ppc_luz: ppc.luz||null, ppc_fv: ppc.fv||null, ppc_obs: ppc.obs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1349,6 +1352,16 @@ export default function AtendimentoPage() {
                   </Field>
                   <Field label="Obs."><FTextarea value={motor.obs??''} onChange={(v:string)=>setMotorField('obs',v)} rows={2} /></Field>
                 </div>
+              </AccordionSection>
+
+              <AccordionSection id="ppc" label="PPC" open={open.ppc} toggle={toggle} order={secOrder('ppc')} hidden={!secVisible('ppc')}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Ponto Próximo de Convergência — Adulto: OR 10-12 / Luz 12-14 / FV 14-16 cm · Criança: OR 8-10 / Luz 10-12 / FV 12-14 cm</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                  <Field label="Com Objeto Real (O.R)"><FInput value={ppc.or} onChange={(v:string)=>setPpc(p=>({...p,or:v}))} placeholder="cm" /></Field>
+                  <Field label="Com Luz"><FInput value={ppc.luz} onChange={(v:string)=>setPpc(p=>({...p,luz:v}))} placeholder="cm" /></Field>
+                  <Field label="Com Filtro Vermelho (F.V)"><FInput value={ppc.fv} onChange={(v:string)=>setPpc(p=>({...p,fv:v}))} placeholder="cm" /></Field>
+                </div>
+                <Field label="Obs."><FTextarea value={ppc.obs} onChange={(v:string)=>setPpc(p=>({...p,obs:v}))} rows={2} /></Field>
               </AccordionSection>
 
               <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
