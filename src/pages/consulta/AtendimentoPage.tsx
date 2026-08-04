@@ -299,6 +299,7 @@ export default function AtendimentoPage() {
   const [subjObs, setSubjObs] = useState('');
   const [afin, setAfin] = useState<Record<string, string>>({});
   const setAfinField = (f: string, v: string) => setAfin(p => ({ ...p, [f]: v }));
+  const [adic, setAdic] = useState({ valor_od: '', valor_oe: '', av_od: '', av_oe: '', distancia: '', obs: '' });
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -342,7 +343,7 @@ export default function AtendimentoPage() {
       secao_1: 'anamnese', secao_2: 'ult_prescricao', secao_3: 'acuidade', secao_4: 'biomicroscopia',
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
       secao_9: 'retin_din', secao_10: 'retin_est', secao_11: 'aval_motora', secao_12: 'rx_final',
-      secao_13: null, secao_14: 'afinamento', secao_15: 'dx', secao_16: null, secao_17: null,
+      secao_13: null, secao_14: 'afinamento', secao_15: 'dx', secao_16: null, secao_17: 'adicao',
       secao_18: 'ppc', secao_19: 'reflexos', secao_20: 'reservas', secao_21: 'subjetivo', secao_22: null,
     };
     supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
@@ -513,6 +514,11 @@ export default function AtendimentoPage() {
       esf_od: inp(d.afin_esf_od), esf_oe: inp(d.afin_esf_oe),
       bicromatico_od: inp(d.afin_bicromatico_od), bicromatico_oe: inp(d.afin_bicromatico_oe),
       obs: inp(d.afin_obs),
+    });
+    setAdic({
+      valor_od: inp(d.adic_valor_od), valor_oe: inp(d.adic_valor_oe),
+      av_od: inp(d.adic_av_od), av_oe: inp(d.adic_av_oe),
+      distancia: inp(d.adic_distancia), obs: inp(d.adic_obs),
     });
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
@@ -885,6 +891,9 @@ export default function AtendimentoPage() {
     afin_esf_od: afin.esf_od||null, afin_esf_oe: afin.esf_oe||null,
     afin_bicromatico_od: afin.bicromatico_od||null, afin_bicromatico_oe: afin.bicromatico_oe||null,
     afin_obs: afin.obs||null,
+    adic_valor_od: adic.valor_od||null, adic_valor_oe: adic.valor_oe||null,
+    adic_av_od: adic.av_od||null, adic_av_oe: adic.av_oe||null,
+    adic_distancia: adic.distancia||null, adic_obs: adic.obs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1441,6 +1450,18 @@ export default function AtendimentoPage() {
                   </tbody>
                 </table>
                 <Field label="Obs."><FTextarea value={afin.obs??''} onChange={(v:string)=>setAfinField('obs',v)} rows={2} /></Field>
+              </AccordionSection>
+
+              <AccordionSection id="adicao" label="Adição" open={open.adicao} toggle={toggle} order={secOrder('adicao')} hidden={!secVisible('adicao')}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Referência por idade: 40-45a +1,00/+1,50 · 46-50a +1,50/+2,00 · 51-55a +2,00/+2,50 · 56a+ +2,50/+3,00</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+                  <Field label="Adição OD"><FInput value={adic.valor_od} onChange={(v:string)=>setAdic(p=>({...p,valor_od:v}))} /></Field>
+                  <Field label="Adição OE"><FInput value={adic.valor_oe} onChange={(v:string)=>setAdic(p=>({...p,valor_oe:v}))} /></Field>
+                  <Field label="AV Perto OD"><FInput value={adic.av_od} onChange={(v:string)=>setAdic(p=>({...p,av_od:v}))} /></Field>
+                  <Field label="AV Perto OE"><FInput value={adic.av_oe} onChange={(v:string)=>setAdic(p=>({...p,av_oe:v}))} /></Field>
+                </div>
+                <Field label="Distância do teste"><FInput value={adic.distancia} onChange={(v:string)=>setAdic(p=>({...p,distancia:v}))} placeholder="33cm / 40cm" /></Field>
+                <Field label="Obs."><FTextarea value={adic.obs} onChange={(v:string)=>setAdic(p=>({...p,obs:v}))} rows={2} /></Field>
               </AccordionSection>
 
               <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
