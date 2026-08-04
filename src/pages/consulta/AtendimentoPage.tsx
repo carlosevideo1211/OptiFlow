@@ -297,6 +297,8 @@ export default function AtendimentoPage() {
   const [subjOd, setSubjOd] = useState<Record<string, string>>({ ESF: '', CIL: '', EIXO: '', AV: '' });
   const [subjOe, setSubjOe] = useState<Record<string, string>>({ ESF: '', CIL: '', EIXO: '', AV: '' });
   const [subjObs, setSubjObs] = useState('');
+  const [afin, setAfin] = useState<Record<string, string>>({});
+  const setAfinField = (f: string, v: string) => setAfin(p => ({ ...p, [f]: v }));
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -340,7 +342,7 @@ export default function AtendimentoPage() {
       secao_1: 'anamnese', secao_2: 'ult_prescricao', secao_3: 'acuidade', secao_4: 'biomicroscopia',
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
       secao_9: 'retin_din', secao_10: 'retin_est', secao_11: 'aval_motora', secao_12: 'rx_final',
-      secao_13: null, secao_14: null, secao_15: 'dx', secao_16: null, secao_17: null,
+      secao_13: null, secao_14: 'afinamento', secao_15: 'dx', secao_16: null, secao_17: null,
       secao_18: 'ppc', secao_19: 'reflexos', secao_20: 'reservas', secao_21: 'subjetivo', secao_22: null,
     };
     supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
@@ -505,6 +507,13 @@ export default function AtendimentoPage() {
     setSubjOd({ ESF: fmtRx(d.subj_re_esf), CIL: fmtRx(d.subj_re_cil), EIXO: inp(d.subj_re_eixo), AV: inp(d.subj_re_av) });
     setSubjOe({ ESF: fmtRx(d.subj_le_esf), CIL: fmtRx(d.subj_le_cil), EIXO: inp(d.subj_le_eixo), AV: inp(d.subj_le_av) });
     setSubjObs(inp(d.subj_obs));
+    setAfin({
+      eixo_od: inp(d.afin_eixo_od), eixo_oe: inp(d.afin_eixo_oe),
+      cil_od: inp(d.afin_cil_od), cil_oe: inp(d.afin_cil_oe),
+      esf_od: inp(d.afin_esf_od), esf_oe: inp(d.afin_esf_oe),
+      bicromatico_od: inp(d.afin_bicromatico_od), bicromatico_oe: inp(d.afin_bicromatico_oe),
+      obs: inp(d.afin_obs),
+    });
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
     setRxOd({ ESF: fmtRx(d.rx_re_esf), CIL: fmtRx(d.rx_re_cil), EIXO: inp(d.rx_re_eixo), AV: inp(d.rx_re_av), PRISMA: inp(d.rx_re_prisma), DNP: inp(d.rx_re_dnp) });
@@ -871,6 +880,11 @@ export default function AtendimentoPage() {
     subj_re_esf: num(subjOd.ESF), subj_re_cil: num(subjOd.CIL), subj_re_eixo: num(subjOd.EIXO), subj_re_av: subjOd.AV||null,
     subj_le_esf: num(subjOe.ESF), subj_le_cil: num(subjOe.CIL), subj_le_eixo: num(subjOe.EIXO), subj_le_av: subjOe.AV||null,
     subj_obs: subjObs||null,
+    afin_eixo_od: afin.eixo_od||null, afin_eixo_oe: afin.eixo_oe||null,
+    afin_cil_od: afin.cil_od||null, afin_cil_oe: afin.cil_oe||null,
+    afin_esf_od: afin.esf_od||null, afin_esf_oe: afin.esf_oe||null,
+    afin_bicromatico_od: afin.bicromatico_od||null, afin_bicromatico_oe: afin.bicromatico_oe||null,
+    afin_obs: afin.obs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1410,6 +1424,23 @@ export default function AtendimentoPage() {
                   onChange={(eye,col,v) => eye==='od' ? setSubjOd(p=>({...p,[col]:v})) : setSubjOe(p=>({...p,[col]:v}))}
                 />
                 <Field label="Obs."><FTextarea value={subjObs} onChange={setSubjObs} rows={2} /></Field>
+              </AccordionSection>
+
+              <AccordionSection id="afinamento" label="Afinamento" open={open.afinamento} toggle={toggle} order={secOrder('afinamento')} hidden={!secVisible('afinamento')}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Técnica: Cilindro Cruzado de Jackson (CCJ) — eixo, potência cilíndrica e esférica</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead><tr><th style={{ width: 140, padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}></th><th style={{ padding: '6px', color: 'var(--text-muted)' }}>OD</th><th style={{ padding: '6px', color: 'var(--text-muted)' }}>OE</th></tr></thead>
+                  <tbody>
+                    {[['eixo','Eixo'],['cil','Potência Cilíndrica'],['esf','Potência Esférica'],['bicromatico','Teste Bicromático']].map(([f,label]) => (
+                      <tr key={f}>
+                        <td style={{ padding: '4px 8px', fontSize: 12 }}>{label}</td>
+                        <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder={f==='bicromatico'?'Vermelho / Verde':''} value={afin[`${f}_od`]??''} onChange={e=>setAfinField(`${f}_od`,e.target.value)} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                        <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder={f==='bicromatico'?'Vermelho / Verde':''} value={afin[`${f}_oe`]??''} onChange={e=>setAfinField(`${f}_oe`,e.target.value)} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Field label="Obs."><FTextarea value={afin.obs??''} onChange={(v:string)=>setAfinField('obs',v)} rows={2} /></Field>
               </AccordionSection>
 
               <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
