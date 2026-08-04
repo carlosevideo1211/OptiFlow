@@ -300,6 +300,7 @@ export default function AtendimentoPage() {
   const [afin, setAfin] = useState<Record<string, string>>({});
   const setAfinField = (f: string, v: string) => setAfin(p => ({ ...p, [f]: v }));
   const [adic, setAdic] = useState({ valor_od: '', valor_oe: '', av_od: '', av_oe: '', distancia: '', obs: '' });
+  const [ampl, setAmpl] = useState({ od: '', oe: '', metodo: '', obs: '' });
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -343,7 +344,7 @@ export default function AtendimentoPage() {
       secao_1: 'anamnese', secao_2: 'ult_prescricao', secao_3: 'acuidade', secao_4: 'biomicroscopia',
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
       secao_9: 'retin_din', secao_10: 'retin_est', secao_11: 'aval_motora', secao_12: 'rx_final',
-      secao_13: null, secao_14: 'afinamento', secao_15: 'dx', secao_16: null, secao_17: 'adicao',
+      secao_13: 'amplitude', secao_14: 'afinamento', secao_15: 'dx', secao_16: null, secao_17: 'adicao',
       secao_18: 'ppc', secao_19: 'reflexos', secao_20: 'reservas', secao_21: 'subjetivo', secao_22: null,
     };
     supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
@@ -520,6 +521,7 @@ export default function AtendimentoPage() {
       av_od: inp(d.adic_av_od), av_oe: inp(d.adic_av_oe),
       distancia: inp(d.adic_distancia), obs: inp(d.adic_obs),
     });
+    setAmpl({ od: inp(d.ampl_od), oe: inp(d.ampl_oe), metodo: inp(d.ampl_metodo), obs: inp(d.ampl_obs) });
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
     setRxOd({ ESF: fmtRx(d.rx_re_esf), CIL: fmtRx(d.rx_re_cil), EIXO: inp(d.rx_re_eixo), AV: inp(d.rx_re_av), PRISMA: inp(d.rx_re_prisma), DNP: inp(d.rx_re_dnp) });
@@ -894,6 +896,7 @@ export default function AtendimentoPage() {
     adic_valor_od: adic.valor_od||null, adic_valor_oe: adic.valor_oe||null,
     adic_av_od: adic.av_od||null, adic_av_oe: adic.av_oe||null,
     adic_distancia: adic.distancia||null, adic_obs: adic.obs||null,
+    ampl_od: ampl.od||null, ampl_oe: ampl.oe||null, ampl_metodo: ampl.metodo||null, ampl_obs: ampl.obs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1462,6 +1465,16 @@ export default function AtendimentoPage() {
                 </div>
                 <Field label="Distância do teste"><FInput value={adic.distancia} onChange={(v:string)=>setAdic(p=>({...p,distancia:v}))} placeholder="33cm / 40cm" /></Field>
                 <Field label="Obs."><FTextarea value={adic.obs} onChange={(v:string)=>setAdic(p=>({...p,obs:v}))} rows={2} /></Field>
+              </AccordionSection>
+
+              <AccordionSection id="amplitude" label="Amplitude de Acomodação" open={open.amplitude} toggle={toggle} order={secOrder('amplitude')} hidden={!secVisible('amplitude')}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Referência por idade (D): 10a 14 · 20a 10 · 30a 7 · 40a 4,5 · 50a 2,5 · 60a 1</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                  <Field label="OD (D)"><FInput value={ampl.od} onChange={(v:string)=>setAmpl(p=>({...p,od:v}))} /></Field>
+                  <Field label="OE (D)"><FInput value={ampl.oe} onChange={(v:string)=>setAmpl(p=>({...p,oe:v}))} /></Field>
+                  <Field label="Método"><FInput value={ampl.metodo} onChange={(v:string)=>setAmpl(p=>({...p,metodo:v}))} placeholder="Sheard / Donders / Jackson / Hofstetter" /></Field>
+                </div>
+                <Field label="Obs."><FTextarea value={ampl.obs} onChange={(v:string)=>setAmpl(p=>({...p,obs:v}))} rows={2} /></Field>
               </AccordionSection>
 
               <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
