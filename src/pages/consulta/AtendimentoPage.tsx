@@ -290,6 +290,8 @@ export default function AtendimentoPage() {
   const setOftalField = (f: string, v: string) => setOftal(p => ({ ...p, [f]: v }));
   const [reflex, setReflex] = useState<Record<string, string>>({});
   const setReflexField = (f: string, v: string) => setReflex(p => ({ ...p, [f]: v }));
+  const [motor, setMotor] = useState<Record<string, string>>({});
+  const setMotorField = (f: string, v: string) => setMotor(p => ({ ...p, [f]: v }));
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -332,7 +334,7 @@ export default function AtendimentoPage() {
     const SECAO_KEY_MAP: Record<string, Accordion | null> = {
       secao_1: 'anamnese', secao_2: 'ult_prescricao', secao_3: 'acuidade', secao_4: 'biomicroscopia',
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
-      secao_9: 'retin_din', secao_10: 'retin_est', secao_11: null, secao_12: 'rx_final',
+      secao_9: 'retin_din', secao_10: 'retin_est', secao_11: 'aval_motora', secao_12: 'rx_final',
       secao_13: null, secao_14: null, secao_15: 'dx', secao_16: null, secao_17: null,
       secao_18: null, secao_19: 'reflexos', secao_20: null, secao_21: null, secao_22: null,
     };
@@ -481,6 +483,13 @@ export default function AtendimentoPage() {
       fotomotor_od: inp(d.reflex_fotomotor_od), fotomotor_oe: inp(d.reflex_fotomotor_oe),
       acomodativo_od: inp(d.reflex_acomodativo_od), acomodativo_oe: inp(d.reflex_acomodativo_oe),
       swinging: inp(d.reflex_swinging), obs: inp(d.reflex_obs),
+    });
+    setMotor({
+      kappa_od: inp(d.motor_kappa_od), kappa_oe: inp(d.motor_kappa_oe),
+      hirschberg: inp(d.motor_hirschberg),
+      ducoes_od: inp(d.motor_ducoes_od), ducoes_oe: inp(d.motor_ducoes_oe),
+      versoes_od: inp(d.motor_versoes_od), versoes_oe: inp(d.motor_versoes_oe),
+      obs: inp(d.motor_obs),
     });
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
@@ -836,6 +845,11 @@ export default function AtendimentoPage() {
     reflex_fotomotor_od: reflex.fotomotor_od||null, reflex_fotomotor_oe: reflex.fotomotor_oe||null,
     reflex_acomodativo_od: reflex.acomodativo_od||null, reflex_acomodativo_oe: reflex.acomodativo_oe||null,
     reflex_swinging: reflex.swinging||null, reflex_obs: reflex.obs||null,
+    motor_kappa_od: motor.kappa_od||null, motor_kappa_oe: motor.kappa_oe||null,
+    motor_hirschberg: motor.hirschberg||null,
+    motor_ducoes_od: motor.ducoes_od||null, motor_ducoes_oe: motor.ducoes_oe||null,
+    motor_versoes_od: motor.versoes_od||null, motor_versoes_oe: motor.versoes_oe||null,
+    motor_obs: motor.obs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1313,6 +1327,27 @@ export default function AtendimentoPage() {
                     <FInput value={reflex.swinging??''} onChange={(v:string)=>setReflexField('swinging',v)} placeholder="Normal / DPAR OD / DPAR OE" />
                   </Field>
                   <Field label="Obs."><FTextarea value={reflex.obs??''} onChange={(v:string)=>setReflexField('obs',v)} rows={2} /></Field>
+                </div>
+              </AccordionSection>
+
+              <AccordionSection id="aval_motora" label="Avaliação Motora" open={open.aval_motora} toggle={toggle} order={secOrder('aval_motora')} hidden={!secVisible('aval_motora')}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead><tr><th style={{ width: 120, padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}></th><th style={{ padding: '6px', color: 'var(--text-muted)' }}>OD</th><th style={{ padding: '6px', color: 'var(--text-muted)' }}>OE</th></tr></thead>
+                  <tbody>
+                    {[['kappa','Ângulo Kappa','+ / - / 0'],['ducoes','Ducções','SPEC'],['versoes','Versões','C / hipo / hiper']].map(([f,label,ph]) => (
+                      <tr key={f}>
+                        <td style={{ padding: '4px 8px', fontSize: 12 }}>{label}</td>
+                        <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder={ph} value={motor[`${f}_od`]??''} onChange={e=>setMotorField(`${f}_od`,e.target.value)} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                        <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder={ph} value={motor[`${f}_oe`]??''} onChange={e=>setMotorField(`${f}_oe`,e.target.value)} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginTop: 12 }}>
+                  <Field label="Hirschberg">
+                    <FInput value={motor.hirschberg??''} onChange={(v:string)=>setMotorField('hirschberg',v)} placeholder="Centrado / descentrado + grau + lado (ex: HDT 15° OE)" />
+                  </Field>
+                  <Field label="Obs."><FTextarea value={motor.obs??''} onChange={(v:string)=>setMotorField('obs',v)} rows={2} /></Field>
                 </div>
               </AccordionSection>
 
