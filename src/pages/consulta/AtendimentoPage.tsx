@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -288,6 +288,8 @@ export default function AtendimentoPage() {
   const [foro, setForo] = useState({ tecnica: '', longe_sc: '', longe_cc: '', cm40_sc: '', cm40_cc: '', cm20_sc: '', cm20_cc: '' });
   const [oftal, setOftal] = useState<Record<string, string>>({});
   const setOftalField = (f: string, v: string) => setOftal(p => ({ ...p, [f]: v }));
+  const [reflex, setReflex] = useState<Record<string, string>>({});
+  const setReflexField = (f: string, v: string) => setReflex(p => ({ ...p, [f]: v }));
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -332,7 +334,7 @@ export default function AtendimentoPage() {
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
       secao_9: 'retin_din', secao_10: 'retin_est', secao_11: null, secao_12: 'rx_final',
       secao_13: null, secao_14: null, secao_15: 'dx', secao_16: null, secao_17: null,
-      secao_18: null, secao_19: null, secao_20: null, secao_21: null, secao_22: null,
+      secao_18: null, secao_19: 'reflexos', secao_20: null, secao_21: null, secao_22: null,
     };
     supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => {
@@ -475,6 +477,11 @@ export default function AtendimentoPage() {
     setTono({ od: inp(d.tono_od), oe: inp(d.tono_oe), hora: inp(d.tono_hora) });
     setForo({ tecnica: inp(d.foro_tecnica), longe_sc: inp(d.foro_longe_sc), longe_cc: inp(d.foro_longe_cc), cm40_sc: inp(d.foro_40cm_sc), cm40_cc: inp(d.foro_40cm_cc), cm20_sc: inp(d.foro_20cm_sc), cm20_cc: inp(d.foro_20cm_cc) });
     setOftal({ bruckner: inp(d.oftal_bruckner), papila_od: inp(d.oftal_papila_od), papila_oe: inp(d.oftal_papila_oe), escavacao_od: inp(d.oftal_escavacao_od), escavacao_oe: inp(d.oftal_escavacao_oe), macula_od: inp(d.oftal_macula_od), macula_oe: inp(d.oftal_macula_oe), fixacao_od: inp(d.oftal_fixacao_od), fixacao_oe: inp(d.oftal_fixacao_oe), cor_od: inp(d.oftal_cor_od), cor_oe: inp(d.oftal_cor_oe), relacao_od: inp(d.oftal_relacao_od), relacao_oe: inp(d.oftal_relacao_oe), obs_od: inp(d.oftal_obs_od), obs_oe: inp(d.oftal_obs_oe) });
+    setReflex({
+      fotomotor_od: inp(d.reflex_fotomotor_od), fotomotor_oe: inp(d.reflex_fotomotor_oe),
+      acomodativo_od: inp(d.reflex_acomodativo_od), acomodativo_oe: inp(d.reflex_acomodativo_oe),
+      swinging: inp(d.reflex_swinging), obs: inp(d.reflex_obs),
+    });
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
     setRxOd({ ESF: fmtRx(d.rx_re_esf), CIL: fmtRx(d.rx_re_cil), EIXO: inp(d.rx_re_eixo), AV: inp(d.rx_re_av), PRISMA: inp(d.rx_re_prisma), DNP: inp(d.rx_re_dnp) });
@@ -826,6 +833,9 @@ export default function AtendimentoPage() {
     oftal_cor_od: oftal.cor_od||null, oftal_cor_oe: oftal.cor_oe||null,
     oftal_relacao_od: oftal.relacao_od||null, oftal_relacao_oe: oftal.relacao_oe||null,
     oftal_obs_od: oftal.obs_od||null, oftal_obs_oe: oftal.obs_oe||null,
+    reflex_fotomotor_od: reflex.fotomotor_od||null, reflex_fotomotor_oe: reflex.fotomotor_oe||null,
+    reflex_acomodativo_od: reflex.acomodativo_od||null, reflex_acomodativo_oe: reflex.acomodativo_oe||null,
+    reflex_swinging: reflex.swinging||null, reflex_obs: reflex.obs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1283,6 +1293,27 @@ export default function AtendimentoPage() {
                     </tr>
                   </tbody>
                 </table>
+              </AccordionSection>
+
+              <AccordionSection id="reflexos" label="Reflexos Pupilares" open={open.reflexos} toggle={toggle} order={secOrder('reflexos')} hidden={!secVisible('reflexos')}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead><tr><th style={{ width: 120, padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}></th><th style={{ padding: '6px', color: 'var(--text-muted)' }}>OD</th><th style={{ padding: '6px', color: 'var(--text-muted)' }}>OE</th></tr></thead>
+                  <tbody>
+                    {[['fotomotor','Fotomotor (Direto/Consensual)'],['acomodativo','Acomodativo']].map(([f,label]) => (
+                      <tr key={f}>
+                        <td style={{ padding: '4px 8px', fontSize: 12 }}>{label}</td>
+                        <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder="PR" value={reflex[`${f}_od`]??''} onChange={e=>setReflexField(`${f}_od`,e.target.value)} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                        <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder="PR" value={reflex[`${f}_oe`]??''} onChange={e=>setReflexField(`${f}_oe`,e.target.value)} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginTop: 12 }}>
+                  <Field label="Swinging Flashlight Test (Marcus Gunn)">
+                    <FInput value={reflex.swinging??''} onChange={(v:string)=>setReflexField('swinging',v)} placeholder="Normal / DPAR OD / DPAR OE" />
+                  </Field>
+                  <Field label="Obs."><FTextarea value={reflex.obs??''} onChange={(v:string)=>setReflexField('obs',v)} rows={2} /></Field>
+                </div>
               </AccordionSection>
 
               <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
