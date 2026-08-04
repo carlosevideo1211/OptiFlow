@@ -301,6 +301,7 @@ export default function AtendimentoPage() {
   const setAfinField = (f: string, v: string) => setAfin(p => ({ ...p, [f]: v }));
   const [adic, setAdic] = useState({ valor_od: '', valor_oe: '', av_od: '', av_oe: '', distancia: '', obs: '' });
   const [ampl, setAmpl] = useState({ od: '', oe: '', metodo: '', obs: '' });
+  const [flex, setFlex] = useState({ lente: '', resultado_od: '', resultado_oe: '', facilidade_bino: '', facilidade_mono: '', obs: '' });
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -344,7 +345,7 @@ export default function AtendimentoPage() {
       secao_1: 'anamnese', secao_2: 'ult_prescricao', secao_3: 'acuidade', secao_4: 'biomicroscopia',
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
       secao_9: 'retin_din', secao_10: 'retin_est', secao_11: 'aval_motora', secao_12: 'rx_final',
-      secao_13: 'amplitude', secao_14: 'afinamento', secao_15: 'dx', secao_16: null, secao_17: 'adicao',
+      secao_13: 'amplitude', secao_14: 'afinamento', secao_15: 'dx', secao_16: 'flexibilidade', secao_17: 'adicao',
       secao_18: 'ppc', secao_19: 'reflexos', secao_20: 'reservas', secao_21: 'subjetivo', secao_22: null,
     };
     supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
@@ -522,6 +523,10 @@ export default function AtendimentoPage() {
       distancia: inp(d.adic_distancia), obs: inp(d.adic_obs),
     });
     setAmpl({ od: inp(d.ampl_od), oe: inp(d.ampl_oe), metodo: inp(d.ampl_metodo), obs: inp(d.ampl_obs) });
+    setFlex({
+      lente: inp(d.flex_lente), resultado_od: inp(d.flex_resultado_od), resultado_oe: inp(d.flex_resultado_oe),
+      facilidade_bino: inp(d.flex_facilidade_bino), facilidade_mono: inp(d.flex_facilidade_mono), obs: inp(d.flex_obs),
+    });
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
     setRxOd({ ESF: fmtRx(d.rx_re_esf), CIL: fmtRx(d.rx_re_cil), EIXO: inp(d.rx_re_eixo), AV: inp(d.rx_re_av), PRISMA: inp(d.rx_re_prisma), DNP: inp(d.rx_re_dnp) });
@@ -897,6 +902,8 @@ export default function AtendimentoPage() {
     adic_av_od: adic.av_od||null, adic_av_oe: adic.av_oe||null,
     adic_distancia: adic.distancia||null, adic_obs: adic.obs||null,
     ampl_od: ampl.od||null, ampl_oe: ampl.oe||null, ampl_metodo: ampl.metodo||null, ampl_obs: ampl.obs||null,
+    flex_lente: flex.lente||null, flex_resultado_od: flex.resultado_od||null, flex_resultado_oe: flex.resultado_oe||null,
+    flex_facilidade_bino: flex.facilidade_bino||null, flex_facilidade_mono: flex.facilidade_mono||null, flex_obs: flex.obs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1475,6 +1482,18 @@ export default function AtendimentoPage() {
                   <Field label="Método"><FInput value={ampl.metodo} onChange={(v:string)=>setAmpl(p=>({...p,metodo:v}))} placeholder="Sheard / Donders / Jackson / Hofstetter" /></Field>
                 </div>
                 <Field label="Obs."><FTextarea value={ampl.obs} onChange={(v:string)=>setAmpl(p=>({...p,obs:v}))} rows={2} /></Field>
+              </AccordionSection>
+
+              <AccordionSection id="flexibilidade" label="Flexibilidade e Facilidade de Acomodação" open={open.flexibilidade} toggle={toggle} order={secOrder('flexibilidade')} hidden={!secVisible('flexibilidade')}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Facilidade: padrão Bino 8 c/m, Mono 11 c/m</div>
+                <Field label="Lente usada"><FInput value={flex.lente} onChange={(v:string)=>setFlex(p=>({...p,lente:v}))} placeholder="+3,00/-3,00 (33cm) ou +2,50/-2,50 (40cm)" /></Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Resultado OD"><FInput value={flex.resultado_od} onChange={(v:string)=>setFlex(p=>({...p,resultado_od:v}))} placeholder="Normal / Não relaxa / Não acomoda" /></Field>
+                  <Field label="Resultado OE"><FInput value={flex.resultado_oe} onChange={(v:string)=>setFlex(p=>({...p,resultado_oe:v}))} placeholder="Normal / Não relaxa / Não acomoda" /></Field>
+                  <Field label="Facilidade Binocular (c/m)"><FInput value={flex.facilidade_bino} onChange={(v:string)=>setFlex(p=>({...p,facilidade_bino:v}))} /></Field>
+                  <Field label="Facilidade Monocular (c/m)"><FInput value={flex.facilidade_mono} onChange={(v:string)=>setFlex(p=>({...p,facilidade_mono:v}))} /></Field>
+                </div>
+                <Field label="Obs."><FTextarea value={flex.obs} onChange={(v:string)=>setFlex(p=>({...p,obs:v}))} rows={2} /></Field>
               </AccordionSection>
 
               <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
