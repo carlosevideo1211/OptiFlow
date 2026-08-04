@@ -302,6 +302,10 @@ export default function AtendimentoPage() {
   const [adic, setAdic] = useState({ valor_od: '', valor_oe: '', av_od: '', av_oe: '', distancia: '', obs: '' });
   const [ampl, setAmpl] = useState({ od: '', oe: '', metodo: '', obs: '' });
   const [flex, setFlex] = useState({ lente: '', resultado_od: '', resultado_oe: '', facilidade_bino: '', facilidade_mono: '', obs: '' });
+  const [ambul, setAmbul] = useState({
+    worth_resultado: '', worth_distancia: '', cores_laminas: '', cores_resultado: '',
+    estereopsia_valor: '', estereopsia_teste: '', obs: '',
+  });
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -346,7 +350,7 @@ export default function AtendimentoPage() {
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
       secao_9: 'retin_din', secao_10: 'retin_est', secao_11: 'aval_motora', secao_12: 'rx_final',
       secao_13: 'amplitude', secao_14: 'afinamento', secao_15: 'dx', secao_16: 'flexibilidade', secao_17: 'adicao',
-      secao_18: 'ppc', secao_19: 'reflexos', secao_20: 'reservas', secao_21: 'subjetivo', secao_22: null,
+      secao_18: 'ppc', secao_19: 'reflexos', secao_20: 'reservas', secao_21: 'subjetivo', secao_22: 'ambulatorial',
     };
     supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => {
@@ -526,6 +530,12 @@ export default function AtendimentoPage() {
     setFlex({
       lente: inp(d.flex_lente), resultado_od: inp(d.flex_resultado_od), resultado_oe: inp(d.flex_resultado_oe),
       facilidade_bino: inp(d.flex_facilidade_bino), facilidade_mono: inp(d.flex_facilidade_mono), obs: inp(d.flex_obs),
+    });
+    setAmbul({
+      worth_resultado: inp(d.ambul_worth_resultado), worth_distancia: inp(d.ambul_worth_distancia),
+      cores_laminas: inp(d.ambul_cores_laminas), cores_resultado: inp(d.ambul_cores_resultado),
+      estereopsia_valor: inp(d.ambul_estereopsia_valor), estereopsia_teste: inp(d.ambul_estereopsia_teste),
+      obs: inp(d.ambul_obs),
     });
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
@@ -904,6 +914,10 @@ export default function AtendimentoPage() {
     ampl_od: ampl.od||null, ampl_oe: ampl.oe||null, ampl_metodo: ampl.metodo||null, ampl_obs: ampl.obs||null,
     flex_lente: flex.lente||null, flex_resultado_od: flex.resultado_od||null, flex_resultado_oe: flex.resultado_oe||null,
     flex_facilidade_bino: flex.facilidade_bino||null, flex_facilidade_mono: flex.facilidade_mono||null, flex_obs: flex.obs||null,
+    ambul_worth_resultado: ambul.worth_resultado||null, ambul_worth_distancia: ambul.worth_distancia||null,
+    ambul_cores_laminas: ambul.cores_laminas||null, ambul_cores_resultado: ambul.cores_resultado||null,
+    ambul_estereopsia_valor: ambul.estereopsia_valor||null, ambul_estereopsia_teste: ambul.estereopsia_teste||null,
+    ambul_obs: ambul.obs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1494,6 +1508,25 @@ export default function AtendimentoPage() {
                   <Field label="Facilidade Monocular (c/m)"><FInput value={flex.facilidade_mono} onChange={(v:string)=>setFlex(p=>({...p,facilidade_mono:v}))} /></Field>
                 </div>
                 <Field label="Obs."><FTextarea value={flex.obs} onChange={(v:string)=>setFlex(p=>({...p,obs:v}))} rows={2} /></Field>
+              </AccordionSection>
+
+              <AccordionSection id="ambulatorial" label="Teste Ambulatorial" open={open.ambulatorial} toggle={toggle} order={secOrder('ambulatorial')} hidden={!secVisible('ambulatorial')}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>Luzes de Worth</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <Field label="Resultado"><FInput value={ambul.worth_resultado} onChange={(v:string)=>setAmbul(p=>({...p,worth_resultado:v}))} placeholder="Fusão / Supressão OD / Supressão OE / Diplopia Cruzada / Diplopia Descruzada" /></Field>
+                  <Field label="Distância"><FInput value={ambul.worth_distancia} onChange={(v:string)=>setAmbul(p=>({...p,worth_distancia:v}))} placeholder="6m / 40cm" /></Field>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>Visão de Cores (Ishihara)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <Field label="Lâminas identificadas"><FInput value={ambul.cores_laminas} onChange={(v:string)=>setAmbul(p=>({...p,cores_laminas:v}))} placeholder="0-24 — ≥9 normal, ≤5 deficiente" /></Field>
+                  <Field label="Resultado"><FInput value={ambul.cores_resultado} onChange={(v:string)=>setAmbul(p=>({...p,cores_resultado:v}))} placeholder="Normal / Deficiente (Protanomalia, Deuteranomalia...)" /></Field>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>Estereopsia</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Valor (segundos de arco)"><FInput value={ambul.estereopsia_valor} onChange={(v:string)=>setAmbul(p=>({...p,estereopsia_valor:v}))} placeholder="Normal: 80'-40'" /></Field>
+                  <Field label="Teste usado"><FInput value={ambul.estereopsia_teste} onChange={(v:string)=>setAmbul(p=>({...p,estereopsia_teste:v}))} placeholder="Titmus Fly / Círculos / Animais" /></Field>
+                </div>
+                <Field label="Obs."><FTextarea value={ambul.obs} onChange={(v:string)=>setAmbul(p=>({...p,obs:v}))} rows={2} /></Field>
               </AccordionSection>
 
               <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
