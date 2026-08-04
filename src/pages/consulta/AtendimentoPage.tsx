@@ -294,6 +294,9 @@ export default function AtendimentoPage() {
   const setMotorField = (f: string, v: string) => setMotor(p => ({ ...p, [f]: v }));
   const [ppc, setPpc] = useState({ or: '', luz: '', fv: '', obs: '' });
   const [reservas, setReservas] = useState({ rfn_perto: '', rfp_perto: '', rfn_longe: '', rfp_longe: '', obs: '' });
+  const [subjOd, setSubjOd] = useState<Record<string, string>>({ ESF: '', CIL: '', EIXO: '', AV: '' });
+  const [subjOe, setSubjOe] = useState<Record<string, string>>({ ESF: '', CIL: '', EIXO: '', AV: '' });
+  const [subjObs, setSubjObs] = useState('');
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -338,7 +341,7 @@ export default function AtendimentoPage() {
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
       secao_9: 'retin_din', secao_10: 'retin_est', secao_11: 'aval_motora', secao_12: 'rx_final',
       secao_13: null, secao_14: null, secao_15: 'dx', secao_16: null, secao_17: null,
-      secao_18: 'ppc', secao_19: 'reflexos', secao_20: 'reservas', secao_21: null, secao_22: null,
+      secao_18: 'ppc', secao_19: 'reflexos', secao_20: 'reservas', secao_21: 'subjetivo', secao_22: null,
     };
     supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => {
@@ -499,6 +502,9 @@ export default function AtendimentoPage() {
       rfn_longe: inp(d.reservas_rfn_longe), rfp_longe: inp(d.reservas_rfp_longe),
       obs: inp(d.reservas_obs),
     });
+    setSubjOd({ ESF: fmtRx(d.subj_re_esf), CIL: fmtRx(d.subj_re_cil), EIXO: inp(d.subj_re_eixo), AV: inp(d.subj_re_av) });
+    setSubjOe({ ESF: fmtRx(d.subj_le_esf), CIL: fmtRx(d.subj_le_cil), EIXO: inp(d.subj_le_eixo), AV: inp(d.subj_le_av) });
+    setSubjObs(inp(d.subj_obs));
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
     setRxOd({ ESF: fmtRx(d.rx_re_esf), CIL: fmtRx(d.rx_re_cil), EIXO: inp(d.rx_re_eixo), AV: inp(d.rx_re_av), PRISMA: inp(d.rx_re_prisma), DNP: inp(d.rx_re_dnp) });
@@ -862,6 +868,9 @@ export default function AtendimentoPage() {
     reservas_rfn_perto: reservas.rfn_perto||null, reservas_rfp_perto: reservas.rfp_perto||null,
     reservas_rfn_longe: reservas.rfn_longe||null, reservas_rfp_longe: reservas.rfp_longe||null,
     reservas_obs: reservas.obs||null,
+    subj_re_esf: num(subjOd.ESF), subj_re_cil: num(subjOd.CIL), subj_re_eixo: num(subjOd.EIXO), subj_re_av: subjOd.AV||null,
+    subj_le_esf: num(subjOe.ESF), subj_le_cil: num(subjOe.CIL), subj_le_eixo: num(subjOe.EIXO), subj_le_av: subjOe.AV||null,
+    subj_obs: subjObs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1391,6 +1400,16 @@ export default function AtendimentoPage() {
                   </tbody>
                 </table>
                 <Field label="Obs."><FTextarea value={reservas.obs} onChange={(v:string)=>setReservas(p=>({...p,obs:v}))} rows={2} /></Field>
+              </AccordionSection>
+
+              <AccordionSection id="subjetivo" label="Subjetivo" open={open.subjetivo} toggle={toggle} order={secOrder('subjetivo')} hidden={!secVisible('subjetivo')}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Dial Astigmático — eixo e afinamento a partir da condição de AMC (astigmatismo miópico composto)</div>
+                <RxTable
+                  cols={['ESF','CIL','EIXO','AV']}
+                  od={subjOd} oe={subjOe}
+                  onChange={(eye,col,v) => eye==='od' ? setSubjOd(p=>({...p,[col]:v})) : setSubjOe(p=>({...p,[col]:v}))}
+                />
+                <Field label="Obs."><FTextarea value={subjObs} onChange={setSubjObs} rows={2} /></Field>
               </AccordionSection>
 
               <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
