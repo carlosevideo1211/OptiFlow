@@ -293,6 +293,7 @@ export default function AtendimentoPage() {
   const [motor, setMotor] = useState<Record<string, string>>({});
   const setMotorField = (f: string, v: string) => setMotor(p => ({ ...p, [f]: v }));
   const [ppc, setPpc] = useState({ or: '', luz: '', fv: '', obs: '' });
+  const [reservas, setReservas] = useState({ rfn_perto: '', rfp_perto: '', rfn_longe: '', rfp_longe: '', obs: '' });
   const [retinDin, setRetinDin] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
   const [retinEst, setRetinEst] = useState({ od: '', oe: '', av_od: '', av_oe: '' });
 
@@ -337,7 +338,7 @@ export default function AtendimentoPage() {
       secao_5: 'ceratometria', secao_6: 'tonometria', secao_7: 'forometria', secao_8: 'oftalmoscopia',
       secao_9: 'retin_din', secao_10: 'retin_est', secao_11: 'aval_motora', secao_12: 'rx_final',
       secao_13: null, secao_14: null, secao_15: 'dx', secao_16: null, secao_17: null,
-      secao_18: 'ppc', secao_19: 'reflexos', secao_20: null, secao_21: null, secao_22: null,
+      secao_18: 'ppc', secao_19: 'reflexos', secao_20: 'reservas', secao_21: null, secao_22: null,
     };
     supabase.from('clinic_settings').select('ficha_layout').eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => {
@@ -493,6 +494,11 @@ export default function AtendimentoPage() {
       obs: inp(d.motor_obs),
     });
     setPpc({ or: inp(d.ppc_or), luz: inp(d.ppc_luz), fv: inp(d.ppc_fv), obs: inp(d.ppc_obs) });
+    setReservas({
+      rfn_perto: inp(d.reservas_rfn_perto), rfp_perto: inp(d.reservas_rfp_perto),
+      rfn_longe: inp(d.reservas_rfn_longe), rfp_longe: inp(d.reservas_rfp_longe),
+      obs: inp(d.reservas_obs),
+    });
     setRetinDin({ od: inp(d.retin_din_od), oe: inp(d.retin_din_oe), av_od: inp(d.retin_din_av_od), av_oe: inp(d.retin_din_av_oe) });
     setRetinEst({ od: inp(d.retin_est_od), oe: inp(d.retin_est_oe), av_od: inp(d.retin_est_av_od), av_oe: inp(d.retin_est_av_oe) });
     setRxOd({ ESF: fmtRx(d.rx_re_esf), CIL: fmtRx(d.rx_re_cil), EIXO: inp(d.rx_re_eixo), AV: inp(d.rx_re_av), PRISMA: inp(d.rx_re_prisma), DNP: inp(d.rx_re_dnp) });
@@ -853,6 +859,9 @@ export default function AtendimentoPage() {
     motor_versoes_od: motor.versoes_od||null, motor_versoes_oe: motor.versoes_oe||null,
     motor_obs: motor.obs||null,
     ppc_or: ppc.or||null, ppc_luz: ppc.luz||null, ppc_fv: ppc.fv||null, ppc_obs: ppc.obs||null,
+    reservas_rfn_perto: reservas.rfn_perto||null, reservas_rfp_perto: reservas.rfp_perto||null,
+    reservas_rfn_longe: reservas.rfn_longe||null, reservas_rfp_longe: reservas.rfp_longe||null,
+    reservas_obs: reservas.obs||null,
     retin_din_od: retinDin.od||null, retin_din_oe: retinDin.oe||null,
     retin_din_av_od: retinDin.av_od||null, retin_din_av_oe: retinDin.av_oe||null,
     retin_est_od: retinEst.od||null, retin_est_oe: retinEst.oe||null,
@@ -1362,6 +1371,26 @@ export default function AtendimentoPage() {
                   <Field label="Com Filtro Vermelho (F.V)"><FInput value={ppc.fv} onChange={(v:string)=>setPpc(p=>({...p,fv:v}))} placeholder="cm" /></Field>
                 </div>
                 <Field label="Obs."><FTextarea value={ppc.obs} onChange={(v:string)=>setPpc(p=>({...p,obs:v}))} rows={2} /></Field>
+              </AccordionSection>
+
+              <AccordionSection id="reservas" label="Reservas Fusionais" open={open.reservas} toggle={toggle} order={secOrder('reservas')} hidden={!secVisible('reservas')}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Formato: valor que borra / valor que recupera a fusão — Perto: RFN 8-10, RFP 20-25 · Longe: RFN 10-12, RFP 35-45</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead><tr><th style={{ width: 100, padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}></th><th style={{ padding: '6px', color: 'var(--text-muted)' }}>RFN (base nasal)</th><th style={{ padding: '6px', color: 'var(--text-muted)' }}>RFP (base temporal)</th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ padding: '4px 8px', fontSize: 12, fontWeight: 600 }}>Perto (40cm)</td>
+                      <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder="borra/recupera" value={reservas.rfn_perto} onChange={e=>setReservas(p=>({...p,rfn_perto:e.target.value}))} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                      <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder="borra/recupera" value={reservas.rfp_perto} onChange={e=>setReservas(p=>({...p,rfp_perto:e.target.value}))} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '4px 8px', fontSize: 12, fontWeight: 600 }}>Longe (6m)</td>
+                      <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder="borra/recupera" value={reservas.rfn_longe} onChange={e=>setReservas(p=>({...p,rfn_longe:e.target.value}))} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                      <td style={{ padding: '3px 4px' }}><input className="form-input" placeholder="borra/recupera" value={reservas.rfp_longe} onChange={e=>setReservas(p=>({...p,rfp_longe:e.target.value}))} style={{ padding: '5px 8px', fontSize: 12 }} /></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <Field label="Obs."><FTextarea value={reservas.obs} onChange={(v:string)=>setReservas(p=>({...p,obs:v}))} rows={2} /></Field>
               </AccordionSection>
 
               <AccordionSection id="retin_din" label="Retinoscopia Dinâmica" open={open.retin_din} toggle={toggle} order={secOrder('retin_din')} hidden={!secVisible('retin_din')}>
