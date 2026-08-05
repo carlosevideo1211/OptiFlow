@@ -19,6 +19,7 @@ import FilaEsperaConsultas from './FilaEsperaConsultas';
 import RelatoriosOperacionais from './RelatoriosOperacionais';
 import toast from 'react-hot-toast';
 import { norm } from '../../utils/normalize';
+import AuditoriaConsultas from './AuditoriaConsultas';
 
 export default function ConsultaPage() {
   const { tenantId, user } = useAuth();
@@ -30,7 +31,16 @@ export default function ConsultaPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'inicio'|'pacientes'|'consultas'|'agenda'|'fila'|'financeiro'|'relatorios'|'acoes'|'ajustes'>('inicio');
+  const [tab, setTab] = useState<'inicio'|'pacientes'|'consultas'|'agenda'|'fila'|'financeiro'|'relatorios'|'acoes'|'ajustes'|'auditoria'>('inicio');
+
+  // Auditoria e a unica aba com regra de visibilidade diferente das demais:
+  // nas outras, modulos_permitidos nulo/indefinido = sem restricao (ve tudo).
+  // Aqui e o oposto por decisao consciente (04/08/2026) - como o proposito da
+  // tela e fiscalizar o que os funcionarios fizeram, ela fica OCULTA por
+  // padrao e so aparece para Master/Admin, ou se o perfil do funcionario
+  // liberar o modulo 'auditoria' explicitamente.
+  const podeVerAuditoria = user?.role === 'master' || user?.role === 'system_admin'
+    || (user?.modulos_permitidos != null && user.modulos_permitidos.includes('auditoria'));
   const navigate = useNavigate();
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
@@ -128,7 +138,8 @@ export default function ConsultaPage() {
           {k:'relatorios',l:'📊 Relatórios',modulo:'relatorios'},
           {k:'acoes',l:'🎯 Ações',modulo:'pacientes'},
           {k:'ajustes',l:'⚙️ Configurações',modulo:'configuracoes'},
-        ].filter(t => !user?.modulos_permitidos || user.modulos_permitidos.includes(t.modulo)).map(t => (
+          {k:'auditoria',l:'🛡️ Auditoria',modulo:'auditoria'},
+        ].filter(t => t.modulo === 'auditoria' ? podeVerAuditoria : (!user?.modulos_permitidos || user.modulos_permitidos.includes(t.modulo))).map(t => (
           <button key={t.k} onClick={() => setTab(t.k as any)}
             style={{ padding:'10px 20px', background:'none', border:'none', cursor:'pointer',
               fontSize:14, fontWeight:600,
@@ -162,6 +173,9 @@ export default function ConsultaPage() {
 
       {/* Configurações (menu das 8 sub-áreas da Fase 1) */}
       {tab === 'ajustes' && <ConfiguracoesConsultas/>}
+
+      {/* Auditoria (Fase 8) — trilha de quem alterou o que nas tabelas do modulo clinico */}
+      {tab === 'auditoria' && podeVerAuditoria && <AuditoriaConsultas/>}
 
       {/* Consultas */}
       {tab === 'consultas' && (<>

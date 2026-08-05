@@ -20,6 +20,10 @@ const MODULOS = [
   { key: 'configuracoes', label: 'Configurações' },
   { key: 'clinica', label: 'Clínica' },
   { key: 'inicio_widgets', label: 'Início / Widgets' },
+  // Diferente dos demais: nulo/sem perfil = OCULTO por padrao (nao visivel),
+  // nao "ve tudo" - decisao consciente de 04/08/2026, dado que e a tela que
+  // fiscaliza o que os proprios funcionarios fizeram no sistema.
+  { key: 'auditoria', label: 'Auditoria (padrão: oculto)' },
 ];
 
 interface Perfil {
