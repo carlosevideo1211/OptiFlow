@@ -6,13 +6,14 @@ import { fetchAllRows } from '../lib/fetchAll';
 import {
   Plus, Search, Edit2, Eye, ClipboardList,
   Clock, CheckCircle, Truck, Package, X, Save,
-  Download, Trash2, Printer, Circle, User, ShoppingBag, CreditCard
+  Download, Trash2, Printer, Circle, User, ShoppingBag, CreditCard, Camera
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL, formatDate } from '../types/index';
 import { norm } from '../utils/normalize';
 import { abrirDocumentoImprimivel } from '../utils/printDoc';
 import VitrineLentes from '../components/VitrineLentes';
+import MedidasDigitaisModal from './os/MedidasDigitaisModal';
 
 const STATUS_LIST = [
   { value:'orcamento',  label:'Orçamento',        color:'#94a3b8', bg:'rgba(148,163,184,.15)' },
@@ -32,8 +33,8 @@ function emptyForm() {
   return {
     customer_id:'', customer_name:'',
     medico:'', data_receita:'',
-    od_esf:'', od_cil:'', od_eixo:'', od_adicao:'', od_dnp:'',
-    oe_esf:'', oe_cil:'', oe_eixo:'', oe_adicao:'', oe_dnp:'',
+    od_esf:'', od_cil:'', od_eixo:'', od_adicao:'', od_dnp:'', od_aco:'',
+    oe_esf:'', oe_cil:'', oe_eixo:'', oe_adicao:'', oe_dnp:'', oe_aco:'',
     dp_total:'',
     tipo_lente:'', forma_pagamento:'',
     entrada:0, discount:0,
@@ -56,8 +57,8 @@ interface OS {
   frame_price:number; lens_price:number; total:number; discount:number; status:string;
   lab_name?:string; delivery_date?:string; notes?:string; created_at:string;
   medico?:string; data_receita?:string; entrada?:number;
-  od_esf?:number; od_cil?:number; od_eixo?:number; od_adicao?:number; od_dnp?:number;
-  oe_esf?:number; oe_cil?:number; oe_eixo?:number; oe_adicao?:number; oe_dnp?:number;
+  od_esf?:number; od_cil?:number; od_eixo?:number; od_adicao?:number; od_dnp?:number; od_aco?:number;
+  oe_esf?:number; oe_cil?:number; oe_eixo?:number; oe_adicao?:number; oe_dnp?:number; oe_aco?:number;
   dp_total?:string; obs_lab?:string; obs_cliente?:string;
   tipo_lente?:string; forma_pagamento?:string;
 }
@@ -96,6 +97,7 @@ export default function OrdemServicoPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showVitrine, setShowVitrine] = useState(false);
+  const [showMedidasDigitais, setShowMedidasDigitais] = useState(false);
   const [viewing, setViewing]     = useState<OS|null>(null);
   const [editing, setEditing]     = useState<OS|null>(null);
   const [form, setForm]           = useState(emptyForm());
@@ -202,11 +204,13 @@ export default function OrdemServicoPage() {
       od_eixo: fmtRx(os.od_eixo, 'eixo'),
       od_adicao: fmtRx(os.od_adicao, 'adicao'),
       od_dnp: os.od_dnp != null ? String(os.od_dnp) : '',
+      od_aco: os.od_aco != null ? String(os.od_aco) : '',
       oe_esf: fmtRx(os.oe_esf, 'esf'),
       oe_cil: fmtRx(os.oe_cil, 'cil'),
       oe_eixo: fmtRx(os.oe_eixo, 'eixo'),
       oe_adicao: fmtRx(os.oe_adicao, 'adicao'),
       oe_dnp: os.oe_dnp != null ? String(os.oe_dnp) : '',
+      oe_aco: os.oe_aco != null ? String(os.oe_aco) : '',
       dp_total: os.dp_total || '',
       tipo_lente: os.tipo_lente || '',
       forma_pagamento: os.forma_pagamento || '',
@@ -285,11 +289,13 @@ export default function OrdemServicoPage() {
         od_eixo: parseRxNum(form.od_eixo),
         od_adicao: parseRxNum(form.od_adicao),
         od_dnp: parseRxNum(form.od_dnp),
+        od_aco: parseRxNum(form.od_aco),
         oe_esf: parseRxNum(form.oe_esf),
         oe_cil: parseRxNum(form.oe_cil),
         oe_eixo: parseRxNum(form.oe_eixo),
         oe_adicao: parseRxNum(form.oe_adicao),
         oe_dnp: parseRxNum(form.oe_dnp),
+        oe_aco: parseRxNum(form.oe_aco),
         dp_total: form.dp_total || null,
         tipo_lente: form.tipo_lente || null,
         forma_pagamento: form.forma_pagamento || null,
@@ -758,7 +764,7 @@ export default function OrdemServicoPage() {
                         <thead>
                           <tr>
                             <th style={{ width:40, padding:'6px 8px', color:'var(--text-muted)', textAlign:'left' }}></th>
-                            {['Esférico','Cilíndrico','Eixo','Adição','DNP'].map(h => (
+                            {['Esférico','Cilíndrico','Eixo','Adição','DNP','Altura (ACO)'].map(h => (
                               <th key={h} style={{ padding:'6px 8px', color:'var(--text-muted)', fontWeight:600, textAlign:'center' }}>{h}</th>
                             ))}
                           </tr>
@@ -771,6 +777,7 @@ export default function OrdemServicoPage() {
                             <td style={{ padding:'3px 4px' }}>{rxCell('od_eixo')}</td>
                             <td style={{ padding:'3px 4px' }}>{rxCell('od_adicao')}</td>
                             <td style={{ padding:'3px 4px' }}>{rxCell('od_dnp')}</td>
+                            <td style={{ padding:'3px 4px' }}>{rxCell('od_aco')}</td>
                           </tr>
                           <tr>
                             <td style={{ padding:'4px 8px', fontWeight:700, fontSize:12 }}>OE</td>
@@ -779,9 +786,15 @@ export default function OrdemServicoPage() {
                             <td style={{ padding:'3px 4px' }}>{rxCell('oe_eixo')}</td>
                             <td style={{ padding:'3px 4px' }}>{rxCell('oe_adicao')}</td>
                             <td style={{ padding:'3px 4px' }}>{rxCell('oe_dnp')}</td>
+                            <td style={{ padding:'3px 4px' }}>{rxCell('oe_aco')}</td>
                           </tr>
                         </tbody>
                       </table>
+                      <div style={{ marginTop:8 }}>
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowMedidasDigitais(true)} style={{ fontSize:12, display:'inline-flex', alignItems:'center', gap:6 }}>
+                          <Camera size={14}/> Medir DNP e ACO com foto
+                        </button>
+                      </div>
                       <div style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:12, marginTop:8 }}>
                         <div>
                           <label className="form-label">DP Total</label>
@@ -986,6 +999,17 @@ export default function OrdemServicoPage() {
             set('obs_cliente', (form.obs_cliente ? form.obs_cliente + ' | ' : '') + data.descricao);
             set('obs_lab', (form.obs_lab ? form.obs_lab + ' | ' : '') + data.obsLab);
             setShowVitrine(false);
+          }}
+        />
+      )}
+      {showMedidasDigitais && (
+        <MedidasDigitaisModal
+          onClose={() => setShowMedidasDigitais(false)}
+          onConfirm={(r) => {
+            set('od_dnp', String(r.odDnp));
+            set('oe_dnp', String(r.oeDnp));
+            set('od_aco', String(r.odAco));
+            set('oe_aco', String(r.oeAco));
           }}
         />
       )}
