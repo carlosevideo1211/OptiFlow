@@ -3,11 +3,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-// =====================================================================
-// CAMADA DE ABSTRAÇÃO DO PROVEDOR — mesma ideia da send-whatsapp-triggers:
-// único lugar que sabe que hoje é Evolution API. Trocar de provedor no
-// futuro significa mexer só aqui.
-// =====================================================================
 const EVOLUTION_BASE_URL = Deno.env.get("EVOLUTION_BASE_URL") || "https://evolution.visionproerp.com.br";
 const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
 
@@ -23,9 +18,6 @@ async function evolutionFetch(path: string, method: string, body?: unknown) {
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
 }
-// =====================================================================
-// Fim da camada de abstração
-// =====================================================================
 
 function decodeJwtPayload(token: string): any {
   const base64Url = token.split(".")[1];
@@ -47,9 +39,6 @@ async function supabaseFetch(path: string, init?: RequestInit) {
   return res.json();
 }
 
-// CORREÇÃO: faltavam x-client-info e apikey, que o cliente Supabase JS
-// envia automaticamente em toda requisição. Sem eles aqui, o preflight
-// (OPTIONS) rejeita a chamada antes mesmo dela chegar no código abaixo.
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type, x-client-info, apikey",
@@ -77,7 +66,7 @@ serve(async (req) => {
     const profile = Array.isArray(profiles) ? profiles[0] : null;
     if (!profile || !profile.tenant_id) return json({ error: "perfil não encontrado" }, 403);
 
-    const { action } = await req.json().catch(() => ({ action: "status" }));
+    const { action, phone: numeroParaChecar } = await req.json().catch(() => ({ action: "status" }));
 
     const tenants = await supabaseFetch(`tenants?id=eq.${profile.tenant_id}&select=id,company_name,whatsapp_instance_name`);
     const tenant = Array.isArray(tenants) ? tenants[0] : null;
@@ -91,6 +80,24 @@ serve(async (req) => {
       const r = await evolutionFetch(`/instance/connectionState/${tenant.whatsapp_instance_name}`, "GET");
       const state = r.data?.instance?.state || r.data?.state;
       return json({ connected: state === "open", instance: tenant.whatsapp_instance_name, state: state || "desconhecido" });
+    }
+
+    // ---------- CHECK_NUMBER (qualquer usuário logado — verifica se um
+    // número tem WhatsApp ativo, sem enviar nenhuma mensagem. Usado no
+    // cadastro de cliente para preencher o campo WhatsApp sozinho). ----------
+    if (action === "check_number") {
+      const numero = String(numeroParaChecar || "").replace(/\D/g, "");
+      if (!numero || numero.length < 10) {
+        return json({ checked: false, reason: "numero_invalido" });
+      }
+      if (!tenant.whatsapp_instance_name) {
+        return json({ checked: false, reason: "sem_instancia" });
+      }
+      const numeroCompleto = numero.startsWith("55") ? numero : `55${numero}`;
+      const r = await evolutionFetch(`/chat/whatsappNumbers/${tenant.whatsapp_instance_name}`, "POST", { numbers: [numeroCompleto] });
+      const item = Array.isArray(r.data) ? r.data[0] : (Array.isArray(r.data?.[0]) ? r.data[0][0] : r.data);
+      const exists = item?.exists === true;
+      return json({ checked: true, exists, jid: item?.jid || null });
     }
 
     // A partir daqui, só o Dono (master) pode alterar a conexão
@@ -121,7 +128,6 @@ serve(async (req) => {
         if (qrcode?.base64) {
           return json({ instance: instanceName, qrcode: qrcode.base64 });
         }
-        // Se não veio QR na criação (pode acontecer), busca via /connect logo abaixo
       }
 
       const r = await evolutionFetch(`/instance/connect/${instanceName}`, "GET");

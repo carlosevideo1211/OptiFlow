@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -312,6 +312,17 @@ export default function ClientesPage() {
   };
 
   const set = (k: string, v: any) => setForm(p => ({...p,[k]:v}));
+
+  const checkAndFillWhatsapp = async () => {
+    if (!form.phone || !isValidPhone(form.phone) || form.whatsapp) return;
+    try {
+      const { data } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'check_number', phone: form.phone } });
+      if (data?.checked && data?.exists) {
+        setForm(p => ({ ...p, whatsapp: p.phone }));
+        toast.success('Número identificado como WhatsApp — preenchido automaticamente!');
+      }
+    } catch {}
+  };
 
   const IconBtn = ({ onClick, title, color, children }: any) => (
     <button onClick={onClick} title={title}
@@ -750,7 +761,7 @@ export default function ClientesPage() {
                     </div>
                     <div><label className="form-label">CPF</label><input className="form-input" value={form.cpf} onChange={e=>set('cpf',maskCPF(e.target.value))} placeholder="000.000.000-00"/></div>
                     <div><label className="form-label">Data de nascimento</label><input className="form-input" type="date" value={form.birth_date} onChange={e=>set('birth_date',e.target.value)}/></div>
-                    <div><label className="form-label">Telefone</label><input className="form-input" value={form.phone} onChange={e=>set('phone',maskPhone(e.target.value))} placeholder="(92) 99999-0000"/></div>
+                    <div><label className="form-label">Telefone</label><input className="form-input" value={form.phone} onChange={e=>set('phone',maskPhone(e.target.value))} onBlur={checkAndFillWhatsapp} placeholder="(92) 99999-0000"/></div>
                     <div><label className="form-label">WhatsApp</label><input className="form-input" value={form.whatsapp} onChange={e=>set('whatsapp',maskPhone(e.target.value))} placeholder="(92) 99999-0000"/></div>
                     <div style={{ gridColumn:'1/-1' }}><label className="form-label">E-mail</label><input className="form-input" type="email" value={form.email} onChange={e=>set('email',e.target.value)}/></div>
                     <div style={{ gridColumn:'1/-1' }}><label className="form-label">Endereço</label><input className="form-input" value={form.address} onChange={e=>set('address',e.target.value)}/></div>
