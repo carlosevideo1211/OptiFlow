@@ -107,11 +107,10 @@ serve(async (req) => {
   const menos7dias = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
   const menos15dias = new Date(Date.now() - 15 * 86400000).toISOString().split("T")[0];
   const menos30dias = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
-  // Teto de seguranca: dividas com mais de 180 dias de atraso saem do
+  // Teto de seguranca: dividas com mais de 365 dias de atraso saem do
   // gatilho automatico. Ficam disponiveis so via cobranca manual (tela
-  // de Crediario), pra revisao caso a caso — evita cobrar automatico
-  // divida muito antiga (proxima da prescricao, relacao ja fria).
-  const menos180dias = new Date(Date.now() - 180 * 86400000).toISOString().split("T")[0];
+  // de Crediario), pra revisao caso a caso.
+  const menos365dias = new Date(Date.now() - 365 * 86400000).toISOString().split("T")[0];
   // Limite de mensagens de cobranca por execucao, por seguranca contra
   // bloqueio do numero de WhatsApp por volume suspeito de envio.
   const LIMITE_COBRANCA_POR_EXECUCAO = 50;
@@ -207,11 +206,11 @@ serve(async (req) => {
         if (r.ok) resultado.adaptacao++; else resultado.erros.push(`adaptacao ${os.id}: ${r.error}`);
       }
 
-      // ---------- 5) COBRANÇA DE ATRASO (entre 30 e 180 dias de atraso,
+      // ---------- 5) COBRANÇA DE ATRASO (entre 30 e 365 dias de atraso,
       // repete a cada 7 dias enquanto continuar em aberto — divida muito
       // antiga fica de fora do automatico, so via cobranca manual). ----------
       const atrasadas = await supabaseFetch(
-        `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=lt.${menos30dias}&due_date=gte.${menos180dias}&status=eq.pendente&select=id,crediario_id,due_date,amount&order=due_date.asc&limit=${LIMITE_COBRANCA_POR_EXECUCAO}`
+        `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=lt.${menos30dias}&due_date=gte.${menos365dias}&status=eq.pendente&select=id,crediario_id,due_date,amount&order=due_date.asc&limit=${LIMITE_COBRANCA_POR_EXECUCAO}`
       );
       if (Array.isArray(atrasadas) && atrasadas.length > 0) {
         const credIds2 = [...new Set(atrasadas.map((p: any) => p.crediario_id))].join(",");
@@ -236,7 +235,7 @@ serve(async (req) => {
           if (!(await podeReenviar(tenant.id, "cobranca_atraso", refId, 7))) continue;
 
           const valor = Number(p.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-          const texto = `Olá, ${cred.customer_name}. Este é um lembrete importante da ${loja}: identificamos uma parcela em atraso no valor de ${valor}, com vencimento em ${fmtData(p.due_date)}. Pedimos que regularize o quanto antes para evitar transtornos. Qualquer dúvida ou para negociar, estamos à disposição por aqui.`;
+          const texto = `Olá, ${cred.customer_name}. Este é um lembrete importante da ${loja}: identificamos uma parcela em atraso no valor de ${valor}, com vencimento em ${fmtData(p.due_date)}. Pedimos que regularize o quanto antes para evitar transtornos. Se você já efetuou o pagamento, por favor desconsidere esta mensagem ou nos avise por aqui para regularizarmos seu cadastro. Qualquer dúvida ou para negociar, estamos à disposição.`;
           const r = await sendWhatsAppMessage(instance, telefone, texto);
           await logTrigger(tenant.id, "cobranca_atraso", refId, cred.customer_id, telefone, r.ok, r.error);
           if (r.ok) resultado.cobranca_atraso++; else resultado.erros.push(`cobranca_atraso ${p.id}: ${r.error}`);
