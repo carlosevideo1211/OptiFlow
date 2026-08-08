@@ -4,12 +4,6 @@ const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const CRON_SECRET = Deno.env.get("CRON_SECRET") || "";
 
-// =====================================================================
-// CAMADA DE ABSTRAÇÃO DO PROVEDOR — único lugar que sabe que hoje usamos
-// o Evolution API. Se um dia trocar de provedor (Meta oficial, Twilio,
-// Z-API), só esta função muda — o resto do arquivo não sabe nem precisa
-// saber qual provedor está por trás.
-// =====================================================================
 const EVOLUTION_BASE_URL = Deno.env.get("EVOLUTION_BASE_URL") || "https://evolution.visionproerp.com.br";
 const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
 
@@ -36,9 +30,6 @@ async function sendWhatsAppMessage(instanceName: string, phone: string, text: st
     return { ok: false, error: String(err) };
   }
 }
-// =====================================================================
-// Fim da camada de abstração
-// =====================================================================
 
 async function supabaseFetch(path: string) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -91,29 +82,43 @@ async function jaEnviado(tenantId: string, triggerType: string, referenceId: str
   return Array.isArray(rows) && rows.length > 0;
 }
 
+async function podeReenviar(tenantId: string, triggerType: string, referenceId: string, intervaloDias: number): Promise<boolean> {
+  const rows = await supabaseFetch(
+    `whatsapp_triggers_log?tenant_id=eq.${tenantId}&trigger_type=eq.${triggerType}&reference_id=eq.${encodeURIComponent(referenceId)}&success=eq.true&select=sent_at&order=sent_at.desc&limit=1`
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return true;
+  const ultimoEnvio = new Date(rows[0].sent_at).getTime();
+  const diasPassados = (Date.now() - ultimoEnvio) / 86400000;
+  return diasPassados >= intervaloDias;
+}
+
 function fmtData(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString("pt-BR");
 }
 
 serve(async (req) => {
-  // Autenticação simples e isolada — não usa o service role key da
-  // Supabase, só um segredo próprio desta função (configurado como
-  // CRON_SECRET). Evita expor uma credencial poderosa no agendamento.
   const secret = req.headers.get("x-cron-secret");
   if (secret !== CRON_SECRET) {
     return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
   }
 
   const hoje = new Date();
-  const hojeStr = hoje.toISOString().split("T")[0];
   const em5dias = new Date(Date.now() + 5 * 86400000).toISOString().split("T")[0];
   const menos7dias = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
   const menos15dias = new Date(Date.now() - 15 * 86400000).toISOString().split("T")[0];
+  const menos30dias = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+  // Teto de seguranca: dividas com mais de 180 dias de atraso saem do
+  // gatilho automatico. Ficam disponiveis so via cobranca manual (tela
+  // de Crediario), pra revisao caso a caso — evita cobrar automatico
+  // divida muito antiga (proxima da prescricao, relacao ja fria).
+  const menos180dias = new Date(Date.now() - 180 * 86400000).toISOString().split("T")[0];
+  // Limite de mensagens de cobranca por execucao, por seguranca contra
+  // bloqueio do numero de WhatsApp por volume suspeito de envio.
+  const LIMITE_COBRANCA_POR_EXECUCAO = 50;
 
-  const resultado = { aniversario: 0, vencimento: 0, pos_venda: 0, adaptacao: 0, erros: [] as string[] };
+  const resultado = { aniversario: 0, vencimento: 0, pos_venda: 0, adaptacao: 0, cobranca_atraso: 0, erros: [] as string[] };
 
   try {
-    // Só processa tenants que já configuraram uma instância de WhatsApp
     const tenants = await supabaseFetch(`tenants?whatsapp_instance_name=not.is.null&select=id,company_name,whatsapp_instance_name`);
 
     for (const tenant of tenants) {
@@ -121,9 +126,6 @@ serve(async (req) => {
       const loja = tenant.company_name || "sua ótica";
 
       // ---------- 1) ANIVERSÁRIO ----------
-      // Filtra a data direto no banco (função customers_aniversariantes_hoje),
-      // em vez de buscar todos os clientes ativos — evita o limite padrão
-      // de 1000 linhas por consulta em óticas com muitos cadastros.
       const aniversariantes = await supabaseRpc("customers_aniversariantes_hoje", { p_tenant_id: tenant.id });
       for (const c of aniversariantes) {
         const telefone = c.whatsapp || c.phone;
@@ -139,7 +141,7 @@ serve(async (req) => {
 
       // ---------- 2) VENCIMENTO DE PARCELA (5 dias antes) ----------
       const parcelas = await supabaseFetch(
-        `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=eq.${em5dias}&status=eq.aberta&select=id,crediario_id,due_date,amount`
+        `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=eq.${em5dias}&status=eq.pendente&select=id,crediario_id,due_date,amount`
       );
       if (Array.isArray(parcelas) && parcelas.length > 0) {
         const credIds = [...new Set(parcelas.map((p: any) => p.crediario_id))].join(",");
@@ -147,7 +149,6 @@ serve(async (req) => {
         const credMap: Record<string, any> = {};
         for (const c of creditos) credMap[c.id] = c;
 
-        // crediario não guarda whatsapp/phone próprio — busca do cadastro do cliente
         const custIds = [...new Set(creditos.map((c: any) => c.customer_id).filter(Boolean))].join(",");
         const clientesMap: Record<string, any> = {};
         if (custIds) {
@@ -204,6 +205,42 @@ serve(async (req) => {
         const r = await sendWhatsAppMessage(instance, telefone, texto);
         await logTrigger(tenant.id, "adaptacao", refId, os.customer_id, telefone, r.ok, r.error);
         if (r.ok) resultado.adaptacao++; else resultado.erros.push(`adaptacao ${os.id}: ${r.error}`);
+      }
+
+      // ---------- 5) COBRANÇA DE ATRASO (entre 30 e 180 dias de atraso,
+      // repete a cada 7 dias enquanto continuar em aberto — divida muito
+      // antiga fica de fora do automatico, so via cobranca manual). ----------
+      const atrasadas = await supabaseFetch(
+        `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=lt.${menos30dias}&due_date=gte.${menos180dias}&status=eq.pendente&select=id,crediario_id,due_date,amount&order=due_date.asc&limit=${LIMITE_COBRANCA_POR_EXECUCAO}`
+      );
+      if (Array.isArray(atrasadas) && atrasadas.length > 0) {
+        const credIds2 = [...new Set(atrasadas.map((p: any) => p.crediario_id))].join(",");
+        const creditos2 = await supabaseFetch(`crediario?id=in.(${credIds2})&select=id,customer_id,customer_name`);
+        const credMap2: Record<string, any> = {};
+        for (const c of creditos2) credMap2[c.id] = c;
+
+        const custIds2 = [...new Set(creditos2.map((c: any) => c.customer_id).filter(Boolean))].join(",");
+        const clientesMap2: Record<string, any> = {};
+        if (custIds2) {
+          const clientesCred2 = await supabaseFetch(`customers?id=in.(${custIds2})&select=id,whatsapp,phone`);
+          for (const c of clientesCred2) clientesMap2[c.id] = c;
+        }
+
+        for (const p of atrasadas) {
+          const cred = credMap2[p.crediario_id];
+          if (!cred) continue;
+          const clienteInfo = clientesMap2[cred.customer_id];
+          const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
+          if (!telefone) continue;
+          const refId = String(p.id);
+          if (!(await podeReenviar(tenant.id, "cobranca_atraso", refId, 7))) continue;
+
+          const valor = Number(p.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+          const texto = `Olá, ${cred.customer_name}. Este é um lembrete importante da ${loja}: identificamos uma parcela em atraso no valor de ${valor}, com vencimento em ${fmtData(p.due_date)}. Pedimos que regularize o quanto antes para evitar transtornos. Qualquer dúvida ou para negociar, estamos à disposição por aqui.`;
+          const r = await sendWhatsAppMessage(instance, telefone, texto);
+          await logTrigger(tenant.id, "cobranca_atraso", refId, cred.customer_id, telefone, r.ok, r.error);
+          if (r.ok) resultado.cobranca_atraso++; else resultado.erros.push(`cobranca_atraso ${p.id}: ${r.error}`);
+        }
       }
     }
 
