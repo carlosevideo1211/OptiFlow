@@ -1,10 +1,10 @@
-﻿﻿﻿﻿﻿﻿import { useState, useEffect, useMemo, useRef } from 'react';
+﻿﻿﻿﻿import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import {
   CreditCard, Search, CheckCircle, Trash2,
-  AlertTriangle, Download, MessageCircle, Calendar, Printer, Lock, User, X, Pencil
+  AlertTriangle, Download, MessageCircle, Calendar, Printer, Lock, User, X, Pencil, Send
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
@@ -63,6 +63,8 @@ export default function CrediarioPage() {
   const [payForm, setPayForm] = useState({ operator_name: '', operator_pass: '', is_partial: false, paid_amount: '', partial_due_date: '', desconto: '0', payment_method: '' });
   const [payingSaving, setPayingSaving] = useState(false);
   const [renegoSaving, setRenegoSaving] = useState(false);
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [enviandoCobranca, setEnviandoCobranca] = useState<Set<string>>(new Set());
   const parcelaActionRef = useRef(false);
 
   const load = async () => {
@@ -242,6 +244,37 @@ export default function CrediarioPage() {
       ' com vencimento em ' + venc + '. Qualquer duvida estamos a disposicao!'
     );
     window.open('https://wa.me/55' + num + '?text=' + msg, '_blank');
+  };
+
+  const toggleSelecionada = (id: string) => {
+    setSelecionadas(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  };
+
+  const handleCobrarAuto = async (p: Parcela) => {
+    if (!p.whatsapp) { toast.error('Cliente sem WhatsApp cadastrado'); return; }
+    setEnviandoCobranca(s => new Set(s).add(p.id));
+    try {
+      const juros = calcJuros(p);
+      const total = p.amount + juros;
+      const { data, error } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'send_collection', phone: p.whatsapp, customer_name: p.customer_name, amount: total, due_date: p.due_date } });
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Falha ao enviar cobranca');
+      toast.success('Cobranca enviada para ' + p.customer_name);
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao enviar cobranca');
+    } finally {
+      setEnviandoCobranca(s => { const n = new Set(s); n.delete(p.id); return n; });
+    }
+  };
+
+  const handleCobrarLote = async () => {
+    const alvo = filtered.filter(p => selecionadas.has(p.id));
+    if (alvo.length === 0) return;
+    if (!confirm('Enviar cobranca automatica via WhatsApp para ' + alvo.length + ' cliente(s)?')) return;
+    for (const p of alvo) {
+      await handleCobrarAuto(p);
+      await new Promise(r => setTimeout(r, 800));
+    }
+    setSelecionadas(new Set());
   };
 
   const exportCSV = () => {
@@ -623,6 +656,11 @@ export default function CrediarioPage() {
       </div>
 
       <div style={{ display:'flex', gap:10, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>
+        {selecionadas.size > 0 && (
+          <button onClick={handleCobrarLote} className="btn" style={{ background:'#ef4444', color:'#fff', display:'flex', alignItems:'center', gap:6 }}>
+            <Send size={14}/> Cobrar Selecionados ({selecionadas.size})
+          </button>
+        )}
         <div className="search-bar" style={{ flex:1, minWidth:220 }}>
           <Search size={15}/>
           <input className="form-input" placeholder="Buscar cliente..." value={search} onChange={e=>setSearch(e.target.value)}/>
@@ -650,7 +688,8 @@ export default function CrediarioPage() {
               <table>
                 <thead>
                   <tr>
-                    <th style={{ textAlign:'left' }}>Cliente</th>
+                    <th style={{ textAlign:'center', width:30 }}></th>
+              <th style={{ textAlign:'left' }}>Cliente</th>
                     <th style={{ textAlign:'center' }}>Parcela</th>
                     <th style={{ textAlign:'right' }}>Valor</th>
                     <th style={{ textAlign:'center' }}>Vencimento</th>
@@ -663,9 +702,12 @@ export default function CrediarioPage() {
                   {filtered.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA).map(p => {
                     const juros = calcJuros(p);
                     const vencida = p.status !== 'pago' && p.due_date && p.due_date < hoje;
+            const diasAtraso = p.due_date ? Math.floor((new Date(hoje+'T00:00:00').getTime() - new Date(p.due_date+'T00:00:00').getTime())/86400000) : 0;
+            const podeCobrarAuto = vencida && diasAtraso >= 30;
                     const pago = p.status === 'pago';
                     return (
                       <tr key={p.id}>
+                <td style={{ textAlign:'center' }}>{podeCobrarAuto && (<input type="checkbox" checked={selecionadas.has(p.id)} onChange={()=>toggleSelecionada(p.id)} />)}</td>
                         <td>
                           <div style={{ fontWeight:600 }}>{p.customer_name}</div>
                         </td>
@@ -720,7 +762,11 @@ export default function CrediarioPage() {
                               style={{ background:'rgba(34,197,94,.1)', border:'1px solid rgba(34,197,94,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#25D366', display:'flex', alignItems:'center' }}>
                               <MessageCircle size={14}/>
                             </button>
-                            <button onClick={() => imprimirCarneIndividual(p)} title="Imprimir recibo desta parcela"
+                            <button onClick={() => handleCobrarAuto(p)} disabled={!podeCobrarAuto || enviandoCobranca.has(p.id)} title={podeCobrarAuto ? 'Enviar cobranca automatica via WhatsApp (atraso 30+ dias)' : 'Disponivel apenas para parcelas vencidas ha 30 dias ou mais'}
+                        style={{ background: podeCobrarAuto?'rgba(239,68,68,.1)':'rgba(148,163,184,.06)', border:'1px solid ' + (podeCobrarAuto?'rgba(239,68,68,.2)':'rgba(148,163,184,.12)'), borderRadius:7, padding:'5px 8px', cursor: podeCobrarAuto?'pointer':'not-allowed', color: podeCobrarAuto?'#ef4444':'var(--text-muted)', display:'flex', alignItems:'center', opacity: podeCobrarAuto?0.9:0.4 }}>
+                      <Send size={14}/>
+                    </button>
+                    <button onClick={() => imprimirCarneIndividual(p)} title="Imprimir recibo desta parcela"
                               style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#f59e0b', display:'flex', alignItems:'center' }}>
                               <Printer size={14}/>
                             </button>

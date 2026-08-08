@@ -66,13 +66,14 @@ serve(async (req) => {
     const profile = Array.isArray(profiles) ? profiles[0] : null;
     if (!profile || !profile.tenant_id) return json({ error: "perfil não encontrado" }, 403);
 
-    const { action, phone: numeroParaChecar } = await req.json().catch(() => ({ action: "status" }));
+    const body = await req.json().catch(() => ({ action: "status" }));
+    const { action } = body;
 
     const tenants = await supabaseFetch(`tenants?id=eq.${profile.tenant_id}&select=id,company_name,whatsapp_instance_name`);
     const tenant = Array.isArray(tenants) ? tenants[0] : null;
     if (!tenant) return json({ error: "ótica não encontrada" }, 404);
 
-    // ---------- STATUS (qualquer usuário logado pode consultar) ----------
+    // ---------- STATUS ----------
     if (action === "status") {
       if (!tenant.whatsapp_instance_name) {
         return json({ connected: false, instance: null });
@@ -82,11 +83,9 @@ serve(async (req) => {
       return json({ connected: state === "open", instance: tenant.whatsapp_instance_name, state: state || "desconhecido" });
     }
 
-    // ---------- CHECK_NUMBER (qualquer usuário logado — verifica se um
-    // número tem WhatsApp ativo, sem enviar nenhuma mensagem. Usado no
-    // cadastro de cliente para preencher o campo WhatsApp sozinho). ----------
+    // ---------- CHECK_NUMBER ----------
     if (action === "check_number") {
-      const numero = String(numeroParaChecar || "").replace(/\D/g, "");
+      const numero = String(body.phone || "").replace(/\D/g, "");
       if (!numero || numero.length < 10) {
         return json({ checked: false, reason: "numero_invalido" });
       }
@@ -100,12 +99,34 @@ serve(async (req) => {
       return json({ checked: true, exists, jid: item?.jid || null });
     }
 
+    // ---------- SEND_COLLECTION (cobranca manual — parcela vencida ha 30+
+    // dias. Qualquer usuario logado do tenant pode disparar; nao exige
+    // ser master, pois e uma acao operacional do dia a dia). ----------
+    if (action === "send_collection") {
+      const numero = String(body.phone || "").replace(/\D/g, "");
+      if (!numero) return json({ ok: false, error: "cliente sem WhatsApp cadastrado" }, 400);
+      if (!tenant.whatsapp_instance_name) return json({ ok: false, error: "WhatsApp nao conectado nesta ótica" }, 400);
+
+      const nome = String(body.customer_name || "cliente");
+      const valor = Number(body.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      const venc = body.due_date ? new Date(body.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "";
+      const loja = tenant.company_name || "nossa loja";
+
+      const texto = `Olá, ${nome}. Este é um lembrete importante da ${loja}: identificamos uma parcela em atraso no valor de ${valor}, com vencimento em ${venc}. Pedimos que regularize o quanto antes para evitar transtornos. Qualquer dúvida ou para negociar, estamos à disposição por aqui.`;
+
+      const numeroCompleto = numero.startsWith("55") ? numero : `55${numero}`;
+      const r = await evolutionFetch(`/message/sendText/${tenant.whatsapp_instance_name}`, "POST", { number: numeroCompleto, text: texto });
+
+      if (!r.ok) return json({ ok: false, error: `Falha ao enviar: HTTP ${r.status}`, detalhe: r.data }, 500);
+      return json({ ok: true });
+    }
+
     // A partir daqui, só o Dono (master) pode alterar a conexão
     if (profile.role !== "master") {
       return json({ error: "apenas o dono da ótica pode gerenciar o WhatsApp" }, 403);
     }
 
-    // ---------- CONNECT (cria a instância se não existir, devolve QR Code) ----------
+    // ---------- CONNECT ----------
     if (action === "connect") {
       let instanceName = tenant.whatsapp_instance_name;
 
