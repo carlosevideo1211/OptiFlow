@@ -389,3 +389,6 @@ tbody tr:last-child { border-bottom: none; }
   --primary:#FB923C;--primary2:#EA580C;--accent:#FBBF24;--accent2:#D97706;
   --card-bg:#2D1010;--input-bg:#3D1818;
 }
+
+.spin { animation: spin-rotate 1s linear infinite; }
+@keyframes spin-rotate { to { transform: rotate(360deg); } }
