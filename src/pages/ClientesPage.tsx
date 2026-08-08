@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿import { useState, useEffect, useMemo } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
-import { formatCPF, maskCPF } from '../utils/format';
+import { formatCPF, maskCPF, maskPhone, isValidPhone } from '../utils/format';
 import type { Customer } from '../types/index';
 import { norm } from '../utils/normalize';
 
@@ -216,6 +216,8 @@ export default function ClientesPage() {
     e.preventDefault();
     if (saving) return;
     if (!form.name.trim()) { toast.error('Nome obrigatório'); return; }
+    if (!isValidPhone(form.phone)) { toast.error('Telefone incompleto — inclua o DDD (ex: (92) 99999-0000)'); return; }
+    if (!isValidPhone(form.whatsapp)) { toast.error('WhatsApp incompleto — inclua o DDD (ex: (92) 99999-0000)'); return; }
     setSaving(true);
     try {
       const payload = { ...form, birth_date: form.birth_date || null, tenant_id: tenantId };
@@ -748,8 +750,8 @@ export default function ClientesPage() {
                     </div>
                     <div><label className="form-label">CPF</label><input className="form-input" value={form.cpf} onChange={e=>set('cpf',maskCPF(e.target.value))} placeholder="000.000.000-00"/></div>
                     <div><label className="form-label">Data de nascimento</label><input className="form-input" type="date" value={form.birth_date} onChange={e=>set('birth_date',e.target.value)}/></div>
-                    <div><label className="form-label">Telefone</label><input className="form-input" value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="(92) 99999-0000"/></div>
-                    <div><label className="form-label">WhatsApp</label><input className="form-input" value={form.whatsapp} onChange={e=>set('whatsapp',e.target.value)} placeholder="(92) 99999-0000"/></div>
+                    <div><label className="form-label">Telefone</label><input className="form-input" value={form.phone} onChange={e=>set('phone',maskPhone(e.target.value))} placeholder="(92) 99999-0000"/></div>
+                    <div><label className="form-label">WhatsApp</label><input className="form-input" value={form.whatsapp} onChange={e=>set('whatsapp',maskPhone(e.target.value))} placeholder="(92) 99999-0000"/></div>
                     <div style={{ gridColumn:'1/-1' }}><label className="form-label">E-mail</label><input className="form-input" type="email" value={form.email} onChange={e=>set('email',e.target.value)}/></div>
                     <div style={{ gridColumn:'1/-1' }}><label className="form-label">Endereço</label><input className="form-input" value={form.address} onChange={e=>set('address',e.target.value)}/></div>
                     <div><label className="form-label">Cidade</label><input className="form-input" value={form.city} onChange={e=>set('city',e.target.value)}/></div>

@@ -7,6 +7,7 @@ import {
   MessageCircle, Camera, Upload, X, Eye, EyeOff, Building2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import WhatsAppAutomatico from '../components/WhatsAppAutomatico';
 
 interface StoreSettings {
   id?: string; tenant_id: string; name: string; cnpj: string;
@@ -331,6 +332,9 @@ export default function ConfiguracaoPage() {
               💡 Acesse <strong>developers.facebook.com</strong> e crie um app com o produto WhatsApp para obter as credenciais.
             </div>
           </div>
+
+          {/* WhatsApp Automático (Evolution API) */}
+          <WhatsAppAutomatico />
 
           {/* Asaas */}
           <div className="card" style={{ padding:24, gridColumn:'1/-1' }}>

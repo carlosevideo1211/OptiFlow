@@ -1,5 +1,4 @@
 // Utilitarios de formatacao para o OptiFlow
-
 /**
  * Formata CPF para o padrao brasileiro: 000.000.000-00
  * Aceita qualquer formato de entrada (com ou sem pontuacao, numeros puros)
@@ -10,7 +9,6 @@ export function formatCPF(cpf: string | number | null | undefined): string {
   if (n.replace(/0/g, '').length === 0) return '';
   return n.slice(0,3)+'.'+n.slice(3,6)+'.'+n.slice(6,9)+'-'+n.slice(9,11);
 }
-
 /**
  * Mascara progressiva de CPF para uso em campos de digitacao (sem padding de zeros)
  */
@@ -21,14 +19,12 @@ export function maskCPF(value: string): string {
   if (n.length <= 9) return n.slice(0,3) + '.' + n.slice(3,6) + '.' + n.slice(6);
   return n.slice(0,3) + '.' + n.slice(3,6) + '.' + n.slice(6,9) + '-' + n.slice(9);
 }
-
 /**
  * Remove formatacao do CPF, retorna apenas numeros
  */
 export function cleanCPF(cpf: string): string {
   return String(cpf || '').replace(/[^0-9]/g, '');
 }
-
 /**
  * Valida se CPF tem 11 digitos
  */
@@ -36,7 +32,6 @@ export function isValidCPF(cpf: string): boolean {
   const n = cleanCPF(cpf);
   return n.length === 11 && n.replace(/0/g,'').length > 0;
 }
-
 /**
  * Formata telefone para (00) 00000-0000
  */
@@ -46,4 +41,26 @@ export function formatPhone(phone: string): string {
   if (n.length === 11) return '('+n.slice(0,2)+') '+n.slice(2,7)+'-'+n.slice(7);
   if (n.length === 10) return '('+n.slice(0,2)+') '+n.slice(2,6)+'-'+n.slice(6);
   return phone;
+}
+/**
+ * Mascara progressiva de telefone para uso em campos de digitacao.
+ * Formato: (DD) 90000-0000 (celular) ou (DD) 0000-0000 (fixo).
+ * Exige DDD desde o primeiro digito - nao aceita numero sem area.
+ */
+export function maskPhone(value: string): string {
+  const n = String(value || '').replace(/[^0-9]/g, '').slice(0, 11);
+  if (n.length <= 2) return n.length ? '(' + n : '';
+  if (n.length <= 6) return '(' + n.slice(0,2) + ') ' + n.slice(2);
+  if (n.length <= 10) return '(' + n.slice(0,2) + ') ' + n.slice(2,6) + '-' + n.slice(6);
+  return '(' + n.slice(0,2) + ') ' + n.slice(2,7) + '-' + n.slice(7);
+}
+/**
+ * Valida se o telefone tem DDD + numero completo (10 ou 11 digitos).
+ * Retorna true tambem para campo vazio (o campo nao e obrigatorio,
+ * mas se preenchido tem que estar completo).
+ */
+export function isValidPhone(phone: string): boolean {
+  const n = String(phone || '').replace(/[^0-9]/g, '');
+  if (n.length === 0) return true;
+  return n.length === 10 || n.length === 11;
 }
