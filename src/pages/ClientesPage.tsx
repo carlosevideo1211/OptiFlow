@@ -324,6 +324,16 @@ export default function ClientesPage() {
     } catch {}
   };
 
+  const checkAndFillPhone = async () => {
+    if (!form.whatsapp || !isValidPhone(form.whatsapp) || form.phone) return;
+    try {
+      const { data } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'check_number', phone: form.whatsapp } });
+      if (data?.checked && data?.exists) {
+        setForm(p => ({ ...p, phone: p.whatsapp }));
+      }
+    } catch {}
+  };
+
   const IconBtn = ({ onClick, title, color, children }: any) => (
     <button onClick={onClick} title={title}
       style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)',
@@ -762,7 +772,7 @@ export default function ClientesPage() {
                     <div><label className="form-label">CPF</label><input className="form-input" value={form.cpf} onChange={e=>set('cpf',maskCPF(e.target.value))} placeholder="000.000.000-00"/></div>
                     <div><label className="form-label">Data de nascimento</label><input className="form-input" type="date" value={form.birth_date} onChange={e=>set('birth_date',e.target.value)}/></div>
                     <div><label className="form-label">Telefone</label><input className="form-input" value={form.phone} onChange={e=>set('phone',maskPhone(e.target.value))} onBlur={checkAndFillWhatsapp} placeholder="(92) 99999-0000"/></div>
-                    <div><label className="form-label">WhatsApp</label><input className="form-input" value={form.whatsapp} onChange={e=>set('whatsapp',maskPhone(e.target.value))} placeholder="(92) 99999-0000"/></div>
+                    <div><label className="form-label">WhatsApp</label><input className="form-input" value={form.whatsapp} onChange={e=>set('whatsapp',maskPhone(e.target.value))} onBlur={checkAndFillPhone} placeholder="(92) 99999-0000"/></div>
                     <div style={{ gridColumn:'1/-1' }}><label className="form-label">E-mail</label><input className="form-input" type="email" value={form.email} onChange={e=>set('email',e.target.value)}/></div>
                     <div style={{ gridColumn:'1/-1' }}><label className="form-label">Endereço</label><input className="form-input" value={form.address} onChange={e=>set('address',e.target.value)}/></div>
                     <div><label className="form-label">Cidade</label><input className="form-input" value={form.city} onChange={e=>set('city',e.target.value)}/></div>
