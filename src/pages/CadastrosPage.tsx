@@ -250,7 +250,7 @@ export default function CadastrosPage() {
   const openNewFunc = () => { setEditingFunc(null); setFuncForm(emptyFuncForm()); setShowFuncModal(true); };
   const openEditFunc = (f: Funcionario) => {
     setEditingFunc(f);
-    setFuncForm({ name:f.name, cargo:f.cargo||'Vendedor(a)', cpf:f.cpf||'', phone:f.phone||'', email:f.email||'', access_password:f.access_password||'', comissao:f.comissao||0, perfil_id:f.perfil_id||'' });
+    setFuncForm({ name:f.name, cargo:f.cargo||'Vendedor(a)', cpf:f.cpf||'', phone:f.phone||'', email:f.email||'', access_password:'', comissao:f.comissao||0, perfil_id:f.perfil_id||'' });
     setShowFuncModal(true);
   };
   const handleSaveFunc = async (e: React.FormEvent) => {
@@ -259,7 +259,12 @@ export default function CadastrosPage() {
       if (!funcForm.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSavingFunc(true);
     try {
-      const payload = { name: funcForm.name, cargo: funcForm.cargo, cpf: funcForm.cpf, phone: funcForm.phone, email: funcForm.email, access_password: funcForm.access_password, perfil_id: funcForm.perfil_id || null, tenant_id: tenantId, active: true };
+      const payload = { name: funcForm.name, cargo: funcForm.cargo, cpf: funcForm.cpf, phone: funcForm.phone, email: funcForm.email, perfil_id: funcForm.perfil_id || null, tenant_id: tenantId, active: true } as any;
+      if (funcForm.access_password && funcForm.access_password.trim()) {
+        payload.access_password = await hashPassword(funcForm.access_password.trim());
+      } else if (!editingFunc) {
+        payload.access_password = '';
+      }
       if (editingFunc) {
         const { error } = await supabase.from('funcionarios').update(payload).eq('id', editingFunc.id);
         if (error) throw error; toast.success('Funcionário atualizado!');
@@ -711,7 +716,7 @@ export default function CadastrosPage() {
                 </div>
                 <div>
                   <label className="form-label">Senha de acesso</label>
-                  <input className="form-input" type="password" value={funcForm.access_password||''} onChange={e=>setF('access_password',e.target.value)} placeholder="Senha para login"/>
+                  <input className="form-input" type="password" value={funcForm.access_password||''} onChange={e=>setF('access_password',e.target.value)} placeholder={editingFunc ? "Deixe em branco para manter a senha atual" : "Senha para login"}/>
                 </div>
                 <div>
                   <label className="form-label">Perfil de permissões (Consulta/Rx)</label>
