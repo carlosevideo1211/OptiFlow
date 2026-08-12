@@ -1,11 +1,40 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
+const SUPABASE_URL = 'https://fkwamdnstrbvgheosalz.supabase.co';
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
+
+// Confere se quem esta chamando e um usuario realmente autenticado no Supabase.
+// Isso impede que qualquer pessoa sem login use esta funcao (que gera boletos
+// de verdade usando a chave do Asaas do tenant).
+async function usuarioAutenticado(req: Request): Promise<boolean> {
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.replace('Bearer ', '').trim();
+  if (!token) return false;
+
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return res.ok;
+}
+
 serve(async (req) => {
   const cors = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   };
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+
+  const autenticado = await usuarioAutenticado(req);
+  if (!autenticado) {
+    return new Response(JSON.stringify({ error: 'Nao autenticado' }), {
+      status: 401,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const body = await req.json();
     const ASAAS_KEY = body.asaas_key || Deno.env.get('ASAAS_API_KEY') || '';
@@ -17,7 +46,6 @@ serve(async (req) => {
 
     const { customer_name, customer_cpf, customer_email, amount, due_date, description } = body;
 
-    // 1. Criar ou buscar cliente no Asaas
     const searchRes = await fetch(BASE + '/customers?cpfCnpj=' + customer_cpf, {
       headers: { 'access_token': ASAAS_KEY }
     });
@@ -35,7 +63,6 @@ serve(async (req) => {
       if (!asaasCustomerId) throw new Error('Erro ao criar cliente: ' + JSON.stringify(createData));
     }
 
-    // 2. Criar boleto
     const boletoRes = await fetch(BASE + '/payments', {
       method: 'POST',
       headers: { 'access_token': ASAAS_KEY, 'Content-Type': 'application/json' },

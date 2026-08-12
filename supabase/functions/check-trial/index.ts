@@ -1,15 +1,33 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const RESEND_API_KEY = "re_HY17oTgE_6dvnjjnfGqDwCLGwPQ2kLZhW";
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
 const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const CRON_SECRET = Deno.env.get("CRON_SECRET") || "";
 
-serve(async () => {
+serve(async (req) => {
+  // Esta funcao so pode ser chamada pelo nosso proprio agendamento (cron),
+  // nunca pelo navegador de um usuario. Por isso a checagem e por um
+  // segredo compartilhado (x-cron-secret), nao por login de usuario.
+  const secret = req.headers.get("x-cron-secret") || "";
+  if (!CRON_SECRET || secret !== CRON_SECRET) {
+    return new Response(JSON.stringify({ error: "Nao autorizado" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (!RESEND_API_KEY) {
+    return new Response(JSON.stringify({ error: "RESEND_API_KEY nao configurada" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const hoje = new Date().toISOString().split("T")[0];
     const em3dias = new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0];
 
-    // Buscar tenants com trial_end_date nos proximos 3 dias (qualquer status)
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/tenants?trial_end_date=gte.${hoje}&trial_end_date=lte.${em3dias}&select=id,company_name,email,trial_end_date,status`,
       {

@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
+
 const PRICE_MAP: Record<string, number> = {
   price_basico: 9700,
   price_pro: 14700,
@@ -13,12 +16,36 @@ const PLAN_NAMES: Record<string, string> = {
   price_lancamento: "OptiFlow Lancamento",
 };
 
+// Confere se quem esta chamando e um usuario realmente autenticado no Supabase.
+async function usuarioAutenticado(req: Request): Promise<boolean> {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace("Bearer ", "").trim();
+  if (!token) return false;
+
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return res.ok;
+}
+
 serve(async (req) => {
   const cors = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   };
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+  const autenticado = await usuarioAutenticado(req);
+  if (!autenticado) {
+    return new Response(JSON.stringify({ error: "Nao autenticado" }), {
+      status: 401,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const STRIPE_SK = Deno.env.get("STRIPE_SECRET_KEY") || "";
     if (!STRIPE_SK) throw new Error("STRIPE_SECRET_KEY nao configurada");

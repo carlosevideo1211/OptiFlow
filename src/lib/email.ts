@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 // Servico de email via Resend
 
 interface SendEmailParams {
@@ -10,12 +12,17 @@ export async function sendEmail({ to, subject, html }: SendEmailParams) {
   try {
     // Usar Edge Function do Supabase para evitar CORS
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userToken = sessionData?.session?.access_token;
+    if (!userToken) {
+      console.error('Erro ao enviar email: usuario nao autenticado');
+      return { ok: false, data: null };
+    }
     const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseKey}`,
+        'Authorization': `Bearer ${userToken}`,
       },
       body: JSON.stringify({ to, subject, html }),
     });
