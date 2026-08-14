@@ -340,6 +340,8 @@ export default function AtendimentoPage() {
   const [docProfissional, setDocProfissional] = useState('');
   const [partnerships, setPartnerships] = useState<any[]>([]);
   const [partnershipId, setPartnershipId] = useState('');
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState('');
   const [anexos, setAnexos] = useState<any[]>([]);
   const [uploadingAnexo, setUploadingAnexo] = useState(false);
 
@@ -367,6 +369,12 @@ export default function AtendimentoPage() {
     if (!tenantId) return;
     supabase.from('partnerships').select('id,name,commission_percent').eq('tenant_id', tenantId).eq('active', true).order('name')
       .then(({ data }) => setPartnerships(data || []));
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase.from('clinic_payment_methods').select('id,nome').eq('tenant_id', tenantId).eq('ativo', true).order('nome')
+      .then(({ data }) => setPaymentMethods(data || []));
   }, [tenantId]);
 
   useEffect(() => {
@@ -407,6 +415,7 @@ export default function AtendimentoPage() {
       setConsultation(data);
       populate(data);
       if (data.partnership_id) setPartnershipId(data.partnership_id);
+      if (data.payment_method) setPaymentMethod(data.payment_method);
       if (data.valor_cobrado != null) {
         setDocValorExame(String(Number(data.valor_cobrado).toFixed(2)).replace('.', ','));
       } else if (data.procedure_id) {
@@ -803,6 +812,7 @@ export default function AtendimentoPage() {
       description: 'Receita de atendimento', amount: valor,
       due_date: date || null, status: 'pendente',
       consultation_id: consultationId, partnership_id: partnershipId || null,
+      payment_method: paymentMethod || null,
       procedure_id: consultation?.procedure_id || null,
       professional_id: consultation?.professional_id || null,
     }];
@@ -934,6 +944,7 @@ export default function AtendimentoPage() {
     lc_le_esf: num(lcOe.ESF), lc_le_cil: num(lcOe.CIL), lc_le_eixo: num(lcOe.EIXO), lc_le_av: lcOe.AV||null,
     lc_lente: lcLente||null, lc_obs: lcObs||null, status: statusFinal, date: date||null,
     partnership_id: partnershipId || null,
+    payment_method: paymentMethod || null,
     valor_cobrado: num(docValorExame),
   });
 
@@ -1217,7 +1228,7 @@ export default function AtendimentoPage() {
                   <Field label="Motivo principal da consulta"><FTextarea value={queixa} onChange={setQueixa} rows={2} /></Field>
                   <Field label="Data do último exame"><FInput type="date" value={ultExameData} onChange={setUltExameData} /></Field>
                 </div>
-                <Field label="Observações Gerais"><FTextarea value={anamneseObs} onChange={setAnamneseObs} rows={3} /></Field>
+                <Field label="Observações Gerais"><FTextarea value={anamneseObs} onChange={setAnamneseObs} rows={6} /></Field>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16, marginTop: 12 }}>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>Sintomas</div>
@@ -1657,6 +1668,12 @@ export default function AtendimentoPage() {
                     <select className="form-input" value={partnershipId} onChange={e => setPartnershipId(e.target.value)}>
                       <option value="">Particular</option>
                       {partnerships.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Forma de pagamento">
+                    <select className="form-input" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+                      <option value="">Selecione...</option>
+                      {paymentMethods.map(p => <option key={p.id} value={p.nome}>{p.nome}</option>)}
                     </select>
                   </Field>
                   <Field label="Cidade">

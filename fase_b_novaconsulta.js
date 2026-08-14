@@ -1,4 +1,11 @@
-import { useState, useEffect } from 'react';
+const fs = require('fs');
+const path = 'src/pages/consulta/NovaConsultaModal.tsx';
+
+// backup do arquivo atual
+fs.copyFileSync(path, path + '.backup_fase_b');
+console.log('Backup criado: ' + path + '.backup_fase_b');
+
+const novoConteudo = `import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAll';
@@ -45,8 +52,6 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
   // ── Pagamento ──
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [partnershipId, setPartnershipId] = useState('');
-  const [paymentMethods, setPaymentMethods] = useState<{ id: string; nome: string }[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState('');
   const [valorConsulta, setValorConsulta] = useState('');
 
   useEffect(() => {
@@ -58,8 +63,6 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
       .then(({ data }) => setProfessionals((data as Professional[]) || []));
     supabase.from('partnerships').select('id,name,commission_percent').eq('tenant_id', tenantId).eq('active', true).order('name')
       .then(({ data }) => setPartnerships((data as Partnership[]) || []));
-    supabase.from('clinic_payment_methods').select('id,nome').eq('tenant_id', tenantId).eq('ativo', true).order('nome')
-      .then(({ data }) => setPaymentMethods((data as { id: string; nome: string }[]) || []));
   }, [tenantId]);
 
   const filtered = customers.filter(c => !search || norm(c.name).includes(norm(search)));
@@ -104,7 +107,6 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
         professional_id: professionalId, professional_name: prof?.name || '',
         procedure_type: 'Consulta',
         partnership_id: partnershipId || null,
-        payment_method: paymentMethod || null,
         valor_cobrado: valor,
         date: new Date().toISOString().split('T')[0],
         time, time_end: addMinutes(time, 30),
@@ -232,7 +234,7 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
               ) : (
                 <select className="form-input" value={professionalId} onChange={e => setProfessionalId(e.target.value)}>
                   <option value="">Selecione...</option>
-                  {professionals.map(p => <option key={p.id} value={p.id}>{p.name}{p.specialty ? ` — ${p.specialty}` : ''}</option>)}
+                  {professionals.map(p => <option key={p.id} value={p.id}>{p.name}{p.specialty ? \` — \${p.specialty}\` : ''}</option>)}
                 </select>
               )}
             </div>
@@ -250,13 +252,6 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
               <div className="form-group">
                 <label className="form-label">Valor da consulta (R$)</label>
                 <input className="form-input" value={valorConsulta} onChange={e => setValorConsulta(e.target.value)} placeholder="Ex: 80,00" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Forma de pagamento</label>
-                <select className="form-input" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                  <option value="">Selecione...</option>
-                  {paymentMethods.map(p => <option key={p.id} value={p.nome}>{p.nome}</option>)}
-                </select>
               </div>
             </div>
           )}
@@ -290,3 +285,7 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
     </div>
   );
 }
+`;
+
+fs.writeFileSync(path, novoConteudo, 'utf8');
+console.log(path + ': reescrito com sucesso');

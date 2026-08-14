@@ -21,9 +21,12 @@ interface Customer {
 }
 interface Consultation {
   id: string; date: string; professional_name?: string; status: string;
-  re_esf_longe?: number; re_cil_longe?: number; re_eixo_longe?: number;
-  le_esf_longe?: number; le_cil_longe?: number; le_eixo_longe?: number;
-  ult_lente?: string;
+  rx_re_esf?: number; rx_re_cil?: number; rx_re_eixo?: number; rx_re_av?: string;
+  rx_le_esf?: number; rx_le_cil?: number; rx_le_eixo?: number; rx_le_av?: string;
+  rx_tipo_lente?: string; ultimo_exame_data?: string;
+  ppc_or?: string; ppc_luz?: string; ppc_fv?: string;
+  ampl_od?: string; ampl_oe?: string;
+  av_sc_od_vl?: string; av_sc_oe_vl?: string;
 }
 interface OS { id: string; os_number: number; total: number; status: string; created_at: string; }
 interface Sale { id: string; sale_number: number; total: number; payment_method: string; installments: number; created_at: string; }
@@ -74,7 +77,7 @@ export default function FichaPaciente({ customerId, onBack }: Props) {
     const [cust, cons, os, sal, anx] = await Promise.all([
       supabase.from('customers').select('*').eq('id', customerId).single(),
       supabase.from('consultations')
-        .select('id,date,professional_name,status,re_esf_longe,re_cil_longe,re_eixo_longe,le_esf_longe,le_cil_longe,le_eixo_longe,ult_lente')
+        .select('id,date,professional_name,status,rx_re_esf,rx_re_cil,rx_re_eixo,rx_re_av,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_av,rx_tipo_lente,ultimo_exame_data,ppc_or,ppc_luz,ppc_fv,ampl_od,ampl_oe,av_sc_od_vl,av_sc_oe_vl')
         .eq('tenant_id', tenantId).eq('customer_id', customerId)
         .order('date', { ascending: false }),
       supabase.from('service_orders')
@@ -235,16 +238,30 @@ export default function FichaPaciente({ customerId, onBack }: Props) {
         ) : (
           consultas.slice(0, 5).map(c => {
             const st = STATUS_CONSULTA[c.status] || STATUS_CONSULTA.agendada;
+            const ppcValor = c.ppc_or || c.ppc_luz || c.ppc_fv || '';
+            const ppaOd = c.ampl_od, ppaOe = c.ampl_oe;
+            const temPpa = !!(ppaOd || ppaOe);
+            const detalhes: string[] = [];
+            if (c.av_sc_od_vl || c.av_sc_oe_vl) detalhes.push(`AV S/C: ${c.av_sc_od_vl ? `OD ${c.av_sc_od_vl}` : ''}${c.av_sc_od_vl && c.av_sc_oe_vl ? ' / ' : ''}${c.av_sc_oe_vl ? `OE ${c.av_sc_oe_vl}` : ''}`);
+            if (ppcValor) detalhes.push(`PPC: ${ppcValor}cm`);
+            if (temPpa) detalhes.push(`PPA: ${ppaOd ? `OD ${ppaOd}D` : ''}${ppaOd && ppaOe ? ' / ' : ''}${ppaOe ? `OE ${ppaOe}D` : ''}`);
+            if (c.ultimo_exame_data) detalhes.push(`Último exame: ${fmtData(c.ultimo_exame_data)}`);
+            if (c.rx_tipo_lente) detalhes.push(`Lente: ${c.rx_tipo_lente}`);
             return (
               <div key={c.id} onClick={() => navigate('/consulta/atendimento/' + c.id)}
-                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 0', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
-                <div>
+                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 0', borderBottom:'1px solid var(--border)', cursor:'pointer', gap:12 }}>
+                <div style={{ minWidth:0 }}>
                   <div style={{ fontSize:13, fontWeight:600 }}>{fmtData(c.date)}{c.professional_name ? ` — ${c.professional_name}` : ''}</div>
                   <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2, fontFamily:'monospace' }}>
-                    OD: {fmtRxOlho(c.re_esf_longe, c.re_cil_longe, c.re_eixo_longe)} / OE: {fmtRxOlho(c.le_esf_longe, c.le_cil_longe, c.le_eixo_longe)}
+                    OD: {fmtRxOlho(c.rx_re_esf, c.rx_re_cil, c.rx_re_eixo)}{c.rx_re_av ? ` AV ${c.rx_re_av}` : ''} / OE: {fmtRxOlho(c.rx_le_esf, c.rx_le_cil, c.rx_le_eixo)}{c.rx_le_av ? ` AV ${c.rx_le_av}` : ''}
                   </div>
+                  {detalhes.length > 0 && (
+                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3, display:'flex', flexWrap:'wrap', gap:'2px 10px' }}>
+                      {detalhes.map((d, i) => <span key={i}>{d}</span>)}
+                    </div>
+                  )}
                 </div>
-                <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:st.bg, color:st.color }}>{st.label}</span>
+                <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:st.bg, color:st.color, flexShrink:0 }}>{st.label}</span>
               </div>
             );
           })

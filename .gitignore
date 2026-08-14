@@ -37,3 +37,6 @@ fix_*.py
 .env
 .env.production
 .env.*
+fix_*.js
+patch_*.js
+trecho*.txt
