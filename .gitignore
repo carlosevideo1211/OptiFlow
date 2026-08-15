@@ -39,4 +39,5 @@ fix_*.py
 .env.*
 fix_*.js
 patch_*.js
+fase_*.js
 trecho*.txt
