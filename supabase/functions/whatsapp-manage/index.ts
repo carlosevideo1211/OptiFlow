@@ -117,6 +117,24 @@ serve(async (req) => {
       const numeroCompleto = numero.startsWith("55") ? numero : `55${numero}`;
       const r = await evolutionFetch(`/message/sendText/${tenant.whatsapp_instance_name}`, "POST", { number: numeroCompleto, text: texto });
 
+      // Registra no mesmo log das cobrancas automaticas, marcado como manual,
+      // para a tela de controle mostrar um historico unico por parcela.
+      if (body.parcela_id) {
+        await supabaseFetch("whatsapp_triggers_log", {
+          method: "POST",
+          headers: { Prefer: "resolution=ignore-duplicates" },
+          body: JSON.stringify({
+            tenant_id: tenant.id,
+            trigger_type: "cobranca_manual",
+            reference_id: String(body.parcela_id),
+            customer_id: body.customer_id || null,
+            phone: numeroCompleto,
+            success: r.ok,
+            error_message: r.ok ? null : `HTTP ${r.status}`,
+          }),
+        });
+      }
+
       if (!r.ok) return json({ ok: false, error: `Falha ao enviar: HTTP ${r.status}`, detalhe: r.data }, 500);
       return json({ ok: true });
     }

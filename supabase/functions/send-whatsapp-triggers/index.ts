@@ -118,13 +118,15 @@ serve(async (req) => {
   }
 
   const hoje = new Date();
+  const hojeStr = hoje.toISOString().split("T")[0];
   const em5dias = new Date(Date.now() + 5 * 86400000).toISOString().split("T")[0];
+  const menos5dias = new Date(Date.now() - 5 * 86400000).toISOString().split("T")[0];
   const menos7dias = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
   const menos15dias = new Date(Date.now() - 15 * 86400000).toISOString().split("T")[0];
   const menos30dias = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
   const menos365dias = new Date(Date.now() - 365 * 86400000).toISOString().split("T")[0];
   const LIMITE_COBRANCA_POR_EXECUCAO = 50;
-  const resultado = { aniversario: 0, vencimento: 0, pos_venda: 0, adaptacao: 0, cobranca_atraso: 0, erros: [] as string[], enviados_total: 0, limite_global_atingido: false, tenants_limitados: [] as string[] };
+  const resultado = { aniversario: 0, vencimento: 0, vencimento_dia: 0, vencimento_atraso5: 0, pos_venda: 0, adaptacao: 0, cobranca_atraso: 0, erros: [] as string[], enviados_total: 0, limite_global_atingido: false, tenants_limitados: [] as string[] };
 
   let enviosNestaExecucao = 0;
 
@@ -209,6 +211,84 @@ serve(async (req) => {
             await logTrigger(tenant.id, "vencimento", refId, cred.customer_id, telefone, r.ok, r.error);
             registrarEnvio();
             if (r.ok) resultado.vencimento++; else resultado.erros.push(`vencimento ${p.id}: ${r.error}`);
+            await delayAleatorio();
+          }
+        }
+      }
+
+      // ---------- 2b) VENCIMENTO NO DIA (dia do vencimento) ----------
+      if (podeEnviarMais()) {
+        const parcelasHoje = await supabaseFetch(
+          `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=eq.${hojeStr}&status=eq.pendente&select=id,crediario_id,due_date,amount`
+        );
+        if (Array.isArray(parcelasHoje) && parcelasHoje.length > 0) {
+          const credIdsH = [...new Set(parcelasHoje.map((p: any) => p.crediario_id))].join(",");
+          const creditosH = await supabaseFetch(`crediario?id=in.(${credIdsH})&select=id,customer_id,customer_name`);
+          const credMapH: Record<string, any> = {};
+          for (const c of creditosH) credMapH[c.id] = c;
+
+          const custIdsH = [...new Set(creditosH.map((c: any) => c.customer_id).filter(Boolean))].join(",");
+          const clientesMapH: Record<string, any> = {};
+          if (custIdsH) {
+            const clientesCredH = await supabaseFetch(`customers?id=in.(${custIdsH})&select=id,whatsapp,phone`);
+            for (const c of clientesCredH) clientesMapH[c.id] = c;
+          }
+
+          for (const p of parcelasHoje) {
+            if (!podeEnviarMais()) break;
+            const cred = credMapH[p.crediario_id];
+            if (!cred) continue;
+            const clienteInfo = clientesMapH[cred.customer_id];
+            const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
+            if (!telefone) continue;
+            const refId = String(p.id);
+            if (await jaEnviado(tenant.id, "vencimento_dia", refId)) continue;
+
+            const valor = Number(p.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const texto = `Olá, ${cred.customer_name}! Sua parcela de ${valor} do crediário na ${loja} vence hoje (${fmtData(p.due_date)}). Qualquer dúvida, é só chamar por aqui!`;
+            const r = await sendWhatsAppMessage(instance, telefone, texto);
+            await logTrigger(tenant.id, "vencimento_dia", refId, cred.customer_id, telefone, r.ok, r.error);
+            registrarEnvio();
+            if (r.ok) resultado.vencimento_dia++; else resultado.erros.push(`vencimento_dia ${p.id}: ${r.error}`);
+            await delayAleatorio();
+          }
+        }
+      }
+
+      // ---------- 2c) VENCIMENTO + 5 DIAS (parcela venceu há 5 dias) ----------
+      if (podeEnviarMais()) {
+        const parcelas5d = await supabaseFetch(
+          `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=eq.${menos5dias}&status=eq.pendente&select=id,crediario_id,due_date,amount`
+        );
+        if (Array.isArray(parcelas5d) && parcelas5d.length > 0) {
+          const credIds5 = [...new Set(parcelas5d.map((p: any) => p.crediario_id))].join(",");
+          const creditos5 = await supabaseFetch(`crediario?id=in.(${credIds5})&select=id,customer_id,customer_name`);
+          const credMap5: Record<string, any> = {};
+          for (const c of creditos5) credMap5[c.id] = c;
+
+          const custIds5 = [...new Set(creditos5.map((c: any) => c.customer_id).filter(Boolean))].join(",");
+          const clientesMap5: Record<string, any> = {};
+          if (custIds5) {
+            const clientesCred5 = await supabaseFetch(`customers?id=in.(${custIds5})&select=id,whatsapp,phone`);
+            for (const c of clientesCred5) clientesMap5[c.id] = c;
+          }
+
+          for (const p of parcelas5d) {
+            if (!podeEnviarMais()) break;
+            const cred = credMap5[p.crediario_id];
+            if (!cred) continue;
+            const clienteInfo = clientesMap5[cred.customer_id];
+            const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
+            if (!telefone) continue;
+            const refId = String(p.id);
+            if (await jaEnviado(tenant.id, "vencimento_atraso5", refId)) continue;
+
+            const valor = Number(p.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const texto = `Olá, ${cred.customer_name}. Notamos que sua parcela de ${valor} do crediário na ${loja}, com vencimento em ${fmtData(p.due_date)}, ainda está em aberto. Se já pagou, desconsidere esta mensagem. Qualquer dúvida ou para negociar, estamos à disposição!`;
+            const r = await sendWhatsAppMessage(instance, telefone, texto);
+            await logTrigger(tenant.id, "vencimento_atraso5", refId, cred.customer_id, telefone, r.ok, r.error);
+            registrarEnvio();
+            if (r.ok) resultado.vencimento_atraso5++; else resultado.erros.push(`vencimento_atraso5 ${p.id}: ${r.error}`);
             await delayAleatorio();
           }
         }

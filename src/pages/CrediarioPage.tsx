@@ -27,6 +27,18 @@ interface Parcela {
   total_installments?: number; sale_id?: string; payment_method?: string;
 }
 
+interface CobrancaLog {
+  trigger_type: string; sent_at: string; success: boolean; error_message?: string;
+}
+
+const JANELA_LABELS: Record<string, string> = {
+  vencimento: 'Automatica (-5 dias)',
+  vencimento_dia: 'Automatica (dia do vencimento)',
+  vencimento_atraso5: 'Automatica (+5 dias)',
+  cobranca_atraso: 'Automatica (atraso 30+ dias)',
+  cobranca_manual: 'Manual',
+};
+
 const JUROS_DIA = 0.07;
 
 function calcJuros(p: Parcela): number {
@@ -51,8 +63,10 @@ export default function CrediarioPage() {
   const [search, setSearch]     = useState('');
   // Reset pagina ao mudar filtros
   const [statusFilter, setStatusFilter] = useState('');
+  const [janelaFilter, setJanelaFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
+  const [cobrancaLogs, setCobrancaLogs] = useState<Record<string, CobrancaLog>>({});
   const [saving, setSaving]     = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedParcela, setSelectedParcela] = useState<Parcela | null>(null);
@@ -115,12 +129,34 @@ export default function CrediarioPage() {
       return a.due_date.localeCompare(b.due_date);
     });
     setParcelas(lista);
+
+    // Carrega o historico de cobrancas (automaticas + manuais) referentes a
+    // parcelas de crediario, para mostrar na coluna "Cobranca" da tabela.
+    const tiposCobranca = ['vencimento', 'vencimento_dia', 'vencimento_atraso5', 'cobranca_atraso', 'cobranca_manual'];
+    const { data: logs } = await supabase
+      .from('whatsapp_triggers_log')
+      .select('reference_id, trigger_type, sent_at, success, error_message')
+      .eq('tenant_id', tenantId)
+      .in('trigger_type', tiposCobranca)
+      .order('sent_at', { ascending: false });
+    const logMap: Record<string, CobrancaLog> = {};
+    (logs || []).forEach((l: any) => {
+      // Como veio ordenado do mais recente para o mais antigo, a primeira
+      // ocorrencia por parcela ja e o envio mais recente.
+      if (!logMap[l.reference_id]) {
+        logMap[l.reference_id] = { trigger_type: l.trigger_type, sent_at: l.sent_at, success: l.success, error_message: l.error_message };
+      }
+    });
+    setCobrancaLogs(logMap);
+
     setLoading(false);
   };
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
 
   const hoje = new Date().toISOString().split('T')[0];
+  const em5dias = new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0];
+  const menos5dias = new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0];
 
   const filtered = useMemo(() => {
     return parcelas.filter(p => {
@@ -128,11 +164,15 @@ export default function CrediarioPage() {
       if (statusFilter === 'vencida' && (p.status === 'pago' || !p.due_date || p.due_date >= hoje)) return false;
       if (statusFilter === 'aberta' && p.status !== 'pendente') return false;
       if (statusFilter === 'pago' && p.status !== 'pago') return false;
+      if (janelaFilter === 'antes5' && (p.status === 'pago' || p.due_date !== em5dias)) return false;
+      if (janelaFilter === 'hoje' && (p.status === 'pago' || p.due_date !== hoje)) return false;
+      if (janelaFilter === 'atraso5' && (p.status === 'pago' || p.due_date !== menos5dias)) return false;
+      if (janelaFilter === 'vencidas' && (p.status === 'pago' || !p.due_date || p.due_date >= hoje)) return false;
       if (dateFrom && p.due_date < dateFrom) return false;
       if (dateTo && p.due_date > dateTo) return false;
       return true;
     });
-  }, [parcelas, search, statusFilter, dateFrom, dateTo, hoje]);
+  }, [parcelas, search, statusFilter, janelaFilter, dateFrom, dateTo, hoje, em5dias, menos5dias]);
 
   const totalAberto = parcelas.filter(p => p.status !== 'pago').reduce((s, p) => s + p.amount, 0);
   const totalVencido = parcelas.filter(p => p.status !== 'pago' && p.due_date && p.due_date < hoje).reduce((s, p) => s + p.amount, 0);
@@ -256,9 +296,10 @@ export default function CrediarioPage() {
     try {
       const juros = calcJuros(p);
       const total = p.amount + juros;
-      const { data, error } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'send_collection', phone: p.whatsapp, customer_name: p.customer_name, amount: total, due_date: p.due_date } });
+      const { data, error } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'send_collection', phone: p.whatsapp, customer_name: p.customer_name, amount: total, due_date: p.due_date, parcela_id: p.id, customer_id: p.customer_id } });
       if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Falha ao enviar cobranca');
       toast.success('Cobranca enviada para ' + p.customer_name);
+      setCobrancaLogs(m => ({ ...m, [p.id]: { trigger_type: 'cobranca_manual', sent_at: new Date().toISOString(), success: true } }));
     } catch (e: any) {
       toast.error(e.message || 'Erro ao enviar cobranca');
     } finally {
@@ -675,6 +716,26 @@ export default function CrediarioPage() {
         <input type="date" className="form-input" style={{ width:150 }} value={dateTo} onChange={e=>setDateTo(e.target.value)} placeholder="Ate"/>
       </div>
 
+      <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+        {[
+          { v:'', label:'Todas as janelas' },
+          { v:'antes5', label:'Vence em 5 dias' },
+          { v:'hoje', label:'Vence hoje' },
+          { v:'atraso5', label:'Venceu ha 5 dias' },
+          { v:'vencidas', label:'Todas vencidas' },
+        ].map(j => (
+          <button key={j.v} onClick={()=>setJanelaFilter(j.v)}
+            style={{
+              padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer',
+              border: '1px solid ' + (janelaFilter===j.v ? '#6366f1' : 'var(--border)'),
+              background: janelaFilter===j.v ? 'rgba(99,102,241,.15)' : 'none',
+              color: janelaFilter===j.v ? '#6366f1' : 'var(--text-muted)',
+            }}>
+            {j.label}
+          </button>
+        ))}
+      </div>
+
       {loading ? <div className="empty-state"><p>Carregando...</p></div> :
         filtered.length === 0 ? (
           <div className="empty-state">
@@ -703,8 +764,11 @@ export default function CrediarioPage() {
                     const juros = calcJuros(p);
                     const vencida = p.status !== 'pago' && p.due_date && p.due_date < hoje;
             const diasAtraso = p.due_date ? Math.floor((new Date(hoje+'T00:00:00').getTime() - new Date(p.due_date+'T00:00:00').getTime())/86400000) : 0;
-            const podeCobrarAuto = vencida && diasAtraso >= 30;
+            // Botao manual liberado para qualquer parcela pendente com vencimento definido -
+            // e o botao de seguranca para cobrir os casos em que a automacao falhar ou pular.
+            const podeCobrarAuto = p.status !== 'pago' && !!p.due_date;
                     const pago = p.status === 'pago';
+                    const cobranca = cobrancaLogs[p.id];
                     return (
                       <tr key={p.id}>
                 <td style={{ textAlign:'center' }}>{podeCobrarAuto && (<input type="checkbox" checked={selecionadas.has(p.id)} onChange={()=>toggleSelecionada(p.id)} />)}</td>
@@ -749,6 +813,16 @@ export default function CrediarioPage() {
                           ) : (
                             <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(99,102,241,.15)', color:'#6366f1' }}>Aberta</span>
                           )}
+                          {!pago && cobranca && (
+                            <div style={{ marginTop:4, display:'flex', flexDirection:'column', alignItems:'center', gap:1 }}>
+                              <span style={{ fontSize:10, fontWeight:600, color: cobranca.success ? '#25D366' : '#f87171' }} title={cobranca.error_message || ''}>
+                                {cobranca.success ? '✓' : '✗'} {JANELA_LABELS[cobranca.trigger_type] || cobranca.trigger_type}
+                              </span>
+                              <span style={{ fontSize:9, color:'var(--text-muted)' }}>
+                                {new Date(cobranca.sent_at).toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td>
                           <div style={{ display:'flex', gap:5 }}>
@@ -762,7 +836,7 @@ export default function CrediarioPage() {
                               style={{ background:'rgba(34,197,94,.1)', border:'1px solid rgba(34,197,94,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#25D366', display:'flex', alignItems:'center' }}>
                               <MessageCircle size={14}/>
                             </button>
-                            <button onClick={() => handleCobrarAuto(p)} disabled={!podeCobrarAuto || enviandoCobranca.has(p.id)} title={podeCobrarAuto ? 'Enviar cobranca automatica via WhatsApp (atraso 30+ dias)' : 'Disponivel apenas para parcelas vencidas ha 30 dias ou mais'}
+                            <button onClick={() => handleCobrarAuto(p)} disabled={!podeCobrarAuto || enviandoCobranca.has(p.id)} title={podeCobrarAuto ? (cobranca ? `Ja cobrada (${JANELA_LABELS[cobranca.trigger_type] || cobranca.trigger_type} em ${new Date(cobranca.sent_at).toLocaleDateString('pt-BR')}) - enviar novamente` : 'Enviar cobranca via WhatsApp (registrada no historico)') : 'Disponivel apenas para parcelas pendentes com vencimento definido'}
                         style={{ background: podeCobrarAuto?'rgba(239,68,68,.1)':'rgba(148,163,184,.06)', border:'1px solid ' + (podeCobrarAuto?'rgba(239,68,68,.2)':'rgba(148,163,184,.12)'), borderRadius:7, padding:'5px 8px', cursor: podeCobrarAuto?'pointer':'not-allowed', color: podeCobrarAuto?'#ef4444':'var(--text-muted)', display:'flex', alignItems:'center', opacity: podeCobrarAuto?0.9:0.4 }}>
                       <Send size={14}/>
                     </button>
