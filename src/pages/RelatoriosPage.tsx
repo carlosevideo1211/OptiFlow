@@ -23,6 +23,7 @@ export default function RelatoriosPage() {
   const [periodo, setPeriodo] = useState('mes');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
+  const [mesEspecifico, setMesEspecifico] = useState('');
   const [data, setData] = useState({
     totalVendas: 0, numVendas: 0, ticketMedio: 0,
     totalClientes: 0, clientesNovos: 0,
@@ -36,7 +37,7 @@ export default function RelatoriosPage() {
     vendasDetalhe: [] as any[],
   });
 
-  useEffect(() => { if (tenantId) loadData(); }, [tenantId, periodo, dateFrom, dateTo]);
+  useEffect(() => { if (tenantId) loadData(); }, [tenantId, periodo, dateFrom, dateTo, mesEspecifico]);
 
   // Dados auxiliares usados apenas nos relatorios impressos (nao no dashboard).
   const [storeSettings, setStoreSettings] = useState<DadosLoja | null>(null);
@@ -54,6 +55,12 @@ export default function RelatoriosPage() {
 
   const getRange = () => {
     if (periodo === 'custom' && dateFrom && dateTo) return { from: dateFrom, to: dateTo };
+    if (periodo === 'mesEspecifico' && mesEspecifico) {
+      // mesEspecifico vem do <input type="month"> no formato "AAAA-MM"
+      const [ano, mesN] = mesEspecifico.split('-').map(Number);
+      const ultimoDia = new Date(ano, mesN, 0).getDate();
+      return { from: `${mesEspecifico}-01`, to: `${mesEspecifico}-${String(ultimoDia).padStart(2,'0')}` };
+    }
     const hoje = new Date();
     if (periodo === 'hoje') { const d = hoje.toISOString().split('T')[0]; return { from: d, to: d }; }
     if (periodo === 'semana') { const from = new Date(hoje); from.setDate(hoje.getDate() - 7); return { from: from.toISOString().split('T')[0], to: hoje.toISOString().split('T')[0] }; }
@@ -369,7 +376,7 @@ export default function RelatoriosPage() {
     </div>
   );
 
-  const periodoLabel: Record<string,string> = { hoje:'Hoje', semana:'Últimos 7 dias', mes:'Este mês', ano:'Este ano', custom:'Personalizado' };
+  const periodoLabel: Record<string,string> = { hoje:'Hoje', semana:'Últimos 7 dias', mes:'Este mês', ano:'Este ano', mesEspecifico:'Mês específico', custom:'Personalizado' };
 
   return (
     <div>
@@ -403,7 +410,7 @@ export default function RelatoriosPage() {
 
       {/* Filtro de período */}
       <div style={{ display:'flex', gap:8, marginBottom:24, flexWrap:'wrap', alignItems:'center' }}>
-        {['hoje','semana','mes','ano','custom'].map(p => (
+        {['hoje','semana','mes','ano','mesEspecifico','custom'].map(p => (
           <button key={p} onClick={() => setPeriodo(p)}
             style={{ padding:'8px 16px', borderRadius:8, border:'2px solid',
               borderColor: periodo===p?'#6366f1':'rgba(255,255,255,.1)',
@@ -413,6 +420,9 @@ export default function RelatoriosPage() {
             {periodoLabel[p]}
           </button>
         ))}
+        {periodo === 'mesEspecifico' && (
+          <input className="form-input" type="month" style={{ width:170 }} value={mesEspecifico} onChange={e=>setMesEspecifico(e.target.value)}/>
+        )}
         {periodo === 'custom' && (<>
           <input className="form-input" type="date" style={{ width:145 }} value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/>
           <input className="form-input" type="date" style={{ width:145 }} value={dateTo} onChange={e=>setDateTo(e.target.value)}/>
