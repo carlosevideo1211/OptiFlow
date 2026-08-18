@@ -35,6 +35,7 @@ export default function RelatoriosPage() {
     vendasPorVendedor: [] as any[],
     totalEntrada: 0,
     vendasDetalhe: [] as any[],
+    itensPorVenda: {} as Record<string, {description:string;quantity:number}[]>,
   });
 
   useEffect(() => { if (tenantId) loadData(); }, [tenantId, periodo, dateFrom, dateTo, mesEspecifico]);
@@ -72,13 +73,27 @@ export default function RelatoriosPage() {
   const loadData = async () => {
     setLoading(true);
     const { from, to } = getRange();
-    const [vendas, clientes, os, financeiro, saleItems] = await Promise.all([
+    const [vendas, clientes, os, financeiro] = await Promise.all([
       fetchAllRows<any>((rf, rt) => supabase.from('sales').select('*').eq('tenant_id', tenantId).eq('status','concluida').gte('created_at', from).lte('created_at', to+'T23:59:59').range(rf, rt)),
       fetchAllRows<any>((rf, rt) => supabase.from('customers').select('created_at').eq('tenant_id', tenantId).eq('active', true).range(rf, rt)),
       fetchAllRows<any>((rf, rt) => supabase.from('service_orders').select('status').eq('tenant_id', tenantId).range(rf, rt)),
       fetchAllRows<any>((rf, rt) => supabase.from('financial_transactions').select('type,amount,status').eq('tenant_id', tenantId).range(rf, rt)),
-      fetchAllRows<any>((rf, rt) => supabase.from('sale_items').select('description,quantity,total,sale_id').eq('tenant_id', tenantId).range(rf, rt)),
     ]);
+
+    // Itens das vendas do periodo (usado nos "produtos mais vendidos" e no relatorio
+    // Completo, para mostrar o que o cliente comprou em cada venda). Buscado por
+    // sale_id das vendas ja filtradas pelo periodo, em vez de todo o historico do
+    // tenant, para nao misturar itens de vendas de fora do periodo selecionado.
+    const saleIds = (vendas||[]).map((v:any) => v.id);
+    const saleItems = saleIds.length > 0
+      ? await fetchAllRows<any>((rf, rt) => supabase.from('sale_items').select('description,quantity,total,sale_id').eq('tenant_id', tenantId).in('sale_id', saleIds).range(rf, rt))
+      : [];
+
+    const itensPorVenda: Record<string, {description:string;quantity:number}[]> = {};
+    (saleItems||[]).forEach((i:any) => {
+      if (!itensPorVenda[i.sale_id]) itensPorVenda[i.sale_id] = [];
+      itensPorVenda[i.sale_id].push({ description: i.description, quantity: i.quantity });
+    });
 
     const totalVendas  = (vendas||[]).reduce((s,v)=>s+v.total,0);
     const numVendas    = (vendas||[]).length;
@@ -126,6 +141,7 @@ export default function RelatoriosPage() {
       receitaFinanceiro, despesaFinanceiro, saldoFinanceiro,
       produtosMaisVendidos, vendasPorPagamento, osPorStatus, vendasPorVendedor,
       vendasDetalhe: vendas || [],
+      itensPorVenda,
     });
     setLoading(false);
   };
@@ -277,6 +293,12 @@ export default function RelatoriosPage() {
       const totalLista = ordenada.reduce((s:number,v:any)=>s+v.total,0);
       const totalDesc = ordenada.reduce((s:number,v:any)=>s+(v.discount||0),0);
 
+      const fmtItens = (saleId: string) => {
+        const itens = data.itensPorVenda[saleId];
+        if (!itens || itens.length === 0) return '<span style="color:#999">—</span>';
+        return itens.map(i => i.description + (i.quantity > 1 ? ' (' + i.quantity + 'x)' : '')).join(', ');
+      };
+
       const body = `
         ${getCabecalhoLoja(storeSettings)}
         <h3 style="text-align:center;text-transform:uppercase;margin:0 0 4px">Relatório Completo de Vendas</h3>
@@ -284,11 +306,12 @@ export default function RelatoriosPage() {
         ${vendedorFiltro ? `<p style="text-align:center;font-size:11px;color:#666;margin:0 0 16px">Vendedor: ${vendedorFiltro}</p>` : '<div style="margin-bottom:16px"></div>'}
 
         <table>
-          <tr><th>Data</th><th>Nº</th><th>Cliente</th><th>Vendedor</th><th>Forma Pagto.</th><th>Desconto</th><th>Total</th></tr>
+          <tr><th>Data</th><th>Nº</th><th>Cliente</th><th>Itens</th><th>Vendedor</th><th>Forma Pagto.</th><th>Desconto</th><th>Total</th></tr>
           ${ordenada.map((v:any) => `<tr>
             <td>${new Date(v.created_at).toLocaleDateString('pt-BR')}</td>
             <td>#${String(v.sale_number).padStart(4,'0')}</td>
             <td>${v.customer_name||'—'}</td>
+            <td style="font-size:11px">${fmtItens(v.id)}</td>
             <td>${v.vendedor||'—'}</td>
             <td>${(PAGAMENTO_LABELS[v.payment_method]||v.payment_method)}${v.installments>1?' '+v.installments+'x':''}</td>
             <td>${v.discount>0?formatBRL(v.discount):'—'}</td>
