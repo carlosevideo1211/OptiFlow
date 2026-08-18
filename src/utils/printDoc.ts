@@ -127,3 +127,37 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
   win.document.close();
   return win;
 }
+
+// Cabecalho padrao com os dados da loja (nome, CNPJ, endereco, telefone), usado no
+// topo dos documentos impressos. Mesma logica ja usada em VendasPage.tsx para
+// comprovantes/carne — centralizada aqui para reuso em outras paginas (ex: Relatorios).
+export interface DadosLoja {
+  name?: string; cnpj?: string; phone?: string; email?: string;
+  address?: string; city?: string; state?: string; logo_url?: string;
+}
+
+export function getCabecalhoLoja(s: DadosLoja | null): string {
+  if (!s) return '<h2 style="text-align:center">ÓPTICA</h2>';
+  return `
+    <div style="text-align:center;border-bottom:2px solid #333;padding-bottom:12px;margin-bottom:16px">
+      ${s.logo_url ? `<img src="${s.logo_url}" style="max-height:60px;margin-bottom:8px"><br>` : ''}
+      <h2 style="margin:0;font-size:18px;text-transform:uppercase">${s.name || 'Óptica'}</h2>
+      <div style="font-size:11px;color:#555;margin-top:4px">
+        ${s.cnpj ? 'CNPJ: ' + s.cnpj : ''}${s.cnpj && s.phone ? ' | ' : ''}${s.phone ? 'Tel: ' + s.phone : ''}<br>
+        ${s.address ? s.address + (s.city ? ' — ' + s.city + (s.state ? '/' + s.state : '') : '') : ''}
+        ${s.email ? '<br>' + s.email : ''}
+      </div>
+    </div>`;
+}
+
+export const printBaseStyle = `body{font-family:Arial,sans-serif;font-size:13px;padding:24px;line-height:1.5}
+  table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #ccc;padding:6px 8px;font-size:12px}
+  th{background:#f5f5f5;font-weight:bold}
+  .rel-kpis{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+  .rel-kpi{flex:1;min-width:130px;border:1px solid #ccc;border-radius:6px;padding:10px 12px}
+  .rel-kpi-label{font-size:10px;color:#777;text-transform:uppercase;font-weight:700}
+  .rel-kpi-val{font-size:16px;font-weight:800;color:#111;margin-top:2px}
+  .rel-kpi-var{font-size:10px;font-weight:700;margin-top:2px}
+  .rel-bar-track{height:8px;border-radius:4px;background:#eee;margin-top:4px}
+  .rel-bar-fill{height:100%;border-radius:4px}
+  .rel-secao{margin:22px 0 8px;font-size:13px;font-weight:800;text-transform:uppercase;color:#1a3a8f;border-bottom:2px solid #1a3a8f;padding-bottom:4px}`;
