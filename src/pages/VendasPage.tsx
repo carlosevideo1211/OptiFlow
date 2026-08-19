@@ -435,12 +435,19 @@ export default function VendasPage() {
     const saldo = v.total - (v.entrada || 0);
     const nP = v.installments || 1;
     const lista = (parc || []) as any[];
+    // Valor real da divida no momento da impressao: soma apenas das parcelas ainda
+    // nao pagas. Se o instrumento for reimpresso depois que o cliente ja quitou
+    // parte do crediario, o valor da confissao precisa refletir o saldo atual, e
+    // nao o valor total financiado la no inicio (que e o que "saldo" representa).
+    const saldoAtual = lista.length > 0
+      ? lista.filter((p: any) => p.status !== 'pago').reduce((s: number, p: any) => s + p.amount, 0)
+      : saldo;
     const itensList = (items || []) as any[];
     const itensHtml = itensList.map((item: any, i: number) =>
       '<tr><td style="text-align:center">'+(i+1)+'</td><td>'+item.description+'</td><td style="text-align:center">'+item.quantity+'</td><td style="text-align:right">'+fmtV(item.unit_price)+'</td><td style="text-align:right">'+fmtV(item.total)+'</td></tr>'
     ).join('');
     const parcelasDemo = lista.length > 0
-      ? lista.map((p: any, i: number) => '<div class="pd"><div class="pl">Parcela '+(p.installment_number||i+1)+'</div><div class="pv">Venc: '+fmtD2(p.due_date)+'</div><div class="pa">'+fmtV(p.amount)+'</div></div>').join('')
+      ? lista.map((p: any, i: number) => '<div class="pd" style="'+(p.status==='pago'?'opacity:.55':'')+'"><div class="pl">Parcela '+(p.installment_number||i+1)+(p.status==='pago'?' — PAGA':'')+'</div><div class="pv">Venc: '+fmtD2(p.due_date)+'</div><div class="pa">'+fmtV(p.amount)+'</div></div>').join('')
       : Array.from({length: nP}, (_, i) => { const due = new Date(); due.setMonth(due.getMonth()+i+1); return '<div class="pd"><div class="pl">Parcela '+(i+1)+'</div><div class="pv">Venc: '+due.toLocaleDateString('pt-BR')+'</div><div class="pa">'+fmtV(saldo/nP)+'</div></div>'; }).join('');
     const dataLocal = sCity && sState ? sCity+' - '+sState+', '+new Date().toLocaleDateString('pt-BR',{day:'numeric',month:'long',year:'numeric'}) : new Date().toLocaleDateString('pt-BR',{day:'numeric',month:'long',year:'numeric'});
     const css = '@page{size:A4 portrait;margin:15mm 15mm 15mm 15mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#000;background:#fff}.hdr{text-align:center;border-bottom:2px solid #1a3a8f;padding-bottom:12px;margin-bottom:16px}.hdr img{max-height:60px;margin-bottom:4px}.hn{font-size:20px;font-weight:900;color:#1a3a8f}.hs{font-size:11px;color:#444;margin-top:2px}h3{text-align:center;text-transform:uppercase;text-decoration:underline;margin:0 0 16px;font-size:14px}p{margin:6px 0;text-align:justify;font-size:12px;line-height:1.6}.info{background:#f5f8ff;border:1px solid #c7d2fe;border-radius:4px;padding:10px 14px;margin:10px 0}.info p{margin:3px 0}table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px}th{background:#1a3a8f;color:#fff;padding:6px 8px;text-align:left}td{padding:5px 8px;border-bottom:1px solid #e2e8f0}.tot{background:#f0f4ff;font-weight:700}.totv{background:#1a3a8f;color:#fff;font-weight:900;font-size:13px}.demo{margin-top:16px}.demo-title{font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;color:#1a3a8f;border-bottom:2px solid #1a3a8f;padding-bottom:4px}.demo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.pd{border:1px solid #c7d2fe;border-radius:4px;padding:8px;background:#f5f8ff}.pl{font-size:10px;font-weight:700;color:#1a3a8f;text-transform:uppercase}.pv{font-size:10px;color:#555;margin:2px 0}.pa{font-size:13px;font-weight:800;color:#111}.sigs{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin-top:50px}.sig-line{border-top:1px solid #000;padding-top:6px;text-align:center;font-size:11px}';
@@ -454,7 +461,8 @@ export default function VendasPage() {
       +'<tfoot><tr class="tot"><td colspan="4" style="text-align:right">Subtotal:</td><td style="text-align:right">'+fmtV(v.subtotal||v.total)+'</td></tr>'
       +((v.entrada||0)>0?'<tr class="tot"><td colspan="4" style="text-align:right">Entrada / Sinal:</td><td style="text-align:right">- '+fmtV(v.entrada||0)+'</td></tr>':'')
       +(v.discount>0?'<tr class="tot"><td colspan="4" style="text-align:right">Desconto:</td><td style="text-align:right">- '+fmtV(v.discount)+'</td></tr>':'')
-      +'<tr class="totv"><td colspan="4" style="text-align:right">VALOR DA CONFISSAO:</td><td style="text-align:right">'+fmtV(saldo)+'</td></tr></tfoot></table>'
+      +'<tr class="totv"><td colspan="4" style="text-align:right">VALOR DA CONFISSAO:</td><td style="text-align:right">'+fmtV(saldoAtual)+'</td></tr></tfoot></table>'
+      +(saldoAtual !== saldo ? '<p style="font-size:10px;color:#555">Valor atualizado considerando parcelas já pagas. Valor total originalmente financiado: '+fmtV(saldo)+'.</p>' : '')
       +(nP>1?'<div class="demo"><div class="demo-title">Demonstrativo de Parcelamento (Carne)</div><div class="demo-grid">'+parcelasDemo+'</div></div>':'')
       +'<p style="margin-top:20px">'+dataLocal+'</p>'
       +'<div class="sigs"><div class="sig-line">'+v.customer_name+'<br/><span style="font-size:10px;color:#666">Assinatura do Devedor</span></div><div class="sig-line">'+sName+'<br/><span style="font-size:10px;color:#666">Assinatura da Empresa</span></div></div>';
