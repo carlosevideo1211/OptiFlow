@@ -38,6 +38,7 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
 
   const toolbarCss = `
     *{box-sizing:border-box}
+    html{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
     #__pd_toolbar{position:sticky;top:0;left:0;right:0;z-index:99999;display:flex;gap:10px;
       justify-content:center;align-items:center;padding:12px;background:#1a3a8f;
       box-shadow:0 2px 8px rgba(0,0,0,.25)}
@@ -51,7 +52,10 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
     #__pd_status{font-size:12px;color:#dbeafe;font-family:Arial,sans-serif;min-width:160px}
     #__pd_content{width:210mm;margin:0 auto;background:#fff}
     #__pd_content .print-page{width:210mm;background:#fff}
-    @media print{#__pd_toolbar{display:none !important}}
+    @media print{
+      #__pd_toolbar{display:none !important}
+      *,*::before,*::after{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important}
+    }
   `;
 
   const toolbarHtml = `
