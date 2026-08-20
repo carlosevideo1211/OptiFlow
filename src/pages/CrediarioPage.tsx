@@ -68,6 +68,7 @@ export default function CrediarioPage() {
   const [renegociando, setRenegociando] = useState<string|null>(null); // crediario_id
   const [renegoSummary, setRenegoSummary] = useState<any>(null);
   const [renegociados, setRenegociados] = useState<Set<string>>(new Set());
+  const [storeName, setStoreName] = useState('');
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
   const [renego, setRenego] = useState({ novoValor:'', numParcelas:'1', dataInicio:'', destino:'cancelar' });
@@ -203,6 +204,14 @@ export default function CrediarioPage() {
   };
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
+
+  // Nome da otica, usado para identificar quem esta cobrando na mensagem
+  // manual do WhatsApp — sem isso o cliente nao sabia quem estava mandando.
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase.from('store_settings').select('name, company_name').eq('tenant_id', tenantId).single()
+      .then(({ data }) => { if (data) setStoreName(data.name || data.company_name || ''); });
+  }, [tenantId]);
 
   // Marca ou desmarca um carne como negativado (enviado ao Serasa). Decisao
   // manual do Carlos, cliente a cliente — o sistema so ajuda a identificar
@@ -352,7 +361,7 @@ export default function CrediarioPage() {
     const total = p.amount + juros;
     const venc = p.due_date ? new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR') : '--';
     const msg = encodeURIComponent(
-      'Ola ' + p.customer_name + '! Passando para lembar sobre sua parcela ' +
+      'Ola ' + p.customer_name + '! Aqui e da ' + (storeName || 'nossa otica') + '. Passando para lembar sobre sua parcela ' +
       p.installment_number + '/' + p.total_installments +
       ' no valor de R$ ' + total.toFixed(2).replace('.',',') +
       (juros > 0 ? ' (incluindo R$ ' + juros.toFixed(2).replace('.',',') + ' de juros)' : '') +
