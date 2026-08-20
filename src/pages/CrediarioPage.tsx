@@ -9,6 +9,9 @@ import {
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
 import { abrirDocumentoImprimivel } from '../utils/printDoc';
+import { computeTier, TIER_STYLES, type Tier, type ParcelaRanking } from '../utils/clienteRanking';
+
+const CINCO_ANOS_MS = 5 * 365.25 * 24 * 60 * 60 * 1000;
 
 async function hashPassword(password: string): Promise<string> {
   if (!password) return "";
@@ -25,6 +28,14 @@ interface Parcela {
   paid_at?: string; paid_amount?: number; status: string;
   customer_name?: string; customer_id?: string; whatsapp?: string;
   total_installments?: number; sale_id?: string; payment_method?: string;
+  arquivado?: boolean;
+}
+
+interface CrediarioResumo {
+  id: string; customer_id: string; customer_name: string; total_amount: number;
+  negativado: boolean; negativado_em?: string | null;
+  valorEmAtraso: number; qtdEmAtraso: number; ultimaParcelaVencimento: string | null;
+  tier: Tier;
 }
 
 interface CobrancaLog {
@@ -67,6 +78,9 @@ export default function CrediarioPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
   const [cobrancaLogs, setCobrancaLogs] = useState<Record<string, CobrancaLog>>({});
+  const [crediariosResumo, setCrediariosResumo] = useState<CrediarioResumo[]>([]);
+  const [aba, setAba] = useState<'parcelas'|'negativacao'|'arquivo'>('parcelas');
+  const [marcandoNegativado, setMarcandoNegativado] = useState<Set<string>>(new Set());
   const [saving, setSaving]     = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedParcela, setSelectedParcela] = useState<Parcela | null>(null);
@@ -85,7 +99,7 @@ export default function CrediarioPage() {
     setLoading(true);
     const creds = await fetchAllRows<any>((from, to) => supabase
       .from('crediario')
-      .select('id, customer_id, customer_name, total_amount, installments, sale_id, status, parcelas:crediario_parcelas(*)')
+      .select('id, customer_id, customer_name, total_amount, installments, sale_id, status, negativado, negativado_em, parcelas:crediario_parcelas(*)')
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelado')
       .range(from, to));
@@ -109,10 +123,41 @@ export default function CrediarioPage() {
       .range(from, to));
     const custMap: Record<string, any> = {};
     (custs || []).forEach((c: any) => { custMap[c.id] = c; });
+
+    // Tier (Ouro/Prata/Bronze) por cliente, considerando TODOS os carnes dele —
+    // mesma logica usada em ClientesPage, para o cliente aparecer com a mesma
+    // classificacao em ambas as telas.
+    const parcelasPorCliente: Record<string, ParcelaRanking[]> = {};
+    (creds || []).forEach((cr: any) => {
+      if (!cr.customer_id) return;
+      if (!parcelasPorCliente[cr.customer_id]) parcelasPorCliente[cr.customer_id] = [];
+      (cr.parcelas || []).forEach((p: any) => {
+        parcelasPorCliente[cr.customer_id].push({ due_date: p.due_date, status: p.status, paid_at: p.paid_at });
+      });
+    });
+    const tierPorCliente: Record<string, Tier> = {};
+    Object.keys(parcelasPorCliente).forEach(cid => { tierPorCliente[cid] = computeTier(parcelasPorCliente[cid]); });
+
+    const hojeMs = Date.now();
     const lista: Parcela[] = [];
+    const resumoCreds: CrediarioResumo[] = [];
     (creds || []).forEach((cr: any) => {
       const nP = cr.installments || 1;
-      (cr.parcelas || []).forEach((p: any) => {
+      const parcelasCr = cr.parcelas || [];
+      const vencimentos = parcelasCr.map((p: any) => p.due_date).filter(Boolean).sort();
+      const ultimaParcelaVencimento = vencimentos.length > 0 ? vencimentos[vencimentos.length - 1] : null;
+      const arquivado = !!ultimaParcelaVencimento && (hojeMs - new Date(ultimaParcelaVencimento + 'T00:00:00').getTime()) > CINCO_ANOS_MS;
+
+      const emAtraso = parcelasCr.filter((p: any) => p.status !== 'pago' && p.due_date && new Date(p.due_date + 'T00:00:00').getTime() < hojeMs);
+      resumoCreds.push({
+        id: cr.id, customer_id: cr.customer_id, customer_name: cr.customer_name,
+        total_amount: cr.total_amount, negativado: !!cr.negativado, negativado_em: cr.negativado_em,
+        valorEmAtraso: emAtraso.reduce((s: number, p: any) => s + p.amount, 0),
+        qtdEmAtraso: emAtraso.length, ultimaParcelaVencimento,
+        tier: tierPorCliente[cr.customer_id] || null,
+      });
+
+      parcelasCr.forEach((p: any) => {
         lista.push({
           ...p,
           customer_name: cr.customer_name,
@@ -120,6 +165,7 @@ export default function CrediarioPage() {
           whatsapp: custMap[cr.customer_id]?.whatsapp || custMap[cr.customer_id]?.phone || '',
           total_installments: nP,
           sale_id: cr.sale_id,
+          arquivado,
         });
       });
     });
@@ -129,6 +175,7 @@ export default function CrediarioPage() {
       return a.due_date.localeCompare(b.due_date);
     });
     setParcelas(lista);
+    setCrediariosResumo(resumoCreds);
 
     // Carrega o historico de cobrancas (automaticas + manuais) referentes a
     // parcelas de crediario, para mostrar na coluna "Cobranca" da tabela.
@@ -154,12 +201,37 @@ export default function CrediarioPage() {
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
 
+  // Marca ou desmarca um carne como negativado (enviado ao Serasa). Decisao
+  // manual do Carlos, cliente a cliente — o sistema so ajuda a identificar
+  // quem esta em atraso e mostra o historico (Ouro/Prata/Bronze) para apoiar
+  // essa decisao, nunca envia nada automaticamente.
+  const toggleNegativado = async (cred: CrediarioResumo) => {
+    if (marcandoNegativado.has(cred.id)) return;
+    const novoValor = !cred.negativado;
+    setMarcandoNegativado(s => new Set(s).add(cred.id));
+    try {
+      const { error } = await supabase.from('crediario').update({
+        negativado: novoValor,
+        negativado_em: novoValor ? new Date().toISOString() : null,
+      }).eq('id', cred.id);
+      if (error) throw error;
+      setCrediariosResumo(list => list.map(c => c.id === cred.id ? { ...c, negativado: novoValor, negativado_em: novoValor ? new Date().toISOString() : null } : c));
+      toast.success(novoValor ? 'Marcado como negativado' : 'Desmarcado');
+    } catch (e: any) {
+      toast.error('Erro ao atualizar: ' + (e.message || e));
+    } finally {
+      setMarcandoNegativado(s => { const n = new Set(s); n.delete(cred.id); return n; });
+    }
+  };
+
+
   const hoje = new Date().toISOString().split('T')[0];
   const em5dias = new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0];
   const menos5dias = new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0];
 
   const filtered = useMemo(() => {
     return parcelas.filter(p => {
+      if (p.arquivado) return false; // carnes com 5+ anos ficam so na aba "Arquivo"
       if (search.trim() && !p.customer_name?.toLowerCase().includes(search.toLowerCase())) return false;
       if (statusFilter === 'vencida' && (p.status === 'pago' || !p.due_date || p.due_date >= hoje)) return false;
       if (statusFilter === 'aberta' && p.status !== 'pendente') return false;
@@ -174,8 +246,8 @@ export default function CrediarioPage() {
     });
   }, [parcelas, search, statusFilter, janelaFilter, dateFrom, dateTo, hoje, em5dias, menos5dias]);
 
-  const totalAberto = parcelas.filter(p => p.status !== 'pago').reduce((s, p) => s + p.amount, 0);
-  const totalVencido = parcelas.filter(p => p.status !== 'pago' && p.due_date && p.due_date < hoje).reduce((s, p) => s + p.amount, 0);
+  const totalAberto = parcelas.filter(p => p.status !== 'pago' && !p.arquivado).reduce((s, p) => s + p.amount, 0);
+  const totalVencido = parcelas.filter(p => p.status !== 'pago' && !p.arquivado && p.due_date && p.due_date < hoje).reduce((s, p) => s + p.amount, 0);
   const totalRecebidoMes = parcelas.filter(p => p.status === 'pago' && p.paid_at && p.paid_at.startsWith(new Date().toISOString().slice(0,7))).reduce((s, p) => s + (p.paid_amount || p.amount), 0);
 
   const imprimirReciboParcial = (p: Parcela, pago: number, operador: string) => {
@@ -681,6 +753,13 @@ export default function CrediarioPage() {
         </div>
       </div>
 
+      <div style={{ display:'flex', gap:0, marginBottom:20, borderBottom:'2px solid rgba(255,255,255,.1)' }}>
+        <button onClick={()=>setAba('parcelas')} style={{ padding:'10px 20px', border:'none', cursor:'pointer', fontWeight:600, fontSize:13, background: aba==='parcelas'?'#6366f1':'transparent', color: aba==='parcelas'?'white':'rgba(255,255,255,.5)', borderRadius:'6px 6px 0 0' }}>Parcelas</button>
+        <button onClick={()=>setAba('negativacao')} style={{ padding:'10px 20px', border:'none', cursor:'pointer', fontWeight:600, fontSize:13, background: aba==='negativacao'?'#6366f1':'transparent', color: aba==='negativacao'?'white':'rgba(255,255,255,.5)', borderRadius:'6px 6px 0 0' }}>Análise p/ Negativação</button>
+        <button onClick={()=>setAba('arquivo')} style={{ padding:'10px 20px', border:'none', cursor:'pointer', fontWeight:600, fontSize:13, background: aba==='arquivo'?'#6366f1':'transparent', color: aba==='arquivo'?'white':'rgba(255,255,255,.5)', borderRadius:'6px 6px 0 0' }}>Arquivo (5+ anos)</button>
+      </div>
+
+      {aba === 'parcelas' && (<>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:24 }}>
         <div className="card" style={{ padding:20, borderTop:'3px solid #6366f1' }}>
           <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:4 }}>Total em Aberto</div>
@@ -889,6 +968,111 @@ export default function CrediarioPage() {
      </div>
           </div>
         )}
+      </>)}
+
+      {aba === 'negativacao' && (
+        <div className="card" style={{ padding:24 }}>
+          <h3 style={{ fontSize:15, fontWeight:700, marginBottom:6 }}>Carnês com parcelas em atraso</h3>
+          <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:18 }}>
+            Use o histórico (Ouro/Prata/Bronze) para decidir quem realmente enviar ao Serasa — clientes que nunca atrasaram antes podem merecer uma conversa antes de negativar.
+          </p>
+          {(() => {
+            const candidatos = crediariosResumo
+              .filter(c => c.qtdEmAtraso > 0 && !parcelas.find(p => p.crediario_id === c.id && p.arquivado))
+              .sort((a,b) => b.valorEmAtraso - a.valorEmAtraso);
+            if (candidatos.length === 0) return <p style={{ textAlign:'center', padding:32, color:'var(--text-muted)' }}>Nenhum carnê com parcela em atraso no momento. 🎉</p>;
+            return (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <th style={{textAlign:'left'}}>Cliente</th>
+                    <th style={{textAlign:'center'}}>Histórico</th>
+                    <th style={{textAlign:'right'}}>Valor em Atraso</th>
+                    <th style={{textAlign:'center'}}>Parcelas</th>
+                    <th style={{textAlign:'center'}}>Situação</th>
+                    <th></th>
+                  </tr></thead>
+                  <tbody>
+                    {candidatos.map(c => (
+                      <tr key={c.id}>
+                        <td style={{ fontWeight:600 }}>{c.customer_name}</td>
+                        <td style={{ textAlign:'center' }}>
+                          {c.tier ? (
+                            <span style={{ fontSize:11, fontWeight:700, padding:'2px 9px', borderRadius:10, background: TIER_STYLES[c.tier].bg, color: TIER_STYLES[c.tier].color }}>
+                              {TIER_STYLES[c.tier].label}
+                            </span>
+                          ) : <span style={{ fontSize:11, color:'var(--text-muted)' }}>—</span>}
+                        </td>
+                        <td style={{ textAlign:'right', fontWeight:700, color:'#f87171' }}>{formatBRL(c.valorEmAtraso)}</td>
+                        <td style={{ textAlign:'center' }}>{c.qtdEmAtraso}</td>
+                        <td style={{ textAlign:'center' }}>
+                          {c.negativado ? (
+                            <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(239,68,68,.15)', color:'#ef4444' }}>
+                              NEGATIVADO {c.negativado_em ? 'em ' + new Date(c.negativado_em).toLocaleDateString('pt-BR') : ''}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(251,191,36,.15)', color:'#fbbf24' }}>Em análise</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign:'right' }}>
+                          <button
+                            onClick={() => toggleNegativado(c)}
+                            disabled={marcandoNegativado.has(c.id)}
+                            className="btn"
+                            style={{ fontSize:12, padding:'6px 12px',
+                              background: c.negativado ? 'rgba(148,163,184,.15)' : 'rgba(239,68,68,.15)',
+                              color: c.negativado ? 'var(--text-muted)' : '#ef4444' }}>
+                            {marcandoNegativado.has(c.id) ? '...' : c.negativado ? 'Desmarcar' : 'Marcar como negativado'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {aba === 'arquivo' && (
+        <div className="card" style={{ padding:24 }}>
+          <h3 style={{ fontSize:15, fontWeight:700, marginBottom:6 }}>Carnês com mais de 5 anos</h3>
+          <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:18 }}>
+            Dívidas prescritas (mais de 5 anos desde a última parcela) — não podem mais ser negativadas, mas ficam aqui só para consulta. Não entram na lista geral de parcelas nem nos totais do topo.
+          </p>
+          {(() => {
+            const arquivados = crediariosResumo.filter(c => parcelas.find(p => p.crediario_id === c.id && p.arquivado));
+            if (arquivados.length === 0) return <p style={{ textAlign:'center', padding:32, color:'var(--text-muted)' }}>Nenhum carnê arquivado ainda.</p>;
+            return (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <th style={{textAlign:'left'}}>Cliente</th>
+                    <th style={{textAlign:'right'}}>Valor Total</th>
+                    <th style={{textAlign:'center'}}>Última Parcela</th>
+                    <th style={{textAlign:'center'}}>Status na época</th>
+                  </tr></thead>
+                  <tbody>
+                    {arquivados.map(c => (
+                      <tr key={c.id}>
+                        <td style={{ fontWeight:600 }}>{c.customer_name}</td>
+                        <td style={{ textAlign:'right' }}>{formatBRL(c.total_amount)}</td>
+                        <td style={{ textAlign:'center' }}>{c.ultimaParcelaVencimento ? new Date(c.ultimaParcelaVencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                        <td style={{ textAlign:'center' }}>
+                          <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(148,163,184,.15)', color:'var(--text-muted)' }}>
+                            {c.qtdEmAtraso > 0 ? 'Ficou em atraso — prescrito' : 'Quitado'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {renegoSummary && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>

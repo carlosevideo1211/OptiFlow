@@ -11,7 +11,9 @@ import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { formatCPF, maskCPF, maskPhone, isValidPhone } from '../utils/format';
 import type { Customer } from '../types/index';
+import { formatBRL } from '../types/index';
 import { norm } from '../utils/normalize';
+import { computeTier, TIER_STYLES, type ParcelaRanking } from '../utils/clienteRanking';
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -94,29 +96,15 @@ export default function ClientesPage() {
     });
     const nr: Record<string, string|null> = {};
     ids.forEach(id => {
-      const parcelas = (map[id] || []).map((s: string) => JSON.parse(s));
-      const pagas = parcelas.filter((p: any) => p.status === 'paga' || p.status === 'pago');
-      const vencidas = parcelas.filter((p: any) => p.status === 'vencida' || p.status === 'vencido');
-      const comAtraso = pagas.filter((p: any) => {
-        if (!p.due_date || !p.paid_at) return false;
-        return new Date(p.paid_at) > new Date(p.due_date);
-      }).length;
-      if (vencidas.length > 0) nr[id] = 'bronze';
-      else if (comAtraso > 0) nr[id] = 'prata';
-      else if (pagas.length > 0) nr[id] = 'ouro';
-      else nr[id] = null;
+      const parcelas = (map[id] || []).map((s: string) => JSON.parse(s)) as ParcelaRanking[];
+      nr[id] = computeTier(parcelas);
     });
     setRankings(nr);
   };
 
   const rankBadge = (tier: string|null) => {
-    if (!tier) return null;
-    const styles: Record<string, {bg: string, color: string, label: string}> = {
-      ouro:   { bg: 'rgba(234,179,8,.2)',  color: '#eab308', label: '★ Ouro' },
-      prata:  { bg: 'rgba(148,163,184,.2)', color: '#94a3b8', label: '● Prata' },
-      bronze: { bg: 'rgba(180,83,9,.2)',   color: '#b45309', label: '◆ Bronze' },
-    };
-    const s = styles[tier];
+    if (!tier || !(tier in TIER_STYLES)) return null;
+    const s = TIER_STYLES[tier as keyof typeof TIER_STYLES];
     return (
       <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:10,
         background: s.bg, color: s.color, marginLeft:6 }}>
@@ -176,8 +164,21 @@ export default function ClientesPage() {
     return list;
   }, [customers, search, cityFilter, dateFrom, dateTo, showInactive, showBirthMonth, search, cityFilter, dateFrom, dateTo]);
 
-  const openNew  = () => { setEditing(null); setViewing(null); setForm(emptyForm()); setShowModal(true); };
-  const openEdit = (c: Customer) => {
+  // Situacao de credito do cliente aberto no detalhe (item pedido pelo Carlos:
+  // avisar quando o cliente esta em atraso, e mostrar o selo Ouro/Prata/Bronze).
+  const viewingCredito = useMemo(() => {
+    const parcelas = (viewHist.cr || []).flatMap((cr: any) =>
+      (cr.crediario_parcelas || []).map((p: any) => ({ due_date: p.due_date, status: p.status, paid_at: p.paid_at, amount: p.amount }))
+    );
+    const tier = computeTier(parcelas);
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const emAberto = parcelas.filter((p: any) => p.status !== 'pago' && p.due_date && new Date(p.due_date+'T00:00:00') < hoje);
+    const valorEmAtraso = emAberto.reduce((s: number, p: any) => s + (p.amount||0), 0);
+    return { tier, valorEmAtraso, qtdEmAtraso: emAberto.length };
+  }, [viewHist.cr]);
+
+
+  const openNew  = () => { setEditing(null); setViewing(null); setForm(emptyForm()); setShowModal(true); };  const openEdit = (c: Customer) => {
     setViewing(null); setEditing(c);
     setForm({ name:c.name, cpf:c.cpf||'', phone:c.phone||'', whatsapp:c.whatsapp||'',
               email:c.email||'', birth_date:c.birth_date||'', address:c.address||'',
@@ -425,7 +426,7 @@ export default function ClientesPage() {
                             {c.name.slice(0,2).toUpperCase()}
                           </div>
                         )}
-                        <span style={{ fontWeight:500 }}>{c.name}</span>
+                        <span style={{ fontWeight:500, color: rankings[c.id]==='bronze' ? '#f87171' : undefined }}>{c.name}</span>
                         {rankBadge(rankings[c.id] || null)}
                       </div>
                     </td>
@@ -493,8 +494,22 @@ export default function ClientesPage() {
                 {/* Dados lado esquerdo */}
                 <div style={{ flex:1 }}>
                   <div style={{ marginBottom:16 }}>
-                    <div style={{ fontSize:20, fontWeight:700 }}>{viewing.name}</div>
+                    <div style={{ fontSize:20, fontWeight:700, color: viewingCredito.tier==='bronze' ? '#f87171' : undefined, display:'flex', alignItems:'center', gap:8 }}>
+                      {viewing.name}
+                      {viewingCredito.tier && (
+                        <span style={{ fontSize:11, fontWeight:700, padding:'2px 9px', borderRadius:10,
+                          background: TIER_STYLES[viewingCredito.tier].bg, color: TIER_STYLES[viewingCredito.tier].color }}>
+                          {TIER_STYLES[viewingCredito.tier].label}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize:13, color:'var(--text-muted)', marginTop:4 }}>{viewing.email||'Sem e-mail'}</div>
+                    {viewingCredito.qtdEmAtraso > 0 && (
+                      <div style={{ marginTop:10, padding:'10px 14px', background:'rgba(248,113,113,.1)', border:'1px solid rgba(248,113,113,.3)', borderRadius:8 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:'#f87171' }}>⚠️ Atenção, este cliente possui parcelas de crediário em atraso.</div>
+                        <div style={{ fontSize:13, color:'#f87171', marginTop:2 }}>Valor em atraso: <b>{formatBRL(viewingCredito.valorEmAtraso)}</b> ({viewingCredito.qtdEmAtraso} parcela{viewingCredito.qtdEmAtraso>1?'s':''})</div>
+                      </div>
+                    )}
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
                     {[
