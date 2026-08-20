@@ -9,15 +9,23 @@ const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
 
 // Limite total por execucao, somando TODOS os tenants juntos - protege
 // contra o timeout de 150s do Supabase.
-const LIMITE_GLOBAL_POR_EXECUCAO = 15;
+const LIMITE_GLOBAL_POR_EXECUCAO = 8;
 
 // Limite por tenant, DENTRO de cada execucao - impede que um tenant com
 // fila grande (ex: muitas parcelas atrasadas antigas) consuma sozinho
 // toda a cota global e deixe os outros tenants sem receber nada naquele
 // ciclo de 15 minutos.
-const LIMITE_POR_TENANT_POR_EXECUCAO = 5;
+const LIMITE_POR_TENANT_POR_EXECUCAO = 3;
 
-function delayAleatorio(minMs = 2000, maxMs = 4000): Promise<void> {
+// Limite total por DIA, por tenant, somando todas as execucoes do cron
+// (que roda a cada 15 min, ate 96x por dia). Sem isso, o limite por
+// execucao sozinho ainda permite um volume alto ao longo do dia inteiro,
+// o que pode fazer o WhatsApp identificar o numero como automatizado e
+// bloquear — ja aconteceu antes. Numero conservador, pensado para uma
+// unica otica de porte pequeno/medio.
+const LIMITE_DIARIO_POR_TENANT = 30;
+
+function delayAleatorio(minMs = 5000, maxMs = 10000): Promise<void> {
   const ms = minMs + Math.random() * (maxMs - minMs);
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -107,6 +115,13 @@ async function podeReenviar(tenantId: string, triggerType: string, referenceId: 
   return diasPassados >= intervaloDias;
 }
 
+async function enviosHojeDoTenant(tenantId: string, inicioHojeIso: string): Promise<number> {
+  const rows = await supabaseFetch(
+    `whatsapp_triggers_log?tenant_id=eq.${tenantId}&success=eq.true&sent_at=gte.${inicioHojeIso}&select=id`
+  );
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
 function fmtData(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString("pt-BR");
 }
@@ -141,6 +156,15 @@ serve(async (req) => {
       const instance = tenant.whatsapp_instance_name;
       const loja = tenant.company_name || "sua ótica";
 
+      // Checa o limite diario deste tenant ANTES de comecar a processar seus
+      // gatilhos — protege mesmo quando o cron ja rodou varias vezes hoje.
+      const inicioHoje = new Date(); inicioHoje.setHours(0, 0, 0, 0);
+      const jaEnviouHoje = await enviosHojeDoTenant(tenant.id, inicioHoje.toISOString());
+      if (jaEnviouHoje >= LIMITE_DIARIO_POR_TENANT) {
+        if (!resultado.tenants_limitados.includes(tenant.id)) resultado.tenants_limitados.push(tenant.id + ':limite_diario');
+        continue;
+      }
+
       // Contador PRÓPRIO deste tenant, dentro desta execução.
       let enviosTenantAtual = 0;
       function podeEnviarMais(): boolean {
@@ -150,6 +174,10 @@ serve(async (req) => {
         }
         if (enviosTenantAtual >= LIMITE_POR_TENANT_POR_EXECUCAO) {
           if (!resultado.tenants_limitados.includes(tenant.id)) resultado.tenants_limitados.push(tenant.id);
+          return false;
+        }
+        if (jaEnviouHoje + enviosTenantAtual >= LIMITE_DIARIO_POR_TENANT) {
+          if (!resultado.tenants_limitados.includes(tenant.id + ':limite_diario')) resultado.tenants_limitados.push(tenant.id + ':limite_diario');
           return false;
         }
         return true;
