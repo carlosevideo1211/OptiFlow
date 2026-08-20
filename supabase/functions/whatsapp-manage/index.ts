@@ -139,6 +139,30 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (action === "log_manual_local") {
+      // Registra que o usuario clicou no botao de abrir o WhatsApp Web/app
+      // manualmente (nao via robo). O sistema nao tem como confirmar que a
+      // mensagem foi de fato enviada dentro do WhatsApp, mas registra a
+      // intencao com data, que e o que foi pedido: ter um historico de quando
+      // essa cobranca "local" foi feita.
+      if (!body.parcela_id) return json({ ok: false, error: "parcela_id obrigatorio" }, 400);
+      const numero = String(body.phone || "").replace(/\D/g, "");
+      await supabaseFetch("whatsapp_triggers_log", {
+        method: "POST",
+        headers: { Prefer: "resolution=ignore-duplicates" },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          trigger_type: "cobranca_manual_local",
+          reference_id: String(body.parcela_id),
+          customer_id: body.customer_id || null,
+          phone: numero ? (numero.startsWith("55") ? numero : `55${numero}`) : null,
+          success: true,
+          error_message: null,
+        }),
+      });
+      return json({ ok: true });
+    }
+
     // A partir daqui, só o Dono (master) pode alterar a conexão
     if (profile.role !== "master") {
       return json({ error: "apenas o dono da ótica pode gerenciar o WhatsApp" }, 403);

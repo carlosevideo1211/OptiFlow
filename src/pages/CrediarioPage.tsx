@@ -47,7 +47,8 @@ const JANELA_LABELS: Record<string, string> = {
   vencimento_dia: 'Automatica (dia do vencimento)',
   vencimento_atraso5: 'Automatica (+5 dias)',
   cobranca_atraso: 'Automatica (atraso 30+ dias)',
-  cobranca_manual: 'Manual',
+  cobranca_manual: 'Manual (via sistema)',
+  cobranca_manual_local: 'Manual (WhatsApp pessoal)',
 };
 
 const JUROS_DIA = 0.07;
@@ -181,7 +182,7 @@ export default function CrediarioPage() {
 
     // Carrega o historico de cobrancas (automaticas + manuais) referentes a
     // parcelas de crediario, para mostrar na coluna "Cobranca" da tabela.
-    const tiposCobranca = ['vencimento', 'vencimento_dia', 'vencimento_atraso5', 'cobranca_atraso', 'cobranca_manual'];
+    const tiposCobranca = ['vencimento', 'vencimento_dia', 'vencimento_atraso5', 'cobranca_atraso', 'cobranca_manual', 'cobranca_manual_local'];
     const { data: logs } = await supabase
       .from('whatsapp_triggers_log')
       .select('reference_id, trigger_type, sent_at, success, error_message')
@@ -344,7 +345,7 @@ export default function CrediarioPage() {
 
 ;
 
-  const abrirWhatsApp = (p: Parcela) => {
+  const abrirWhatsApp = async (p: Parcela) => {
     const num = (p.whatsapp || '').replace(/\D/g, '');
     if (!num) { toast.error('Cliente sem WhatsApp cadastrado'); return; }
     const juros = calcJuros(p);
@@ -358,6 +359,17 @@ export default function CrediarioPage() {
       ' com vencimento em ' + venc + '. Qualquer duvida estamos a disposicao!'
     );
     window.open('https://wa.me/55' + num + '?text=' + msg, '_blank');
+
+    // Registra no historico de cobrancas, ja que o sistema nao tem como saber se
+    // o WhatsApp Web/app realmente foi enviado apos abrir — mas o pedido do Carlos
+    // foi justamente ter esse registro com data assim que ele usa esse botao.
+    const agora = new Date().toISOString();
+    const { data, error } = await supabase.functions.invoke('whatsapp-manage', {
+      body: { action: 'log_manual_local', parcela_id: p.id, customer_id: p.customer_id, phone: num },
+    });
+    if (!error && data?.ok) {
+      setCobrancaLogs(m => ({ ...m, [p.id]: { trigger_type: 'cobranca_manual_local', sent_at: agora, success: true } }));
+    }
   };
 
   const toggleSelecionada = (id: string) => {
