@@ -35,7 +35,7 @@ interface CrediarioResumo {
   id: string; customer_id: string; customer_name: string; total_amount: number;
   negativado: boolean; negativado_em?: string | null;
   valorEmAtraso: number; qtdEmAtraso: number; ultimaParcelaVencimento: string | null;
-  tier: Tier;
+  tier: Tier; created_at?: string;
 }
 
 interface CobrancaLog {
@@ -81,6 +81,7 @@ export default function CrediarioPage() {
   const [crediariosResumo, setCrediariosResumo] = useState<CrediarioResumo[]>([]);
   const [aba, setAba] = useState<'parcelas'|'negativacao'|'arquivo'>('parcelas');
   const [marcandoNegativado, setMarcandoNegativado] = useState<Set<string>>(new Set());
+  const [expandidoNegativacao, setExpandidoNegativacao] = useState<Set<string>>(new Set());
   const [saving, setSaving]     = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedParcela, setSelectedParcela] = useState<Parcela | null>(null);
@@ -99,7 +100,7 @@ export default function CrediarioPage() {
     setLoading(true);
     const creds = await fetchAllRows<any>((from, to) => supabase
       .from('crediario')
-      .select('id, customer_id, customer_name, total_amount, installments, sale_id, status, negativado, negativado_em, parcelas:crediario_parcelas(*)')
+      .select('id, customer_id, customer_name, total_amount, installments, sale_id, status, negativado, negativado_em, created_at, parcelas:crediario_parcelas(*)')
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelado')
       .range(from, to));
@@ -155,6 +156,7 @@ export default function CrediarioPage() {
         valorEmAtraso: emAtraso.reduce((s: number, p: any) => s + p.amount, 0),
         qtdEmAtraso: emAtraso.length, ultimaParcelaVencimento,
         tier: tierPorCliente[cr.customer_id] || null,
+        created_at: cr.created_at,
       });
 
       parcelasCr.forEach((p: any) => {
@@ -985,6 +987,7 @@ export default function CrediarioPage() {
               <div className="table-wrap">
                 <table>
                   <thead><tr>
+                    <th style={{width:30}}></th>
                     <th style={{textAlign:'left'}}>Cliente</th>
                     <th style={{textAlign:'center'}}>Histórico</th>
                     <th style={{textAlign:'right'}}>Valor em Atraso</th>
@@ -993,8 +996,20 @@ export default function CrediarioPage() {
                     <th></th>
                   </tr></thead>
                   <tbody>
-                    {candidatos.map(c => (
+                    {candidatos.map(c => {
+                      const expandido = expandidoNegativacao.has(c.id);
+                      const parcelasDoCarne = parcelas.filter(p => p.crediario_id === c.id).sort((a,b) => a.installment_number - b.installment_number);
+                      const totalSemJuros = parcelasDoCarne.reduce((s,p) => s + p.amount, 0);
+                      const totalComJuros = parcelasDoCarne.reduce((s,p) => s + p.amount + (p.status !== 'pago' ? calcJuros(p) : 0), 0);
+                      return (
+                      <>
                       <tr key={c.id}>
+                        <td style={{ textAlign:'center' }}>
+                          <button onClick={() => setExpandidoNegativacao(s => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })}
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', fontSize:13 }}>
+                            {expandido ? '▾' : '▸'}
+                          </button>
+                        </td>
                         <td style={{ fontWeight:600 }}>{c.customer_name}</td>
                         <td style={{ textAlign:'center' }}>
                           {c.tier ? (
@@ -1026,7 +1041,54 @@ export default function CrediarioPage() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      {expandido && (
+                        <tr>
+                          <td colSpan={7} style={{ padding:0, background:'rgba(255,255,255,.02)' }}>
+                            <div style={{ padding:'14px 20px 18px 46px' }}>
+                              <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:10 }}>
+                                Carnê aberto em: <b style={{color:'var(--text)'}}>{c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '—'}</b>
+                              </div>
+                              <table style={{ fontSize:12 }}>
+                                <thead><tr>
+                                  <th style={{textAlign:'center'}}>Parcela</th>
+                                  <th style={{textAlign:'center'}}>Vencimento</th>
+                                  <th style={{textAlign:'right'}}>Valor</th>
+                                  <th style={{textAlign:'right'}}>Juros</th>
+                                  <th style={{textAlign:'right'}}>Total c/ Juros</th>
+                                  <th style={{textAlign:'center'}}>Status</th>
+                                </tr></thead>
+                                <tbody>
+                                  {parcelasDoCarne.map(p => {
+                                    const juros = p.status !== 'pago' ? calcJuros(p) : 0;
+                                    const atrasada = p.status !== 'pago' && p.due_date && p.due_date < hoje;
+                                    return (
+                                      <tr key={p.id}>
+                                        <td style={{ textAlign:'center' }}>{p.installment_number}/{p.total_installments}</td>
+                                        <td style={{ textAlign:'center', color: atrasada ? '#f87171' : undefined }}>{p.due_date ? new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                                        <td style={{ textAlign:'right' }}>{formatBRL(p.amount)}</td>
+                                        <td style={{ textAlign:'right', color: juros > 0 ? '#f87171' : 'var(--text-muted)' }}>{juros > 0 ? formatBRL(juros) : '—'}</td>
+                                        <td style={{ textAlign:'right', fontWeight:700 }}>{formatBRL(p.amount + juros)}</td>
+                                        <td style={{ textAlign:'center' }}>
+                                          <span style={{ fontSize:10, fontWeight:700, padding:'1px 8px', borderRadius:20, background: p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(251,191,36,.15)', color: p.status==='pago'?'#22c55e':atrasada?'#f87171':'#fbbf24' }}>
+                                            {p.status==='pago'?'Paga':atrasada?'Vencida':'Aberta'}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                              <div style={{ display:'flex', gap:24, marginTop:12, fontSize:12 }}>
+                                <div>Total sem juros: <b>{formatBRL(totalSemJuros)}</b></div>
+                                <div>Total com juros: <b style={{color:'#f87171'}}>{formatBRL(totalComJuros)}</b></div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
