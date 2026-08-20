@@ -119,10 +119,13 @@ serve(async (req) => {
 
       // Registra no mesmo log das cobrancas automaticas, marcado como manual,
       // para a tela de controle mostrar um historico unico por parcela.
+      // Sem ignore-duplicates, pelo mesmo motivo do log_manual_local abaixo:
+      // cada clique deve gerar um novo registro, mesmo que ja exista um
+      // registro anterior (automatico ou manual) para essa mesma parcela.
       if (body.parcela_id) {
         await supabaseFetch("whatsapp_triggers_log", {
           method: "POST",
-          headers: { Prefer: "resolution=ignore-duplicates" },
+          headers: { Prefer: "return=representation" },
           body: JSON.stringify({
             tenant_id: tenant.id,
             trigger_type: "cobranca_manual",
@@ -145,11 +148,18 @@ serve(async (req) => {
       // mensagem foi de fato enviada dentro do WhatsApp, mas registra a
       // intencao com data, que e o que foi pedido: ter um historico de quando
       // essa cobranca "local" foi feita.
+      //
+      // IMPORTANTE: nao usa "ignore-duplicates" aqui, ao contrario do robo —
+      // cada clique deve sempre criar um novo registro, mesmo que ja exista
+      // um registro anterior (automatico ou manual) para a mesma parcela.
+      // Usar ignore-duplicates fazia o insert ser silenciosamente descartado
+      // quando ja havia uma tentativa automatica antiga para aquela parcela,
+      // deixando o botao "confirmar" na tela sem nunca ter sido salvo de fato.
       if (!body.parcela_id) return json({ ok: false, error: "parcela_id obrigatorio" }, 400);
       const numero = String(body.phone || "").replace(/\D/g, "");
-      await supabaseFetch("whatsapp_triggers_log", {
+      const logResult = await supabaseFetch("whatsapp_triggers_log", {
         method: "POST",
-        headers: { Prefer: "resolution=ignore-duplicates" },
+        headers: { Prefer: "return=representation" },
         body: JSON.stringify({
           tenant_id: tenant.id,
           trigger_type: "cobranca_manual_local",
@@ -160,6 +170,9 @@ serve(async (req) => {
           error_message: null,
         }),
       });
+      if (!Array.isArray(logResult) || logResult.length === 0) {
+        return json({ ok: false, error: "falha ao salvar no historico", detalhe: logResult }, 500);
+      }
       return json({ ok: true });
     }
 

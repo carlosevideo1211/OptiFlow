@@ -379,6 +379,8 @@ export default function CrediarioPage() {
     });
     if (!error && data?.ok) {
       setCobrancaLogs(m => ({ ...m, [p.id]: { trigger_type: 'cobranca_manual_local', sent_at: agora, success: true } }));
+    } else {
+      toast.error('WhatsApp aberto, mas não foi possível salvar no histórico. Tente marcar de novo mais tarde.');
     }
   };
 
