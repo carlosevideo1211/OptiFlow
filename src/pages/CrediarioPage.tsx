@@ -366,7 +366,7 @@ export default function CrediarioPage() {
       p.installment_number + '/' + p.total_installments +
       ' no valor de R$ ' + total.toFixed(2).replace('.',',') +
       (juros > 0 ? ' (incluindo R$ ' + juros.toFixed(2).replace('.',',') + ' de juros)' : '') +
-      ' com vencimento em ' + venc + '. Qualquer duvida estamos a disposicao!'
+      ' que vai vencer em ' + venc + '. Qualquer duvida estamos a disposicao!'
     );
     window.open('https://wa.me/55' + num + '?text=' + msg, '_blank');
 
