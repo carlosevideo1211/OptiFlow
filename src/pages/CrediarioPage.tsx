@@ -351,6 +351,7 @@ export default function CrediarioPage() {
     const juros = calcJuros(p);
     const total = p.amount + juros;
     const venc = p.due_date ? new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR') : '--';
+    const diasAtraso = p.due_date ? Math.floor((new Date(hoje+'T00:00:00').getTime() - new Date(p.due_date+'T00:00:00').getTime())/86400000) : 0;
 
     // Busca o nome da loja na hora (mesmo padrao ja usado nos outros documentos
     // impressos deste arquivo), para nao depender de um carregamento previo que
@@ -362,11 +363,17 @@ export default function CrediarioPage() {
     } catch (e) {}
 
     const msg = encodeURIComponent(
-      'Ola ' + p.customer_name + '! Aqui e da ' + nomeLoja + '. Passando para lembar sobre sua parcela ' +
-      p.installment_number + '/' + p.total_installments +
-      ' no valor de R$ ' + total.toFixed(2).replace('.',',') +
-      (juros > 0 ? ' (incluindo R$ ' + juros.toFixed(2).replace('.',',') + ' de juros)' : '') +
-      ' que vai vencer em ' + venc + '. Qualquer duvida estamos a disposicao!'
+      diasAtraso >= 30
+        ? 'Ola ' + p.customer_name + '! Aqui e da ' + nomeLoja + '. Identificamos que sua parcela ' +
+          p.installment_number + '/' + p.total_installments +
+          ' no valor de R$ ' + total.toFixed(2).replace('.',',') +
+          (juros > 0 ? ' (incluindo R$ ' + juros.toFixed(2).replace('.',',') + ' de juros)' : '') +
+          ', com vencimento em ' + venc + ', esta em atraso ha mais de 30 dias. Para evitar a inclusao do seu nome nos orgaos de protecao ao credito (SPC/Serasa), pedimos que regularize o pagamento em ate 5 dias. Caso ja tenha pago, desconsidere esta mensagem. Qualquer duvida ou para negociar, estamos a disposicao.'
+        : 'Ola ' + p.customer_name + '! Aqui e da ' + nomeLoja + '. Passando para lembar sobre sua parcela ' +
+          p.installment_number + '/' + p.total_installments +
+          ' no valor de R$ ' + total.toFixed(2).replace('.',',') +
+          (juros > 0 ? ' (incluindo R$ ' + juros.toFixed(2).replace('.',',') + ' de juros)' : '') +
+          ' que vai vencer em ' + venc + '. Qualquer duvida estamos a disposicao!'
     );
     window.open('https://wa.me/55' + num + '?text=' + msg, '_blank');
 
