@@ -83,6 +83,8 @@ export default function CrediarioPage() {
   const [aba, setAba] = useState<'parcelas'|'negativacao'|'arquivo'>('parcelas');
   const [marcandoNegativado, setMarcandoNegativado] = useState<Set<string>>(new Set());
   const [expandidoNegativacao, setExpandidoNegativacao] = useState<Set<string>>(new Set());
+  const [searchNegativacao, setSearchNegativacao] = useState('');
+  const [searchArquivo, setSearchArquivo] = useState('');
   const [saving, setSaving]     = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedParcela, setSelectedParcela] = useState<Parcela | null>(null);
@@ -1009,11 +1011,16 @@ export default function CrediarioPage() {
           <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:18 }}>
             Use o histórico (Ouro/Prata/Bronze) para decidir quem realmente enviar ao Serasa — clientes que nunca atrasaram antes podem merecer uma conversa antes de negativar.
           </p>
+          <div style={{ position:'relative', marginBottom:18, maxWidth:340 }}>
+            <Search size={15} style={{ position:'absolute', left:12, top:11, color:'var(--text-muted)' }}/>
+            <input className="form-input" style={{ paddingLeft:36 }} placeholder="Buscar cliente..." value={searchNegativacao} onChange={e=>setSearchNegativacao(e.target.value)}/>
+          </div>
           {(() => {
             const candidatos = crediariosResumo
               .filter(c => c.qtdEmAtraso > 0 && !parcelas.find(p => p.crediario_id === c.id && p.arquivado))
+              .filter(c => !searchNegativacao.trim() || c.customer_name?.toLowerCase().includes(searchNegativacao.toLowerCase()))
               .sort((a,b) => b.valorEmAtraso - a.valorEmAtraso);
-            if (candidatos.length === 0) return <p style={{ textAlign:'center', padding:32, color:'var(--text-muted)' }}>Nenhum carnê com parcela em atraso no momento. 🎉</p>;
+            if (candidatos.length === 0) return <p style={{ textAlign:'center', padding:32, color:'var(--text-muted)' }}>{searchNegativacao.trim() ? 'Nenhum cliente encontrado.' : 'Nenhum carnê com parcela em atraso no momento. 🎉'}</p>;
             return (
               <div className="table-wrap">
                 <table>
@@ -1134,9 +1141,15 @@ export default function CrediarioPage() {
           <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:18 }}>
             Dívidas prescritas (mais de 5 anos desde a última parcela) — não podem mais ser negativadas, mas ficam aqui só para consulta. Não entram na lista geral de parcelas nem nos totais do topo.
           </p>
+          <div style={{ position:'relative', marginBottom:18, maxWidth:340 }}>
+            <Search size={15} style={{ position:'absolute', left:12, top:11, color:'var(--text-muted)' }}/>
+            <input className="form-input" style={{ paddingLeft:36 }} placeholder="Buscar cliente..." value={searchArquivo} onChange={e=>setSearchArquivo(e.target.value)}/>
+          </div>
           {(() => {
-            const arquivados = crediariosResumo.filter(c => parcelas.find(p => p.crediario_id === c.id && p.arquivado));
-            if (arquivados.length === 0) return <p style={{ textAlign:'center', padding:32, color:'var(--text-muted)' }}>Nenhum carnê arquivado ainda.</p>;
+            const arquivados = crediariosResumo
+              .filter(c => parcelas.find(p => p.crediario_id === c.id && p.arquivado))
+              .filter(c => !searchArquivo.trim() || c.customer_name?.toLowerCase().includes(searchArquivo.toLowerCase()));
+            if (arquivados.length === 0) return <p style={{ textAlign:'center', padding:32, color:'var(--text-muted)' }}>{searchArquivo.trim() ? 'Nenhum cliente encontrado.' : 'Nenhum carnê arquivado ainda.'}</p>;
             return (
               <div className="table-wrap">
                 <table>
