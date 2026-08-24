@@ -1584,6 +1584,11 @@ export default function AtendimentoPage() {
                   <Field label="Tratamento"><FInput value={rxTratamento} onChange={setRxTratamento} /></Field>
                   <Field label="Retorno em"><FInput type="date" value={rxRetorno} onChange={setRxRetorno} /></Field>
                 </div>
+                <div style={{ marginTop: 12 }}>
+                  <Field label="Observações Gerais (mesmo campo da Anamnese)">
+                    <FTextarea value={anamneseObs} onChange={setAnamneseObs} rows={4} />
+                  </Field>
+                </div>
               </AccordionSection>
 
               <AccordionSection id="dx" label="DX" open={open.dx} toggle={toggle} order={secOrder('dx')} hidden={!secVisible('dx')}>
