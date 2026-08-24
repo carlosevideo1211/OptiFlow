@@ -156,6 +156,15 @@ export default function AdminPanelPage() {
     return d !== null && d <= 5;
   }).sort((a,b) => (diasRestantes(a.trial_end_date)||0) - (diasRestantes(b.trial_end_date)||0));
 
+  // Clientes ativos (pagamento manual via Pix) cujo ciclo de 30 dias esta vencendo
+  // ou ja venceu — o campo next_billing e gravado automaticamente quando o Carlos
+  // ativa um tenant manualmente, mas antes nada usava esse dado para avisar.
+  const alertasVencimento = tenants.filter(t => {
+    if (t.status !== 'ativo') return false;
+    const d = diasRestantes(t.next_billing);
+    return d !== null && d <= 5;
+  }).sort((a,b) => (diasRestantes(a.next_billing)||0) - (diasRestantes(b.next_billing)||0));
+
   const PLAN_PRICES_MAP: Record<string,number> = {
     trial:0, basico:97, profissional:147, clinica:197, lancamento:110, cancelado:0
   };
@@ -197,6 +206,14 @@ export default function AdminPanelPage() {
     base.setDate(base.getDate()+dias);
     const nova = base.toISOString().split('T')[0];
     await updateField(t.id, 'trial_end_date', nova);
+  };
+
+  // Confirma que o Pix manual do mes foi recebido e conferido — renova o ciclo
+  // por mais 30 dias a partir de hoje (nao a partir do vencimento antigo, para
+  // nao acumular atraso caso o cliente pague alguns dias depois do vencimento).
+  const confirmarPagamentoManual = async (t: Tenant) => {
+    const nb = new Date(); nb.setDate(nb.getDate()+30);
+    await updateField(t.id, 'next_billing', nb.toISOString().split('T')[0]);
   };
 
   const excluir = async (t: Tenant) => {
@@ -272,10 +289,34 @@ export default function AdminPanelPage() {
             <button onClick={()=>setShowAlerts(!showAlerts)}
               style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.2)', borderRadius:8, padding:'8px 14px', cursor:'pointer', color:'#f59e0b', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
               <Bell size={15}/> Alertas
-              {alertas.length > 0 && <span style={{ background:'#f87171', color:'white', borderRadius:10, padding:'1px 7px', fontSize:11, fontWeight:700 }}>{alertas.length}</span>}
+              {(alertas.length + alertasVencimento.length) > 0 && <span style={{ background:'#f87171', color:'white', borderRadius:10, padding:'1px 7px', fontSize:11, fontWeight:700 }}>{alertas.length + alertasVencimento.length}</span>}
             </button>
-            {showAlerts && alertas.length > 0 && (
-              <div style={{ position:'absolute', top:'110%', right:0, width:320, background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,.4)', zIndex:100, overflow:'hidden' }}>
+            {showAlerts && (alertas.length > 0 || alertasVencimento.length > 0) && (
+              <div style={{ position:'absolute', top:'110%', right:0, width:320, background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,.4)', zIndex:100, overflow:'hidden', maxHeight:400, overflowY:'auto' }}>
+                {alertasVencimento.length > 0 && (<>
+                  <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', fontWeight:700, fontSize:13 }}>Pagamento manual vencendo/vencido</div>
+                  {alertasVencimento.map(t => {
+                    const d = diasRestantes(t.next_billing);
+                    return (
+                      <div key={t.id} style={{ padding:'10px 16px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <div>
+                          <div style={{ fontWeight:600, fontSize:13 }}>{t.company_name}</div>
+                          <div style={{ fontSize:11, color:'var(--text-muted)' }}>{t.email}</div>
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
+                          <span style={{ fontSize:12, fontWeight:700, color: (d||0)<=0?'#f87171':(d||0)<=3?'#f59e0b':'#22c55e' }}>
+                            {(d||0)<=0 ? 'Vencido' : d+'d restantes'}
+                          </span>
+                          <button onClick={()=>{ confirmarPagamentoManual(t); setShowAlerts(false); }}
+                            style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:4, border:'1px solid rgba(34,197,94,.3)', background:'rgba(34,197,94,.1)', color:'#22c55e', cursor:'pointer' }}>
+                            Confirmar Pix
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>)}
+                {alertas.length > 0 && (<>
                 <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', fontWeight:700, fontSize:13 }}>Trials expirando em breve</div>
                 {alertas.map(t => {
                   const d = diasRestantes(t.trial_end_date);
@@ -297,6 +338,7 @@ export default function AdminPanelPage() {
                     </div>
                   );
                 })}
+                </>)}
               </div>
             )}
           </div>
