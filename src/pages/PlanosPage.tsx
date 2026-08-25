@@ -58,7 +58,18 @@ export default function PlanosPage() {
       const { data, error } = await supabase.functions.invoke('create-asaas-subscription', {
         body: { tenant_id: tenantId },
       });
-      if (error) throw error;
+      if (error) {
+        // O erro do supabase.functions.invoke() por padrao so traz uma
+        // mensagem generica ("Edge Function returned a non-2xx status
+        // code"). O motivo real vem no corpo da resposta (error.context),
+        // que precisamos ler manualmente.
+        let mensagemReal = error.message;
+        try {
+          const corpo = await error.context?.json?.();
+          if (corpo?.error) mensagemReal = corpo.error;
+        } catch { /* corpo nao era JSON, mantem a mensagem generica */ }
+        throw new Error(mensagemReal);
+      }
       if (data?.error) throw new Error(data.error);
       if (!data?.qr_payload) {
         console.warn('Autorizacao criada mas sem QR Code no formato esperado. Resposta crua:', data?.debug_raw);
