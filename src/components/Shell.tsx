@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Eye, ClipboardList, ShoppingCart, Calendar,
   Package, Boxes, CreditCard, TrendingUp, BarChart3, FileText,
-  BookUser, Settings, LogOut, Menu, X, Bell, Upload, ChevronRight
+  BookUser, Settings, LogOut, Menu, X, Bell, Upload, ChevronRight, Receipt
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -58,6 +58,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/cadastros',    label: 'Cadastros',    icon: BookUser, sub: false, roles: ['master','Gerente'] },
       { to: '/importacao',   label: 'Importar Dados', icon: Upload, sub: false, roles: ['master','Gerente'] },
+      { to: '/planos',       label: 'Assinatura',   icon: Receipt,  sub: false, roles: ['master','Gerente'] },
       { to: '/configuracao', label: 'Configuração', icon: Settings, sub: false, roles: ['master','Gerente'] },
     ]
   }
@@ -204,6 +205,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               <div style={{ height:'100%', borderRadius:2, width: Math.min(100,(14-trialDays)/14*100)+'%',
                 background: trialDays<=3?'#f87171':'#6366f1', transition:'width .3s' }}/>
             </div>
+            <button onClick={() => navigate('/planos')}
+              style={{ marginTop:8, width:'100%', padding:'6px 0', borderRadius:6, border:'none',
+                background: trialDays<=3?'#f87171':'#6366f1', color:'#fff', fontSize:11, fontWeight:700,
+                cursor:'pointer' }}>
+              Assinar agora
+            </button>
           </div>
         )}
 
