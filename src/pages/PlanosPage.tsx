@@ -105,7 +105,13 @@ export default function PlanosPage() {
   }, [assinatura?.qr_payload]);
 
   // Enquanto o modal esta aberto e ainda nao confirmou, verifica de tempos em
-  // tempos se o webhook da Asaas ja ativou a assinatura (tenants.status='ativo').
+  // tempos se o webhook da Asaas ja ativou ESSA autorizacao especifica.
+  // Importante: NAO basta olhar tenants.status==='ativo', porque um tenant
+  // que ja estava ativo por outro motivo (fora do fluxo de trial) faria essa
+  // checagem "confirmar" na hora, sem pagamento nenhum ter acontecido. O
+  // sinal confiavel e o webhook PIX_AUTOMATIC_RECURRING_AUTHORIZATION_ACTIVATED
+  // setando plan='assinatura_pix_automatico' e mantendo o asaas_authorization_id
+  // igual ao desta autorizacao que acabamos de criar.
   useEffect(() => {
     if (!assinatura || confirmado || !tenantId) return;
     let tentativas = 0;
@@ -114,9 +120,17 @@ export default function PlanosPage() {
 
     const verificar = async () => {
       if (cancelado) return;
-      const { data } = await supabase.from('tenants').select('status').eq('id', tenantId).maybeSingle();
+      const { data } = await supabase
+        .from('tenants')
+        .select('status, plan, asaas_authorization_id')
+        .eq('id', tenantId)
+        .maybeSingle();
       tentativas++;
-      if (data?.status === 'ativo') {
+      const ativouEssaAssinatura =
+        data?.plan === 'assinatura_pix_automatico' &&
+        data?.asaas_authorization_id === assinatura.authorization_id &&
+        data?.status === 'ativo';
+      if (ativouEssaAssinatura) {
         setConfirmado(true);
         setTimeout(() => navigate('/dashboard'), 2500);
         return;
