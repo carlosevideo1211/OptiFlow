@@ -1,120 +1,215 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import { Check, Zap, Star, Crown, Rocket, CreditCard, QrCode, X } from 'lucide-react';
+import { Check, QrCode, X, Loader2, CheckCircle, Copy, MessageCircle } from 'lucide-react';
 
-const STRIPE_PK = "pk_test_51TQwAn0MJPFm576O3btqmhbvkUaKB0K29sQed43MayJTXVnbUaJyzs4DjgnEvPerCLZ4X3mNYbA8VwBgUVOoKItK00iVcG2EoM";
-const PIX_KEY = "+55 92 99277-9106";
-const WHATSAPP = "5592992779106";
+const WHATSAPP = '5592992779106';
+const PLANO_VALOR = 99.99;
 
-const planos = [
-  { id: 'basico', nome: 'Basico', preco: 97, icon: Zap, color: '#6366f1', descricao: 'Ideal para oticas pequenas', price_id: 'price_basico',
-    features: ['Ate 2 usuarios','Clientes ilimitados','Ordens de Servico','Vendas / PDV','Crediario','Suporte por email'] },
-  { id: 'pro', nome: 'Pro', preco: 147, icon: Star, color: '#f59e0b', descricao: 'Para oticas em crescimento', price_id: 'price_pro', popular: true,
-    features: ['Ate 5 usuarios','Tudo do Basico','Relatorios avancados','NF-e','Controle de estoque','Suporte prioritario'] },
-  { id: 'premium', nome: 'Premium', preco: 197, icon: Crown, color: '#a855f7', descricao: 'Para redes de oticas', price_id: 'price_premium',
-    features: ['Usuarios ilimitados','Tudo do Pro','Multi-filial','API de integracao','Gerente de conta','Suporte 24/7'] },
-  { id: 'lancamento', nome: 'Lancamento', preco: 109.90, icon: Rocket, color: '#22c55e', descricao: 'Oferta por tempo limitado', price_id: 'price_lancamento', tag: 'MELHOR OFERTA',
-    features: ['Tudo do Premium incluso','Usuarios ilimitados','Suporte 24/7','Preco garantido por 12 meses','Apos 1 ano: R$ 197/mes','Cancele quando quiser'] },
+const FEATURES = [
+  'Usuarios ilimitados',
+  'Clientes ilimitados',
+  'Vendas / PDV',
+  'Ordens de Servico',
+  'Crediario',
+  'Controle de estoque',
+  'Relatorios avancados',
+  'Suporte por email',
 ];
 
-export default function PlanosPage() {
-  const { user, tenantId } = useAuth();
-  const [loading, setLoading] = useState<string | null>(null);
-  const [pixModal, setPixModal] = useState<{ plano: typeof planos[0] } | null>(null);
+// Carrega a mesma biblioteca de QR Code (qrcodejs via CDN) ja usada para
+// desenhar o Pix do carne (ver src/pages/VendasPage.tsx / printDoc.ts),
+// so que aqui direto na tela, sem precisar abrir uma janela de impressao.
+function carregarQrCodeLib(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).QRCode) { resolve(); return; }
+    const existente = document.getElementById('qrcodejs-lib') as HTMLScriptElement | null;
+    if (existente) { existente.addEventListener('load', () => resolve()); return; }
+    const script = document.createElement('script');
+    script.id = 'qrcodejs-lib';
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Falha ao carregar biblioteca de QR Code'));
+    document.head.appendChild(script);
+  });
+}
 
-  const assinarCartao = async (plano: typeof planos[0]) => {
+type AssinaturaResposta = {
+  authorization_id: string;
+  status: string;
+  qr_payload: string | null;
+  qr_image: string | null;
+};
+
+export default function PlanosPage() {
+  const { tenantId } = useAuth();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [assinatura, setAssinatura] = useState<AssinaturaResposta | null>(null);
+  const [confirmado, setConfirmado] = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
+
+  const assinarComPix = async () => {
     if (!tenantId) { toast.error('Faca login primeiro'); return; }
-    setLoading(plano.id + '_cartao');
+    setLoading(true);
     try {
-      const { loadStripe } = await import('@stripe/stripe-js');
-      const stripe = await loadStripe(STRIPE_PK);
-      if (!stripe) throw new Error('Stripe nao carregou');
-      const { data } = await supabase.functions.invoke('create-checkout', {
-        body: { price_id: plano.price_id, tenant_id: tenantId, plan: plano.id, email: user?.email },
+      const { data, error } = await supabase.functions.invoke('create-asaas-subscription', {
+        body: { tenant_id: tenantId },
       });
-      if (data?.session_url) window.location.href = data.session_url;
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (!data?.qr_payload) {
+        console.warn('Autorizacao criada mas sem QR Code no formato esperado. Resposta crua:', data?.debug_raw);
+        toast.error('Assinatura criada, mas nao conseguimos gerar o QR Code automaticamente. Entre em contato com o suporte informando o codigo: ' + data?.authorization_id);
+        return;
+      }
+      setAssinatura(data);
+      setConfirmado(false);
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao iniciar pagamento');
-    } finally { setLoading(null); }
+      const msg = e?.message || 'Erro ao iniciar assinatura';
+      toast.error(msg, msg.includes('CPF/CNPJ') ? { duration: 7000 } : undefined);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const enviarComprovante = (plano: typeof planos[0]) => {
-    const valor = plano.preco.toFixed(2).replace('.', ',');
-    const msg = encodeURIComponent(`Ola! Realizei o pagamento via Pix do plano ${plano.nome} (R$ ${valor}/mes) do OptiFlow. Segue o comprovante.`);
+  // Desenha o QR Code assim que o modal abre com um payload valido.
+  useEffect(() => {
+    if (!assinatura?.qr_payload || !qrRef.current) return;
+    let cancelado = false;
+    carregarQrCodeLib().then(() => {
+      if (cancelado || !qrRef.current) return;
+      qrRef.current.innerHTML = '';
+      new (window as any).QRCode(qrRef.current, {
+        text: assinatura.qr_payload,
+        width: 220,
+        height: 220,
+        colorDark: '#000',
+        colorLight: '#fff',
+      });
+    }).catch(() => toast.error('Nao foi possivel desenhar o QR Code. Use o botao de copiar o codigo abaixo.'));
+    return () => { cancelado = true; };
+  }, [assinatura?.qr_payload]);
+
+  // Enquanto o modal esta aberto e ainda nao confirmou, verifica de tempos em
+  // tempos se o webhook da Asaas ja ativou a assinatura (tenants.status='ativo').
+  useEffect(() => {
+    if (!assinatura || confirmado || !tenantId) return;
+    let tentativas = 0;
+    const maxTentativas = 40; // ~80s
+    let cancelado = false;
+
+    const verificar = async () => {
+      if (cancelado) return;
+      const { data } = await supabase.from('tenants').select('status').eq('id', tenantId).maybeSingle();
+      tentativas++;
+      if (data?.status === 'ativo') {
+        setConfirmado(true);
+        setTimeout(() => navigate('/dashboard'), 2500);
+        return;
+      }
+      if (tentativas < maxTentativas && !cancelado) setTimeout(verificar, 2000);
+    };
+    verificar();
+    return () => { cancelado = true; };
+  }, [assinatura, confirmado, tenantId, navigate]);
+
+  const copiarCodigo = () => {
+    if (!assinatura?.qr_payload) return;
+    navigator.clipboard.writeText(assinatura.qr_payload);
+    toast.success('Codigo Pix copiado!');
+  };
+
+  const falarSobreWhatsAppNfe = () => {
+    const msg = encodeURIComponent('Ola! Tenho interesse em envio automatico de WhatsApp e/ou emissao de NF-e no OptiFlow. Pode me passar mais detalhes?');
     window.open(`https://wa.me/${WHATSAPP}?text=${msg}`, '_blank');
   };
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 20px' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: 48 }}>
-          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>Escolha seu plano</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 16 }}>Sem fidelidade. Cancele quando quiser.</p>
+      <div style={{ maxWidth: 460, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>Assine o OptiFlow</h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: 16 }}>Um plano so, sem pegadinha. Cancele quando quiser.</p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 24 }}>
-          {planos.map((plano) => {
-            const Icon = plano.icon;
-            return (
-              <div key={plano.id} className="card" style={{ padding: 28, borderTop: `3px solid ${plano.color}`, position: 'relative', display: 'flex', flexDirection: 'column' }}>
-                {(plano as any).popular && (
-                  <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: plano.color, color: 'white', padding: '2px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>MAIS POPULAR</div>
-                )}
-                {(plano as any).tag && (
-                  <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: plano.color, color: 'white', padding: '2px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>MELHOR OFERTA</div>
-                )}
-                <div style={{ color: plano.color, marginBottom: 12 }}><Icon size={24} /></div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{plano.nome}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>{plano.descricao}</div>
-                <div style={{ marginBottom: 24 }}>
-                  <span style={{ fontSize: 32, fontWeight: 800, color: plano.color }}>R$ {plano.preco.toFixed(2).replace('.', ',')}</span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>/mes</span>
-                </div>
-                <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px', flex: 1 }}>
-                  {plano.features.map((f, i) => (
-                    <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8, fontSize: 13, color: 'var(--text)' }}>
-                      <Check size={14} color={plano.color} style={{ marginTop: 2, flexShrink: 0 }} />{f}
-                    </li>
-                  ))}
-                </ul>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <button className="btn btn-primary" style={{ background: plano.color, borderColor: plano.color, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                    onClick={() => assinarCartao(plano)} disabled={loading === plano.id + '_cartao'}>
-                    <CreditCard size={14} />{loading === plano.id + '_cartao' ? 'Aguarde...' : 'Cartao'}
-                  </button>
-                  <button className="btn btn-secondary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderColor: plano.color, color: plano.color }}
-                    onClick={() => setPixModal({ plano })}>
-                    <QrCode size={14} />Pix
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+
+        <div className="card" style={{ padding: 32, borderTop: '3px solid #6366f1' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Plano OptiFlow</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>Tudo que sua otica precisa pra rodar no dia a dia</div>
+          <div style={{ marginBottom: 24 }}>
+            <span style={{ fontSize: 36, fontWeight: 800, color: '#6366f1' }}>R$ {PLANO_VALOR.toFixed(2).replace('.', ',')}</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>/mes</span>
+          </div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px' }}>
+            {FEATURES.map((f, i) => (
+              <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8, fontSize: 13, color: 'var(--text)' }}>
+                <Check size={14} color="#6366f1" style={{ marginTop: 2, flexShrink: 0 }} />{f}
+              </li>
+            ))}
+          </ul>
+
+          <div style={{ background: 'var(--bg-secondary)', borderRadius: 8, padding: 12, marginBottom: 24, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <MessageCircle size={14} style={{ marginTop: 1, flexShrink: 0 }} />
+            <span>
+              Nao inclui envio automatico de WhatsApp nem emissao de NF-e. Tem interesse em algum dos dois?{' '}
+              <button onClick={falarSobreWhatsAppNfe} style={{ background: 'none', border: 'none', padding: 0, color: '#6366f1', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>
+                Fale com a gente
+              </button>.
+            </span>
+          </div>
+
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px', fontSize: 14 }}
+            onClick={assinarComPix}
+            disabled={loading}
+          >
+            {loading ? <Loader2 size={16} className="spin" /> : <QrCode size={16} />}
+            {loading ? 'Gerando cobranca...' : 'Assinar com Pix Automatico'}
+          </button>
+          <p style={{ textAlign: 'center', marginTop: 12, color: 'var(--text-muted)', fontSize: 12 }}>
+            Voce autoriza uma vez; as proximas cobrancas acontecem sozinhas, sem precisar pagar todo mes na mao.
+          </p>
         </div>
-        <p style={{ textAlign: 'center', marginTop: 24, color: 'var(--text-muted)', fontSize: 13 }}>Pagamento seguro · Cancele quando quiser</p>
       </div>
 
-      {pixModal && (
+      {assinatura && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className="card" style={{ padding: 32, maxWidth: 420, width: '100%', position: 'relative', textAlign: 'center' }}>
-            <button onClick={() => setPixModal(null)} style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={20} /></button>
-            <QrCode size={48} color="#22c55e" style={{ marginBottom: 16 }} />
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Pagar com Pix</h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 }}>Plano {pixModal.plano.nome} — R$ {pixModal.plano.preco.toFixed(2).replace('.', ',')}/mes</p>
-            <div style={{ background: 'var(--bg-secondary)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Chave Pix</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', wordBreak: 'break-all' }}>{PIX_KEY}</div>
-              <button onClick={() => { navigator.clipboard.writeText(PIX_KEY); toast.success('Chave copiada!'); }}
-                style={{ marginTop: 8, fontSize: 12, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Copiar chave</button>
-            </div>
-            <div style={{ background: '#f0fdf4', border: '1px solid #22c55e', borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 13, color: '#15803d' }}>
-              Apos o pagamento, clique abaixo para enviar o comprovante via WhatsApp. Seu acesso sera ativado em ate 1 hora.
-            </div>
-            <button className="btn btn-primary" style={{ width: '100%', background: '#25d366', borderColor: '#25d366', fontSize: 14 }}
-              onClick={() => enviarComprovante(pixModal.plano)}>
-              Enviar comprovante via WhatsApp
+            <button
+              onClick={() => setAssinatura(null)}
+              style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+            >
+              <X size={20} />
             </button>
+
+            {!confirmado ? (
+              <>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Escaneie para autorizar</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 }}>
+                  R$ {PLANO_VALOR.toFixed(2).replace('.', ',')}/mes via Pix Automatico
+                </p>
+                <div ref={qrRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }} />
+                <button
+                  onClick={copiarCodigo}
+                  className="btn btn-secondary"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 16 }}
+                >
+                  <Copy size={14} />Copiar codigo Pix
+                </button>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+                  <Loader2 size={14} className="spin" />Aguardando confirmacao do pagamento...
+                </div>
+              </>
+            ) : (
+              <>
+                <CheckCircle size={64} color="#22c55e" style={{ marginBottom: 24 }} />
+                <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>Assinatura confirmada! 🎉</h1>
+                <p style={{ color: 'var(--text-muted)' }}>Redirecionando para o dashboard...</p>
+              </>
+            )}
           </div>
         </div>
       )}
