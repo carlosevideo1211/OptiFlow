@@ -27,8 +27,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (tenant) {
             const expired = tenant.status === 'trial' && tenant.plan === 'trial' && tenant.trial_end_date && new Date(tenant.trial_end_date) < new Date();
             const cancelled = tenant.status === 'cancelado' || tenant.plan === 'cancelado';
-            if (expired || cancelled) {
-              window.location.href = '/trial-expirado';
+            // Manda pra /planos (Pix Automatico via Asaas), nao mais pro paywall
+            // antigo /trial-expirado (planos Stripe descontinuados). So forca a
+            // navegacao se o usuario ainda nao estiver la, senao gera reload em
+            // loop toda vez que essa checagem roda de novo.
+            if ((expired || cancelled) && window.location.pathname !== '/planos') {
+              window.location.href = '/planos';
               return false;
             }
           }
