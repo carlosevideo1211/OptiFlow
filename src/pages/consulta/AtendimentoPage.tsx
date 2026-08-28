@@ -1180,7 +1180,7 @@ export default function AtendimentoPage() {
     const validadeTxt = validade.toLocaleDateString('pt-BR');
     const cidade = docCidade || 'Rio de Janeiro';
 
-    const linhaRx = (olho: string, rx: { ESF: string; CIL: string; EIXO: string; DNP: string }) => `
+    const linhaRx = (olho: string, rx: Record<string, string>) => `
       <tr>
         <td class="rx-olho">${olho}</td>
         <td>${rx.ESF || '—'}</td>
