@@ -31,26 +31,26 @@ const ALL_NAV_SECTIONS: NavSection[] = [
     label: 'Principal',
     items: [
       { to: '/dashboard',  label: 'Dashboard',       icon: LayoutDashboard, sub: false, roles: [] },
-      { to: '/clientes',   label: 'Clientes',         icon: Users,           sub: false, roles: [] },
+      { to: '/clientes',   label: 'Clientes',         icon: Users,           sub: false, roles: [], requiresModule: 'otica' },
       { to: '/consulta',   label: 'Consulta / Rx',    icon: Eye,             sub: false, roles: [], requiresModule: 'consultas' },
-      { to: '/os',         label: 'Ordem de Serviço', icon: ClipboardList,   sub: false, roles: [] },
-      { to: '/vendas',     label: 'Vendas / PDV',     icon: ShoppingCart,    sub: false, roles: [] },
+      { to: '/os',         label: 'Ordem de Serviço', icon: ClipboardList,   sub: false, roles: [], requiresModule: 'otica' },
+      { to: '/vendas',     label: 'Vendas / PDV',     icon: ShoppingCart,    sub: false, roles: [], requiresModule: 'otica' },
     ]
   },
   {
     label: 'Estoque',
     items: [
-      { to: '/produtos', label: 'Produtos', icon: Package, sub: false, roles: [] },
-      { to: '/estoque',  label: 'Estoque',  icon: Boxes,   sub: false, roles: [] },
+      { to: '/produtos', label: 'Produtos', icon: Package, sub: false, roles: [], requiresModule: 'otica' },
+      { to: '/estoque',  label: 'Estoque',  icon: Boxes,   sub: false, roles: [], requiresModule: 'otica' },
     ]
   },
   {
     label: 'Financeiro',
     items: [
-      { to: '/crediario',  label: 'Crediário',  icon: CreditCard, sub: false, roles: [] },
-      { to: '/financeiro', label: 'Financeiro', icon: TrendingUp, sub: false, roles: ['master','Gerente'] },
-      { to: '/relatorios', label: 'Relatórios', icon: BarChart3,  sub: false, roles: ['master','Gerente'] },
-      { to: '/nfe',        label: 'NF-e',       icon: FileText,   sub: false, roles: ['master','Gerente'] },
+      { to: '/crediario',  label: 'Crediário',  icon: CreditCard, sub: false, roles: [], requiresModule: 'otica' },
+      { to: '/financeiro', label: 'Financeiro', icon: TrendingUp, sub: false, roles: ['master','Gerente'], requiresModule: 'otica' },
+      { to: '/relatorios', label: 'Relatórios', icon: BarChart3,  sub: false, roles: ['master','Gerente'], requiresModule: 'otica' },
+      { to: '/nfe',        label: 'NF-e',       icon: FileText,   sub: false, roles: ['master','Gerente'], requiresModule: 'otica' },
     ]
   },
   {
@@ -59,7 +59,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { to: '/cadastros',    label: 'Cadastros',    icon: BookUser, sub: false, roles: ['master','Gerente'] },
       { to: '/importacao',   label: 'Importar Dados', icon: Upload, sub: false, roles: ['master','Gerente'] },
       { to: '/planos',       label: 'Assinatura',   icon: Receipt,  sub: false, roles: ['master','Gerente'] },
-      { to: '/configuracao', label: 'Configuração', icon: Settings, sub: false, roles: ['master','Gerente'] },
+      { to: '/configuracao', label: 'Configuração', icon: Settings, sub: false, roles: ['master','Gerente'], requiresModule: 'otica' },
     ]
   }
 ];
@@ -75,11 +75,17 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const [trialDays, setTrialDays]   = useState<number | null>(null);
   const [tooltip, setTooltip]       = useState<{ label: string; y: number } | null>(null);
   const [moduloConsultasAtivo, setModuloConsultasAtivo] = useState<boolean>(false);
+  // Módulo Ótica: liga por padrão (true) pra não esconder nada de quem já usa o
+  // sistema hoje — só fica desligado pra tenants "consultório-only" (ex: Samara),
+  // migrados explicitamente via SQL. Mesmo padrão de moduloConsultasAtivo acima.
+  const [moduloOticaAtivo, setModuloOticaAtivo] = useState<boolean>(true);
   const navSections = ALL_NAV_SECTIONS.map(section => ({
     ...section,
     items: section.items.filter(item =>
       (item.roles.length === 0 || isMaster || item.roles.includes(userRole)) &&
-      (!item.requiresModule || (item.requiresModule === 'consultas' && moduloConsultasAtivo))
+      (!item.requiresModule ||
+        (item.requiresModule === 'consultas' && moduloConsultasAtivo) ||
+        (item.requiresModule === 'otica' && moduloOticaAtivo))
     )
   })).filter(section => section.items.length > 0);
 
@@ -100,7 +106,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         .neq('status', 'cancelado');
       const { data: tenant } = await supabase
         .from('tenants')
-        .select('trial_end_date, status, plan, modulo_consultas_ativo')
+        .select('trial_end_date, status, plan, modulo_consultas_ativo, modulo_otica_ativo')
         .eq('id', tenantId)
         .single();
       if (tenant?.trial_end_date && tenant.status === 'trial') {
@@ -110,6 +116,10 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         setTrialDays(Math.max(0, diff));
       }
       setModuloConsultasAtivo(tenant?.modulo_consultas_ativo === true);
+      // modulo_otica_ativo é NOT NULL DEFAULT true no banco, mas se por algum
+      // motivo vier null/undefined (tenant muito antigo antes da coluna existir),
+      // mantém ligado — não pode esconder Ótica de quem sempre usou.
+      setModuloOticaAtivo(tenant?.modulo_otica_ativo !== false);
       setBadges({ os: osCount || 0, parcelas: parcCount || 0 });
     };
     loadData();
