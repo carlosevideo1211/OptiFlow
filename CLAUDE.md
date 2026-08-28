@@ -88,6 +88,36 @@ Sistema SaaS multi-tenant para oticas (gestao de clientes, vendas, OS, crediario
   Configuracoes > Integracoes.
 - Apos editar a function, fazer deploy: npx supabase functions deploy create-boleto.
 
+## Integracao Asaas (assinatura da propria OptiFlow - Pix Automatico)
+- Diferente da secao anterior: aqui e a OptiFlow cobrando o INQUILINO pela mensalidade do
+  sistema (R$99,99/mes), e nao o inquilino cobrando os clientes dele. Usa a chave Asaas da
+  PLATAFORMA (conta Otica Evangelista, mesmo CNPJ do dono do OptiFlow), nao a do inquilino.
+- Fluxo: PlanosPage.tsx (tela /planos) -> Edge Function create-asaas-subscription (cria
+  cliente + autorizacao de Pix Automatico na Asaas, devolve QR Code) -> inquilino paga ->
+  Asaas chama o webhook asaas-subscription-webhook -> atualiza tenants (status='ativo',
+  plan='assinatura_pix_automatico', mrr_value, next_billing) e a tabela asaas_subscriptions.
+- Variaveis de ambiente (Supabase secrets, setar com npx supabase secrets set NOME='valor'):
+  ASAAS_PLATFORM_ENV (sandbox|production), ASAAS_API_KEY_PROD, ASAAS_API_KEY_TEST,
+  ASAAS_WEBHOOK_TOKEN (precisa ser IGUAL ao token cadastrado no webhook, no painel da Asaas
+  em Integracoes > Webhooks).
+- Tabelas: asaas_subscriptions (uma linha por autorizacao/tentativa de assinatura, historico)
+  e asaas_webhook_events (log de idempotencia, evita processar o mesmo evento da Asaas 2x).
+- CUIDADO com a Asaas: na chamada POST /pix/automatic/authorizations, os campos
+  paymentCreationMode e retryPolicy vao no NIVEL RAIZ do body, e NAO dentro de
+  immediateQrCode. Isso ja aconteceu errado e foi corrigido em 28/08/2026 - se voltar a
+  acontecer, a autorizacao ativa normalmente mas as cobrancas mensais seguintes nunca sao
+  geradas sozinhas (o erro e silencioso, so aparece no mes seguinte).
+- O webhook precisa estar cadastrado E ATIVO no painel da Asaas (Integracoes > Webhooks) -
+  ja aconteceu de existir um webhook cadastrado mas desativado, e nada era atualizado no
+  banco mesmo com o pagamento confirmado e o dinheiro na conta.
+- PlanosPage.tsx espera ate 10 minutos pela confirmacao do webhook (pode demorar alguns
+  minutos, nao e instantaneo) antes de mostrar a tela de "ainda confirmando".
+- Testado de ponta a ponta em producao em 28/08/2026 (autorizacao real de R$5, cancelada
+  logo apos confirmar que o fluxo completo funciona sozinho).
+- Apos editar as functions, fazer deploy de cada uma separadamente:
+  npx supabase functions deploy create-asaas-subscription
+  npx supabase functions deploy asaas-subscription-webhook
+
 ## Financeiro - Crediario
 - Ao finalizar uma venda no crediario (VendasPage.tsx), o sistema lanca em financial_transactions:
   1. A entrada (se houver) como status: pago.
