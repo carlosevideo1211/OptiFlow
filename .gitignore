@@ -25,6 +25,12 @@ dist-ssr
 
 *.backup_*
 fix_*.py
+apply_*.py
+
+# Pasta de organizacao (backups e scripts soltos movidos pra fora do caminho
+# principal do projeto, ver organizar_optiflow.ps1) -- nunca faz parte do
+# codigo-fonte rodando, entao nunca deve ir pro repositorio.
+_archive/
 
 # Scripts de patch e backups automaticos (nao fazem parte do codigo-fonte).
 # Qualquer .ps1 na raiz e sempre um script de patch gerado em sessao de chat,
