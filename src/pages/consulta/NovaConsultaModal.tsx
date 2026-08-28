@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAll';
 import type { Customer } from '../../types/index';
-import { Search, X, UserPlus, ArrowRight, ArrowLeft, Check } from 'lucide-react';
+import { Search, X, UserPlus, ArrowRight, ArrowLeft, Check, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { norm } from '../../utils/normalize';
 
@@ -48,6 +48,11 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
   const [paymentMethods, setPaymentMethods] = useState<{ id: string; nome: string }[]>([]);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [valorConsulta, setValorConsulta] = useState('');
+  // Cadastro rápido de Parceria (ex: "Cortesia") sem sair do modal — pedido
+  // da Samara, que queria acrescentar uma opção de atendimento cortesia
+  // aqui e não sabia onde cadastrar.
+  const [novaParceria, setNovaParceria] = useState<string | null>(null);
+  const [salvandoParceria, setSalvandoParceria] = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -70,6 +75,21 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
     if (pacienteMode === 'buscar' && !selected) { toast.error('Selecione um paciente'); return; }
     if (pacienteMode === 'novo' && !novoNome.trim()) { toast.error('Informe o nome do paciente'); return; }
     setStep('profissional');
+  };
+
+  const salvarNovaParceria = async () => {
+    const nome = (novaParceria || '').trim();
+    if (!nome) { toast.error('Digite o nome da parceria'); return; }
+    setSalvandoParceria(true);
+    const { data, error } = await supabase.from('partnerships').insert([{
+      tenant_id: tenantId, name: nome, active: true,
+    }]).select('id,name,commission_percent').single();
+    setSalvandoParceria(false);
+    if (error || !data) { toast.error('Erro ao cadastrar parceria'); return; }
+    setPartnerships(list => [...list, data].sort((a, b) => a.name.localeCompare(b.name)));
+    setPartnershipId(data.id);
+    setNovaParceria(null);
+    toast.success('Parceria cadastrada!');
   };
 
   const irParaPagamento = () => {
@@ -241,11 +261,32 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
           {step === 'pagamento' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-group">
-                <label className="form-label">Convênio / Parceria (opcional)</label>
-                <select className="form-input" value={partnershipId} onChange={e => setPartnershipId(e.target.value)}>
-                  <option value="">Particular</option>
-                  {partnerships.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <label className="form-label">Parceria/Ótica (opcional)</label>
+                  {novaParceria === null && (
+                    <button type="button" onClick={() => setNovaParceria('')}
+                      style={{ background:'none', border:'none', cursor:'pointer', color:'#6366f1', fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:4, padding:0, marginBottom:6 }}>
+                      <Plus size={12}/> Nova parceria
+                    </button>
+                  )}
+                </div>
+                {novaParceria === null ? (
+                  <select className="form-input" value={partnershipId} onChange={e => setPartnershipId(e.target.value)}>
+                    <option value="">Particular</option>
+                    {partnerships.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                ) : (
+                  <div style={{ display:'flex', gap:6 }}>
+                    <input className="form-input" autoFocus value={novaParceria} onChange={e => setNovaParceria(e.target.value)}
+                      placeholder="Ex: Cortesia" onKeyDown={e => { if (e.key === 'Enter') salvarNovaParceria(); if (e.key === 'Escape') setNovaParceria(null); }} />
+                    <button type="button" className="btn btn-primary" disabled={salvandoParceria} onClick={salvarNovaParceria} style={{ padding:'0 12px', fontSize:12 }}>
+                      {salvandoParceria ? '...' : 'Salvar'}
+                    </button>
+                    <button type="button" className="btn btn-secondary" onClick={() => setNovaParceria(null)} style={{ padding:'0 10px', fontSize:12 }}>
+                      <X size={13}/>
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label className="form-label">Valor da consulta (R$)</label>

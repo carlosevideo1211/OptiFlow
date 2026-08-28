@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { Search, Users, Stethoscope, X } from 'lucide-react';
+import { Search, Users, Stethoscope, X, Plus } from 'lucide-react';
 import { norm } from '../../utils/normalize';
 import FichaPaciente from './FichaPaciente';
 import toast from 'react-hot-toast';
@@ -30,6 +30,11 @@ export default function PacientesTab() {
   const [atenderPaciente, setAtenderPaciente] = useState<PacienteResumo | null>(null);
   const [atenderForm, setAtenderForm] = useState({ professional_id: '', procedure_id: '' });
   const [iniciando, setIniciando] = useState(false);
+  // Cadastro rápido de Procedimento sem sair do modal "Iniciar atendimento" —
+  // pedido da Samara (ela não encontrava onde cadastrar Procedimento e ficava
+  // sem opção nenhuma pra escolher aqui).
+  const [novoProcedimento, setNovoProcedimento] = useState<string | null>(null);
+  const [salvandoProcedimento, setSalvandoProcedimento] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -56,7 +61,23 @@ export default function PacientesTab() {
   const abrirAtender = (p: PacienteResumo, e: React.MouseEvent) => {
     e.stopPropagation();
     setAtenderForm({ professional_id: '', procedure_id: '' });
+    setNovoProcedimento(null);
     setAtenderPaciente(p);
+  };
+
+  const salvarNovoProcedimento = async () => {
+    const nome = (novoProcedimento || '').trim();
+    if (!nome) { toast.error('Digite o nome do procedimento'); return; }
+    setSalvandoProcedimento(true);
+    const { data, error } = await supabase.from('procedures').insert([{
+      tenant_id: tenantId, name: nome, active: true,
+    }]).select('id,name').single();
+    setSalvandoProcedimento(false);
+    if (error || !data) { toast.error('Erro ao cadastrar procedimento'); return; }
+    setProcedures(list => [...list, data].sort((a, b) => a.name.localeCompare(b.name)));
+    setAtenderForm(f => ({ ...f, procedure_id: data.id }));
+    setNovoProcedimento(null);
+    toast.success('Procedimento cadastrado!');
   };
 
   const iniciarAtendimento = async () => {
@@ -186,11 +207,39 @@ export default function PacientesTab() {
                 </select>
               </div>
               <div>
-                <label className="form-label">Procedimento</label>
-                <select className="form-input" value={atenderForm.procedure_id} onChange={e => setAtenderForm(f => ({ ...f, procedure_id: e.target.value }))}>
-                  <option value="">Selecione...</option>
-                  {procedures.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <label className="form-label">Procedimento</label>
+                  {novoProcedimento === null && (
+                    <button type="button" onClick={() => setNovoProcedimento('')}
+                      style={{ background:'none', border:'none', cursor:'pointer', color:'#6366f1', fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:4, padding:0, marginBottom:6 }}>
+                      <Plus size={12}/> Novo procedimento
+                    </button>
+                  )}
+                </div>
+                {novoProcedimento === null ? (
+                  <>
+                    {procedures.length === 0 && (
+                      <p style={{ fontSize:12, color:'var(--text-muted)', margin:'0 0 6px' }}>
+                        Nenhum procedimento cadastrado ainda — clique em "Novo procedimento" acima pra criar o primeiro (ex: Consulta, Retorno, Terapia Visual).
+                      </p>
+                    )}
+                    <select className="form-input" value={atenderForm.procedure_id} onChange={e => setAtenderForm(f => ({ ...f, procedure_id: e.target.value }))}>
+                      <option value="">Selecione...</option>
+                      {procedures.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </>
+                ) : (
+                  <div style={{ display:'flex', gap:6 }}>
+                    <input className="form-input" autoFocus value={novoProcedimento} onChange={e => setNovoProcedimento(e.target.value)}
+                      placeholder="Ex: Retorno" onKeyDown={e => { if (e.key === 'Enter') salvarNovoProcedimento(); if (e.key === 'Escape') setNovoProcedimento(null); }} />
+                    <button type="button" className="btn btn-primary" disabled={salvandoProcedimento} onClick={salvarNovoProcedimento} style={{ padding:'0 12px', fontSize:12 }}>
+                      {salvandoProcedimento ? '...' : 'Salvar'}
+                    </button>
+                    <button type="button" className="btn btn-secondary" onClick={() => setNovoProcedimento(null)} style={{ padding:'0 10px', fontSize:12 }}>
+                      <X size={13}/>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             <div className="modal-footer">

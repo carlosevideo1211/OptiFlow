@@ -112,13 +112,13 @@ export default function RelatoriosConsultas() {
     const grupoConv: Record<string, { nome: string; consultas: Set<string>; receita: number; repasse: number }> = {};
     receitas.forEach(e => {
       if (!e.partnership_id) return;
-      const g = grupoConv[e.partnership_id] || (grupoConv[e.partnership_id] = { nome: partnerMap[e.partnership_id] || 'Convênio removido', consultas: new Set(), receita: 0, repasse: 0 });
+      const g = grupoConv[e.partnership_id] || (grupoConv[e.partnership_id] = { nome: partnerMap[e.partnership_id] || 'Parceria removida', consultas: new Set(), receita: 0, repasse: 0 });
       g.receita += Number(e.amount || 0);
       if (e.consultation_id) g.consultas.add(e.consultation_id);
     });
     despesas.filter(e => e.category === 'comissao_convenio').forEach(e => {
       if (!e.partnership_id) return;
-      const g = grupoConv[e.partnership_id] || (grupoConv[e.partnership_id] = { nome: partnerMap[e.partnership_id] || 'Convênio removido', consultas: new Set(), receita: 0, repasse: 0 });
+      const g = grupoConv[e.partnership_id] || (grupoConv[e.partnership_id] = { nome: partnerMap[e.partnership_id] || 'Parceria removida', consultas: new Set(), receita: 0, repasse: 0 });
       g.repasse += Number(e.amount || 0);
     });
     setPorConvenio(Object.values(grupoConv).map(g => ({ ...g, consultas: g.consultas.size })).sort((a, b) => b.receita - a.receita));

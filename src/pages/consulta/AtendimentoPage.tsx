@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 import {
   Eye, ClipboardList, FileText, ChevronDown, ChevronUp,
   Save, Printer, ArrowLeft, CheckCircle, User, History, ShoppingBag,
-  Paperclip, Upload
+  Paperclip, Upload, Plus, X as XIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { abrirDocumentoImprimivel } from '../../utils/printDoc';
@@ -340,6 +340,24 @@ export default function AtendimentoPage() {
   const [docProfissional, setDocProfissional] = useState('');
   const [partnerships, setPartnerships] = useState<any[]>([]);
   const [partnershipId, setPartnershipId] = useState('');
+  // Cadastro rápido de Parceria (ex: "Cortesia") direto daqui — pedido da
+  // Samara, que não sabia onde cadastrar uma opção de atendimento cortesia.
+  const [novaParceria, setNovaParceria] = useState<string | null>(null);
+  const [salvandoParceria, setSalvandoParceria] = useState(false);
+  const salvarNovaParceria = async () => {
+    const nome = (novaParceria || '').trim();
+    if (!nome) { toast.error('Digite o nome da parceria'); return; }
+    setSalvandoParceria(true);
+    const { data, error } = await supabase.from('partnerships').insert([{
+      tenant_id: tenantId, name: nome, active: true,
+    }]).select('id,name,commission_percent').single();
+    setSalvandoParceria(false);
+    if (error || !data) { toast.error('Erro ao cadastrar parceria'); return; }
+    setPartnerships((list: any[]) => [...list, data].sort((a, b) => a.name.localeCompare(b.name)));
+    setPartnershipId(data.id);
+    setNovaParceria(null);
+    toast.success('Parceria cadastrada!');
+  };
   const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [anexos, setAnexos] = useState<any[]>([]);
@@ -822,7 +840,7 @@ export default function AtendimentoPage() {
       if (partner?.commission_percent) {
         entries.push({
           tenant_id: tenantId, type: 'despesa', category: 'comissao_convenio',
-          description: 'Comissão do convênio', amount: valor * partner.commission_percent / 100,
+          description: 'Comissão da parceria', amount: valor * partner.commission_percent / 100,
           due_date: date || null, status: 'pendente',
           consultation_id: consultationId, partnership_id: partnershipId,
         });
@@ -1669,11 +1687,30 @@ export default function AtendimentoPage() {
                   <Field label="Valor do exame (R$)">
                     <FInput value={docValorExame} onChange={setDocValorExame} placeholder="Ex: 80,00" />
                   </Field>
-                  <Field label="Convênio (opcional)">
-                    <select className="form-input" value={partnershipId} onChange={e => setPartnershipId(e.target.value)}>
-                      <option value="">Particular</option>
-                      {partnerships.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+                  <Field label="Parceria/Ótica (opcional)">
+                    {novaParceria === null ? (
+                      <>
+                        <select className="form-input" value={partnershipId} onChange={e => setPartnershipId(e.target.value)}>
+                          <option value="">Particular</option>
+                          {partnerships.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        <button type="button" onClick={() => setNovaParceria('')}
+                          style={{ background:'none', border:'none', cursor:'pointer', color:'#6366f1', fontSize:11, fontWeight:600, display:'flex', alignItems:'center', gap:3, padding:'3px 0 0' }}>
+                          <Plus size={11}/> Nova parceria
+                        </button>
+                      </>
+                    ) : (
+                      <div style={{ display:'flex', gap:6 }}>
+                        <input className="form-input" autoFocus value={novaParceria} onChange={e => setNovaParceria(e.target.value)}
+                          placeholder="Ex: Cortesia" onKeyDown={e => { if (e.key === 'Enter') salvarNovaParceria(); if (e.key === 'Escape') setNovaParceria(null); }} />
+                        <button type="button" className="btn btn-primary" disabled={salvandoParceria} onClick={salvarNovaParceria} style={{ padding:'0 10px', fontSize:12 }}>
+                          {salvandoParceria ? '...' : 'OK'}
+                        </button>
+                        <button type="button" className="btn btn-secondary" onClick={() => setNovaParceria(null)} style={{ padding:'0 8px', fontSize:12 }}>
+                          <XIcon size={12}/>
+                        </button>
+                      </div>
+                    )}
                   </Field>
                   <Field label="Forma de pagamento">
                     <select className="form-input" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
