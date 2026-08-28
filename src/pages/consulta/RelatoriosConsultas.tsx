@@ -1,9 +1,10 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { fetchAllRows } from '../../lib/fetchAll';
-import { DollarSign, TrendingUp, TrendingDown, Award, Handshake, Stethoscope } from 'lucide-react';
-import { formatBRL } from '../../types/index';
+import { DollarSign, TrendingUp, TrendingDown, Award, Handshake, Stethoscope, ListFilter, Download } from 'lucide-react';
+import { formatBRL, formatDate } from '../../types/index';
+import { exportarCSV } from '../../lib/exportCsv';
 
 function KpiCard({ icon: Icon, color, value, label }: any) {
   return (
@@ -27,26 +28,52 @@ export default function RelatoriosConsultas() {
   const [porConvenio, setPorConvenio] = useState<any[]>([]);
   const [porProcedimento, setPorProcedimento] = useState<any[]>([]);
 
+  // Extrato detalhado (paciente a paciente) - listas pra popular os filtros
+  // e os itens em si, com os nomes ja resolvidos (join feito na mao, pois
+  // clinic_financial_entries so guarda os ids).
+  const [itens, setItens] = useState<any[]>([]);
+  const [listaProfissionais, setListaProfissionais] = useState<{ id: string; name: string }[]>([]);
+  const [listaParcerias, setListaParcerias] = useState<{ id: string; name: string }[]>([]);
+  const [listaProcedimentos, setListaProcedimentos] = useState<{ id: string; name: string }[]>([]);
+  const [filtroProfissional, setFiltroProfissional] = useState('');
+  const [filtroParceria, setFiltroParceria] = useState('');
+  const [filtroPagamento, setFiltroPagamento] = useState('');
+  const [filtroProcedimento, setFiltroProcedimento] = useState('');
+
   const getRange = () => {
     if (periodo === 'custom' && dateFrom && dateTo) return { from: dateFrom, to: dateTo };
     const hoje = new Date();
     if (periodo === 'hoje') { const d = hoje.toISOString().split('T')[0]; return { from: d, to: d }; }
     if (periodo === 'semana') { const from = new Date(hoje); from.setDate(hoje.getDate() - 7); return { from: from.toISOString().split('T')[0], to: hoje.toISOString().split('T')[0] }; }
+    if (periodo === '30dias') { const from = new Date(hoje); from.setDate(hoje.getDate() - 30); return { from: from.toISOString().split('T')[0], to: hoje.toISOString().split('T')[0] }; }
     if (periodo === 'ano') return { from: hoje.getFullYear() + '-01-01', to: hoje.toISOString().split('T')[0] };
     return { from: hoje.toISOString().slice(0, 8) + '01', to: hoje.toISOString().split('T')[0] };
   };
 
   useEffect(() => { if (tenantId) loadData(); }, [tenantId, periodo, dateFrom, dateTo]);
 
+  const formasPagamento = useMemo(
+    () => Array.from(new Set(itens.map(i => i.pagamento).filter(p => p && p !== '—'))).sort(),
+    [itens]
+  );
+  const itensFiltrados = useMemo(() => itens.filter(i =>
+    (!filtroProfissional || i.profissionalId === filtroProfissional) &&
+    (!filtroParceria || i.parceriaId === filtroParceria) &&
+    (!filtroPagamento || i.pagamento === filtroPagamento) &&
+    (!filtroProcedimento || i.procedimentoId === filtroProcedimento)
+  ), [itens, filtroProfissional, filtroParceria, filtroPagamento, filtroProcedimento]);
+  const totalFiltrado = itensFiltrados.reduce((s, i) => s + i.valor, 0);
+
   const loadData = async () => {
     setLoading(true);
     const { from, to } = getRange();
-    const [entries, professionals, partnershipsList, proceduresList] = await Promise.all([
+    const [entries, professionals, partnershipsList, proceduresList, consultationsList] = await Promise.all([
       fetchAllRows<any>((rf, rt) => supabase.from('clinic_financial_entries').select('*')
         .eq('tenant_id', tenantId).gte('due_date', from).lte('due_date', to).range(rf, rt)),
       supabase.from('professionals').select('id,name').eq('tenant_id', tenantId).then(({ data }) => data || []),
       supabase.from('partnerships').select('id,name').eq('tenant_id', tenantId).then(({ data }) => data || []),
       supabase.from('procedures').select('id,name').eq('tenant_id', tenantId).then(({ data }) => data || []),
+      fetchAllRows<any>((rf, rt) => supabase.from('consultations').select('id,customer_name').eq('tenant_id', tenantId).range(rf, rt)),
     ]);
 
     const profMap: Record<string, string> = {};
@@ -55,6 +82,11 @@ export default function RelatoriosConsultas() {
     (partnershipsList as any[]).forEach(p => { partnerMap[p.id] = p.name; });
     const procMap: Record<string, string> = {};
     (proceduresList as any[]).forEach(p => { procMap[p.id] = p.name; });
+    const custMap: Record<string, string> = {};
+    (consultationsList as any[]).forEach(c => { custMap[c.id] = c.customer_name; });
+    setListaProfissionais(professionals as any[]);
+    setListaParcerias(partnershipsList as any[]);
+    setListaProcedimentos(proceduresList as any[]);
 
     const receitas = (entries || []).filter(e => e.type === 'receita');
     const despesas = (entries || []).filter(e => e.type === 'despesa');
@@ -101,6 +133,28 @@ export default function RelatoriosConsultas() {
     });
     setPorProcedimento(Object.values(grupoProc).map(g => ({ ...g, consultas: g.consultas.size })).sort((a, b) => b.receita - a.receita));
 
+    // Extrato detalhado: uma linha por atendimento cobrado (receita), com os
+    // nomes ja resolvidos - e o que a Samara pedia pra ver ("todos os
+    // pacientes que eu atendi no mes inteiro"), nao so o total agrupado.
+    const itensDetalhados = receitas
+      .filter(e => e.consultation_id)
+      .map(e => ({
+        id: e.id,
+        data: e.due_date,
+        paciente: custMap[e.consultation_id] || 'Paciente removido',
+        procedimentoId: e.procedure_id || '',
+        procedimento: e.procedure_id ? (procMap[e.procedure_id] || '—') : '—',
+        profissionalId: e.professional_id || '',
+        profissional: e.professional_id ? (profMap[e.professional_id] || '—') : '—',
+        parceriaId: e.partnership_id || '',
+        parceria: e.partnership_id ? (partnerMap[e.partnership_id] || '—') : 'Particular',
+        pagamento: e.payment_method || '—',
+        valor: Number(e.amount || 0),
+        status: e.status,
+      }))
+      .sort((a, b) => (a.data < b.data ? 1 : -1));
+    setItens(itensDetalhados);
+
     setLoading(false);
   };
 
@@ -111,6 +165,7 @@ export default function RelatoriosConsultas() {
           <option value="hoje">Hoje</option>
           <option value="semana">Últimos 7 dias</option>
           <option value="mes">Este mês</option>
+          <option value="30dias">Últimos 30 dias</option>
           <option value="ano">Este ano</option>
           <option value="custom">Personalizado</option>
         </select>
@@ -158,13 +213,13 @@ export default function RelatoriosConsultas() {
         </div>
 
         <h3 style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 12 }}>
-          <Handshake size={16} /> Por convênio (com ROI)
+          <Handshake size={16} /> Por Parceria (Ótica)
         </h3>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table style={{ width: '100%' }}>
             <thead>
               <tr>
-                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Convênio</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Parceria / Ótica</th>
                 <th style={{ padding: '10px 14px', textAlign: 'right' }}>Consultas</th>
                 <th style={{ padding: '10px 14px', textAlign: 'right' }}>Receita gerada</th>
                 <th style={{ padding: '10px 14px', textAlign: 'right' }}>Repasse devido</th>
@@ -173,7 +228,7 @@ export default function RelatoriosConsultas() {
             </thead>
             <tbody>
               {porConvenio.length === 0 && (
-                <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum atendimento por convênio no período.</td></tr>
+                <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum atendimento por parceria no período.</td></tr>
               )}
               {porConvenio.map((c, i) => (
                 <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
@@ -212,6 +267,95 @@ export default function RelatoriosConsultas() {
                 </tr>
               ))}
             </tbody>
+          </table>
+        </div>
+
+        <h3 style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 12 }}>
+          <ListFilter size={16} /> Extrato detalhado (paciente a paciente)
+        </h3>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+          <select className="form-input" style={{ width: 190 }} value={filtroProfissional} onChange={e => setFiltroProfissional(e.target.value)}>
+            <option value="">Todos os profissionais</option>
+            {listaProfissionais.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <select className="form-input" style={{ width: 190 }} value={filtroParceria} onChange={e => setFiltroParceria(e.target.value)}>
+            <option value="">Todas as parcerias</option>
+            {listaParcerias.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <select className="form-input" style={{ width: 170 }} value={filtroPagamento} onChange={e => setFiltroPagamento(e.target.value)}>
+            <option value="">Todas as formas de pagamento</option>
+            {formasPagamento.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <select className="form-input" style={{ width: 190 }} value={filtroProcedimento} onChange={e => setFiltroProcedimento(e.target.value)}>
+            <option value="">Todos os procedimentos</option>
+            {listaProcedimentos.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}
+            disabled={itensFiltrados.length === 0}
+            onClick={() => exportarCSV(
+              `extrato-consultas-${dateFrom || getRange().from}-a-${dateTo || getRange().to}.csv`,
+              [
+                { chave: 'data', titulo: 'Data' },
+                { chave: 'paciente', titulo: 'Paciente' },
+                { chave: 'procedimento', titulo: 'Procedimento' },
+                { chave: 'profissional', titulo: 'Profissional' },
+                { chave: 'parceria', titulo: 'Parceria/Ótica' },
+                { chave: 'pagamento', titulo: 'Forma de Pagamento' },
+                { chave: 'valor', titulo: 'Valor (R$)' },
+                { chave: 'status', titulo: 'Status' },
+              ],
+              itensFiltrados
+            )}
+          >
+            <Download size={14} /> Exportar CSV
+          </button>
+        </div>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Data</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Paciente</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Procedimento</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Profissional</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Parceria/Ótica</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left' }}>Forma de Pagamento</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Valor</th>
+                <th style={{ padding: '10px 14px', textAlign: 'center' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itensFiltrados.length === 0 && (
+                <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum atendimento cobrado no período com esses filtros.</td></tr>
+              )}
+              {itensFiltrados.map(i => (
+                <tr key={i.id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '10px 14px' }}>{formatDate(i.data)}</td>
+                  <td style={{ padding: '10px 14px' }}>{i.paciente}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{i.procedimento}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{i.profissional}</td>
+                  <td style={{ padding: '10px 14px' }}>{i.parceria}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{i.pagamento}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', color: '#22c55e' }}>{formatBRL(i.valor)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                    <span style={{ padding: '2px 10px', borderRadius: 12, fontSize: 12, background: i.status === 'pago' ? 'rgba(34,197,94,.15)' : 'rgba(245,158,11,.15)', color: i.status === 'pago' ? '#22c55e' : '#f59e0b' }}>
+                      {i.status === 'pago' ? 'Pago' : 'Pendente'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            {itensFiltrados.length > 0 && (
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--border)' }}>
+                  <td colSpan={6} style={{ padding: '10px 14px', fontWeight: 700 }}>Total do período ({itensFiltrados.length} atendimento{itensFiltrados.length === 1 ? '' : 's'})</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>{formatBRL(totalFiltrado)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </>)}

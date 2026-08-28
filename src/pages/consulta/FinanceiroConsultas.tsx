@@ -2,8 +2,9 @@
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { fetchAllRows } from '../../lib/fetchAll';
-import { Plus, Check, RotateCcw, Trash2, Edit2, X, AlertTriangle, Wallet } from 'lucide-react';
+import { Plus, Check, RotateCcw, Trash2, Edit2, X, AlertTriangle, Wallet, Download } from 'lucide-react';
 import { formatBRL, formatDate } from '../../types/index';
+import { exportarCSV } from '../../lib/exportCsv';
 import toast from 'react-hot-toast';
 
 const CATEGORIAS_RECEITA = ['consulta', 'outros'];
@@ -27,6 +28,15 @@ export default function FinanceiroConsultas() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(new Date().toISOString().slice(0, 8) + '01');
   const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
+  // Filtros extras (Profissional / Parceria-Ótica / Forma de Pagamento) e as
+  // listas pra popular os selects - pedido da Samara pra ficar parecido com
+  // o relatório que ela já usava (OptoVision), que tem esses três filtros
+  // em toda tela de relatório/financeiro.
+  const [filtroProfissional, setFiltroProfissional] = useState('');
+  const [filtroParceria, setFiltroParceria] = useState('');
+  const [filtroPagamento, setFiltroPagamento] = useState('');
+  const [listaProfissionais, setListaProfissionais] = useState<{ id: string; name: string }[]>([]);
+  const [listaParcerias, setListaParcerias] = useState<{ id: string; name: string }[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState(emptyForm('receita'));
@@ -49,6 +59,8 @@ export default function FinanceiroConsultas() {
     const partner: Record<string, string> = {}; (partnerships as any[]).forEach(p => { partner[p.id] = p.name; });
     const cust: Record<string, string> = {}; (consultations as any[]).forEach(c => { cust[c.id] = c.customer_name; });
     setNameMaps({ prof, partner, cust });
+    setListaProfissionais(professionals as any[]);
+    setListaParcerias(partnerships as any[]);
     setEntries(rows || []);
     setLoading(false);
   };
@@ -56,8 +68,14 @@ export default function FinanceiroConsultas() {
   useEffect(() => { if (tenantId) load(); }, [tenantId, dateFrom, dateTo]);
 
   const hoje = new Date().toISOString().split('T')[0];
+  const formasPagamento = Array.from(new Set(entries.map(e => e.payment_method).filter(Boolean))).sort();
   const base = entries.filter(e => tab === 'todos' || (tab === 'receber' && e.type === 'receita') || (tab === 'pagar' && e.type === 'despesa'));
-  const filtered = base.filter(e => !statusFilter || e.status === statusFilter);
+  const filtered = base
+    .filter(e => !statusFilter || e.status === statusFilter)
+    .filter(e => !filtroProfissional || e.professional_id === filtroProfissional)
+    .filter(e => !filtroParceria || e.partnership_id === filtroParceria)
+    .filter(e => !filtroPagamento || e.payment_method === filtroPagamento);
+  const totalFiltrado = filtered.reduce((s, e) => s + Number(e.amount || 0), 0);
 
   const totalPendente = base.filter(e => e.status === 'pendente').reduce((s, e) => s + Number(e.amount || 0), 0);
   const totalVencido = base.filter(e => e.status === 'pendente' && e.due_date < hoje).reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -138,6 +156,40 @@ export default function FinanceiroConsultas() {
           <option value="pendente">Pendente</option>
           <option value="pago">Pago</option>
         </select>
+        <select className="form-input" style={{ width: 170 }} value={filtroProfissional} onChange={e => setFiltroProfissional(e.target.value)}>
+          <option value="">Todos profissionais</option>
+          {listaProfissionais.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select className="form-input" style={{ width: 170 }} value={filtroParceria} onChange={e => setFiltroParceria(e.target.value)}>
+          <option value="">Todas parcerias</option>
+          {listaParcerias.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select className="form-input" style={{ width: 170 }} value={filtroPagamento} onChange={e => setFiltroPagamento(e.target.value)}>
+          <option value="">Todas formas pgto.</option>
+          {formasPagamento.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <button
+          className="btn btn-secondary"
+          disabled={filtered.length === 0}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}
+          onClick={() => exportarCSV(
+            `financeiro-consultas-${dateFrom}-a-${dateTo}.csv`,
+            [
+              { chave: 'due_date', titulo: 'Vencimento' },
+              { chave: 'description', titulo: 'Descrição' },
+              { chave: 'origem', titulo: 'Origem' },
+              { chave: 'amount', titulo: 'Valor (R$)' },
+              { chave: 'status', titulo: 'Status' },
+              { chave: 'payment_method', titulo: 'Forma de Pagamento' },
+            ],
+            filtered.map(e => ({ ...e, origem: origemLabel(e) }))
+          )}
+        >
+          <Download size={14} /> Exportar CSV
+        </button>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: -12, marginBottom: 16 }}>
+        Total filtrado: <strong style={{ color: 'var(--text)' }}>{formatBRL(totalFiltrado)}</strong> ({filtered.length} lançamento{filtered.length === 1 ? '' : 's'})
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 24 }}>
