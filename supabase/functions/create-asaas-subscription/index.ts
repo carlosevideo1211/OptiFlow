@@ -41,6 +41,25 @@ async function supabaseFetch(path: string, init?: RequestInit) {
   return res.json();
 }
 
+// Chama a API da Asaas e le a resposta de um jeito seguro: a Asaas às vezes
+// devolve corpo vazio (em erros 401/403/5xx, por exemplo), e usar res.json()
+// direto nesses casos quebra com "Unexpected end of JSON input" sem mostrar
+// o status HTTP real nem motivo do erro. Aqui a gente sempre le como texto
+// primeiro e so tenta converter pra JSON se tiver algo escrito.
+async function chamarAsaas(url: string, init: RequestInit) {
+  const res = await fetch(url, init);
+  const texto = await res.text();
+  let corpo: any = null;
+  if (texto) {
+    try {
+      corpo = JSON.parse(texto);
+    } catch {
+      corpo = { _resposta_nao_json: texto };
+    }
+  }
+  return { ok: res.ok, status: res.status, body: corpo };
+}
+
 serve(async (req) => {
   const cors = {
     "Access-Control-Allow-Origin": "*",
@@ -104,11 +123,11 @@ serve(async (req) => {
     // Se ja existe uma autorizacao ativa/pendente para este tenant, devolve
     // ela em vez de criar outra (idempotencia ao clicar de novo/recarregar).
     if (tenant.asaas_authorization_id) {
-      const checkRes = await fetch(`${BASE}/pix/automatic/authorizations/${tenant.asaas_authorization_id}`, {
+      const check = await chamarAsaas(`${BASE}/pix/automatic/authorizations/${tenant.asaas_authorization_id}`, {
         headers: asaasHeaders,
       });
-      if (checkRes.ok) {
-        const checkData = await checkRes.json();
+      if (check.ok && check.body) {
+        const checkData = check.body;
         if (checkData?.status && !["CANCELLED", "REFUSED", "EXPIRED"].includes(checkData.status)) {
           return new Response(JSON.stringify({
             authorization_id: checkData.id,
@@ -124,11 +143,11 @@ serve(async (req) => {
     // Reaproveita cliente Asaas existente (guardado ou por documento) ou cria um novo.
     let asaasCustomerId = tenant.asaas_customer_id;
     if (!asaasCustomerId) {
-      const searchRes = await fetch(`${BASE}/customers?cpfCnpj=${documento}`, { headers: asaasHeaders });
-      const searchData = await searchRes.json();
-      asaasCustomerId = searchData?.data?.[0]?.id;
+      const search = await chamarAsaas(`${BASE}/customers?cpfCnpj=${documento}`, { headers: asaasHeaders });
+      if (!search.ok) throw new Error(`Erro ao buscar cliente no Asaas (HTTP ${search.status}): ` + JSON.stringify(search.body));
+      asaasCustomerId = search.body?.data?.[0]?.id;
       if (!asaasCustomerId) {
-        const createRes = await fetch(`${BASE}/customers`, {
+        const create = await chamarAsaas(`${BASE}/customers`, {
           method: "POST",
           headers: asaasHeaders,
           body: JSON.stringify({
@@ -139,16 +158,15 @@ serve(async (req) => {
             externalReference: tenant_id,
           }),
         });
-        const createData = await createRes.json();
-        asaasCustomerId = createData?.id;
-        if (!asaasCustomerId) throw new Error("Erro ao criar cliente no Asaas: " + JSON.stringify(createData));
+        asaasCustomerId = create.body?.id;
+        if (!asaasCustomerId) throw new Error(`Erro ao criar cliente no Asaas (HTTP ${create.status}): ` + JSON.stringify(create.body));
       }
     }
 
     const contractId = String(tenant_id).replace(/-/g, "");
     const hoje = new Date().toISOString().split("T")[0];
 
-    const authRes = await fetch(`${BASE}/pix/automatic/authorizations`, {
+    const auth = await chamarAsaas(`${BASE}/pix/automatic/authorizations`, {
       method: "POST",
       headers: asaasHeaders,
       body: JSON.stringify({
@@ -158,14 +176,32 @@ serve(async (req) => {
         startDate: hoje,
         value: PLANO_VALOR,
         description: PLANO_DESCRICAO,
+        // IMPORTANTE: paymentCreationMode e retryPolicy ficam no NIVEL RAIZ
+        // do corpo, e nao dentro de immediateQrCode (confirmado na doc oficial
+        // da Asaas e validado manualmente em producao antes deste codigo
+        // existir). Se ficarem dentro de immediateQrCode, a Asaas pode
+        // ignorar esses campos e usar o padrao (paymentCreationMode: MANUAL),
+        // o que faria a autorizacao ativar mas NUNCA gerar as cobrancas
+        // mensais seguintes sozinha.
+        paymentCreationMode: "SUBSCRIPTION",
+        retryPolicy: "ALLOW_THREE_IN_SEVEN_DAYS",
         immediateQrCode: {
-          paymentCreationMode: "SUBSCRIPTION",
-          retryPolicy: "ALLOW_THREE_IN_SEVEN_DAYS",
+          // originalValue: valor da PRIMEIRA cobranca, a que ativa a
+          // autorizacao via QR Code (documentado em immediateQrCode.originalValue).
+          // E diferente do "value" la em cima, que e o valor das cobrancas
+          // recorrentes seguintes - aqui e o mesmo valor do plano nos dois,
+          // pois a primeira cobranca tambem e a mensalidade normal (R$ 99,99).
+          originalValue: PLANO_VALOR,
+          // Tempo (em segundos) que o QR Code da cobranca imediata fica
+          // valido. 86400 = 24 horas (1 hora era curto demais: se o
+          // inquilino demorar a pagar, o QR expira, a Asaas cancela a
+          // autorizacao pelo webhook e ele volta pra tela de assinar de novo).
+          expirationSeconds: 86400,
         },
       }),
     });
-    const authData = await authRes.json();
-    if (!authData?.id) throw new Error("Erro ao criar autorizacao Pix Automatico: " + JSON.stringify(authData));
+    const authData = auth.body;
+    if (!auth.ok || !authData?.id) throw new Error(`Erro ao criar autorizacao Pix Automatico (HTTP ${auth.status}): ` + JSON.stringify(authData));
 
     await supabaseFetch(`tenants?id=eq.${tenant_id}`, {
       method: "PATCH",

@@ -49,6 +49,10 @@ export default function PlanosPage() {
   const [loading, setLoading] = useState(false);
   const [assinatura, setAssinatura] = useState<AssinaturaResposta | null>(null);
   const [confirmado, setConfirmado] = useState(false);
+  // Depois de esperar bastante e o webhook ainda nao ter confirmado (ver
+  // useEffect abaixo) - nao significa que deu errado, so que ta demorando
+  // mais que o normal pra chegar.
+  const [demorando, setDemorando] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
 
   const assinarComPix = async () => {
@@ -78,6 +82,7 @@ export default function PlanosPage() {
       }
       setAssinatura(data);
       setConfirmado(false);
+      setDemorando(false);
     } catch (e: any) {
       const msg = e?.message || 'Erro ao iniciar assinatura';
       toast.error(msg, msg.includes('CPF/CNPJ') ? { duration: 7000 } : undefined);
@@ -114,9 +119,16 @@ export default function PlanosPage() {
   // igual ao desta autorizacao que acabamos de criar.
   useEffect(() => {
     if (!assinatura || confirmado || !tenantId) return;
-    let tentativas = 0;
-    const maxTentativas = 40; // ~80s
     let cancelado = false;
+    const inicio = Date.now();
+    // Validado em producao (28/08/2026): o caminho todo - pagador confirma
+    // no banco dele, o banco avisa a Asaas, a Asaas chama nosso webhook -
+    // pode levar bem mais que os 80s que tinhamos antes (num teste real
+    // levou uns 5 minutos). Por isso agora esperamos ate 10 minutos: rapido
+    // (a cada 3s) nos primeiros 2 minutos, depois mais espacado (a cada 15s)
+    // pra nao ficar martelando o banco a toa numa espera longa.
+    const DURACAO_MAXIMA_MS = 10 * 60 * 1000;
+    const JANELA_RAPIDA_MS = 2 * 60 * 1000;
 
     const verificar = async () => {
       if (cancelado) return;
@@ -125,7 +137,6 @@ export default function PlanosPage() {
         .select('status, plan, asaas_authorization_id')
         .eq('id', tenantId)
         .maybeSingle();
-      tentativas++;
       const ativouEssaAssinatura =
         data?.plan === 'assinatura_pix_automatico' &&
         data?.asaas_authorization_id === assinatura.authorization_id &&
@@ -135,7 +146,16 @@ export default function PlanosPage() {
         setTimeout(() => navigate('/dashboard'), 2500);
         return;
       }
-      if (tentativas < maxTentativas && !cancelado) setTimeout(verificar, 2000);
+      const decorrido = Date.now() - inicio;
+      if (decorrido >= DURACAO_MAXIMA_MS) {
+        // Nao confirmou a tempo, mas isso nao quer dizer que falhou - o
+        // webhook pode chegar depois mesmo com a tela fechada. So paramos
+        // de fazer a pessoa esperar olhando pra tela.
+        setDemorando(true);
+        return;
+      }
+      const proximoIntervalo = decorrido < JANELA_RAPIDA_MS ? 3000 : 15000;
+      if (!cancelado) setTimeout(verificar, proximoIntervalo);
     };
     verificar();
     return () => { cancelado = true; };
@@ -210,7 +230,30 @@ export default function PlanosPage() {
               <X size={20} />
             </button>
 
-            {!confirmado ? (
+            {confirmado ? (
+              <>
+                <CheckCircle size={64} color="#22c55e" style={{ marginBottom: 24 }} />
+                <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>Assinatura confirmada! 🎉</h1>
+                <p style={{ color: 'var(--text-muted)' }}>Redirecionando para o dashboard...</p>
+              </>
+            ) : demorando ? (
+              <>
+                <Loader2 size={64} color="#f59e0b" style={{ marginBottom: 24 }} />
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Ainda confirmando...</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 }}>
+                  Isso acontece quando o banco demora mais que o normal pra confirmar o Pix Automatico.
+                  Sua assinatura pode ja ter sido ativada nos bastidores - voce ja pode continuar usando o
+                  sistema. Se em alguns minutos o plano ainda nao aparecer ativo, entre em contato com o suporte.
+                </p>
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="btn btn-primary"
+                  style={{ padding: '10px 24px' }}
+                >
+                  Ir para o Dashboard
+                </button>
+              </>
+            ) : (
               <>
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Escaneie para autorizar</h2>
                 <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 }}>
@@ -227,12 +270,6 @@ export default function PlanosPage() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
                   <Loader2 size={14} className="spin" />Aguardando confirmacao do pagamento...
                 </div>
-              </>
-            ) : (
-              <>
-                <CheckCircle size={64} color="#22c55e" style={{ marginBottom: 24 }} />
-                <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>Assinatura confirmada! 🎉</h1>
-                <p style={{ color: 'var(--text-muted)' }}>Redirecionando para o dashboard...</p>
               </>
             )}
           </div>
