@@ -138,17 +138,46 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
 export interface DadosLoja {
   name?: string; cnpj?: string; phone?: string; email?: string;
   address?: string; city?: string; state?: string; logo_url?: string;
+  /** Cor de marca do tenant (hex, ex: "#6366f1") — usada nos cabeçalhos e
+   * detalhes dos documentos impressos para dar uma identidade visual própria
+   * a cada clínica/ótica, em vez de um design único para todo mundo. */
+  brand_color?: string;
 }
 
-export function getCabecalhoLoja(s: DadosLoja | null): string {
+/** Clareia uma cor hex misturando com branco (para fundos suaves de tabela/badge
+ * que acompanham a cor de marca sem ficarem fortes demais). amount 0–1. */
+export function tintColor(hex: string, amount = 0.88): string {
+  const h = (hex || '').replace('#', '').trim();
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  if (!full || full.length !== 6 || Number.isNaN(n)) return '#eef1f8';
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const mix = (c: number) => Math.round(c + (255 - c) * amount);
+  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
+
+// Cor padrão usada quando o tenant ainda não configurou uma cor de marca em
+// Dados da Clínica — mesmo azul escuro que já era usado nos documentos antes
+// dessa opção existir, para não mudar a aparência de quem não configurar nada.
+export const CABECALHO_COR_PADRAO = '#1a3a8f';
+
+/**
+ * Cabeçalho padrão com os dados da loja/clínica (logo, nome, cor de marca,
+ * CNPJ, endereço, telefone), usado no topo dos documentos impressos.
+ * `subtitulo` é opcional (ex: "OPTOMETRIA") para documentos de um módulo
+ * específico dentro do mesmo tenant.
+ */
+export function getCabecalhoLoja(s: DadosLoja | null, subtitulo?: string): string {
+  const cor = (s?.brand_color) || CABECALHO_COR_PADRAO;
   if (!s) return '<h2 style="text-align:center">ÓPTICA</h2>';
   return `
-    <div style="text-align:center;border-bottom:2px solid #333;padding-bottom:12px;margin-bottom:16px">
-      ${s.logo_url ? `<img src="${s.logo_url}" style="max-height:60px;margin-bottom:8px"><br>` : ''}
-      <h2 style="margin:0;font-size:18px;text-transform:uppercase">${s.name || 'Óptica'}</h2>
-      <div style="font-size:11px;color:#555;margin-top:4px">
-        ${s.cnpj ? 'CNPJ: ' + s.cnpj : ''}${s.cnpj && s.phone ? ' | ' : ''}${s.phone ? 'Tel: ' + s.phone : ''}<br>
-        ${s.address ? s.address + (s.city ? ' — ' + s.city + (s.state ? '/' + s.state : '') : '') : ''}
+    <div style="text-align:center;border-bottom:3px solid ${cor};padding-bottom:14px;margin-bottom:20px">
+      ${s.logo_url ? `<img src="${s.logo_url}" style="max-height:64px;max-width:230px;object-fit:contain;margin-bottom:8px"><br>` : ''}
+      <div style="margin:0;font-size:19px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:${cor}">${s.name || 'Óptica'}</div>
+      ${subtitulo ? `<div style="font-size:11px;font-weight:700;color:#8a8a8a;letter-spacing:.18em;margin-top:3px">${subtitulo}</div>` : ''}
+      <div style="font-size:11px;color:#666;margin-top:6px;line-height:1.5">
+        ${s.cnpj ? 'CNPJ: ' + s.cnpj : ''}${s.cnpj && s.phone ? ' &nbsp;|&nbsp; ' : ''}${s.phone ? 'Tel: ' + s.phone : ''}
+        ${(s.address || s.city) ? '<br>' + [s.address, s.city ? (s.city + (s.state ? '/' + s.state : '')) : ''].filter(Boolean).join(' — ') : ''}
         ${s.email ? '<br>' + s.email : ''}
       </div>
     </div>`;

@@ -23,6 +23,7 @@ interface ClinicSettings {
   clinic_state: string;
   clinic_zip: string;
   logo_url: string;
+  brand_color: string;
   horario_inicio: string;
   horario_fim: string;
   dias_semana: number[];
@@ -35,7 +36,7 @@ interface ClinicSettings {
 const DEFAULT_FORM: ClinicSettings = {
   tenant_id: '', clinic_name: '', clinic_document: '', responsavel: '',
   clinic_phone: '', clinic_email: '', clinic_address: '', clinic_city: '',
-  clinic_state: '', clinic_zip: '', logo_url: '',
+  clinic_state: '', clinic_zip: '', logo_url: '', brand_color: '#1a3a8f',
   horario_inicio: '08:00', horario_fim: '18:00',
   dias_semana: [1, 2, 3, 4, 5], possui_intervalo: false,
   intervalo_inicio: '12:00', intervalo_fim: '13:00',
@@ -115,12 +116,12 @@ export default function DadosClinica() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
 
-        {/* Logo */}
+        {/* Logo e Marca */}
         <div className="card" style={{ padding: 24, gridColumn: '1/-1' }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Building2 size={16} style={{ color: '#6366f1' }} /> Logo da Clínica
+            <Building2 size={16} style={{ color: '#6366f1' }} /> Logo e Identidade Visual
           </h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
             <div style={{
               width: 96, height: 96, borderRadius: 12, background: 'rgba(99,102,241,.1)',
               border: '2px dashed rgba(99,102,241,.3)', display: 'flex', alignItems: 'center',
@@ -145,6 +146,25 @@ export default function DadosClinica() {
                   display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
                 }}><X size={14} /> Remover</button>
               )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 20, marginLeft: 4, borderLeft: '1px solid var(--border)' }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10, background: form.brand_color || '#1a3a8f',
+                border: '2px solid var(--border)', flexShrink: 0, position: 'relative', overflow: 'hidden',
+              }}>
+                <input
+                  type="color"
+                  value={form.brand_color || '#1a3a8f'}
+                  onChange={e => set('brand_color', e.target.value)}
+                  style={{ position: 'absolute', inset: -4, width: 'calc(100% + 8px)', height: 'calc(100% + 8px)', border: 'none', cursor: 'pointer', padding: 0 }}
+                  title="Escolher cor de marca"
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Cor de marca</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Usada nos documentos e receituários impressos</div>
+              </div>
             </div>
           </div>
         </div>

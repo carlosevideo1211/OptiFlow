@@ -8,7 +8,7 @@ import {
   Paperclip, Upload, Plus, X as XIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { abrirDocumentoImprimivel } from '../../utils/printDoc';
+import { abrirDocumentoImprimivel, getCabecalhoLoja, tintColor, CABECALHO_COR_PADRAO, type DadosLoja } from '../../utils/printDoc';
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
 type Section =
@@ -363,6 +363,25 @@ export default function AtendimentoPage() {
   const [anexos, setAnexos] = useState<any[]>([]);
   const [uploadingAnexo, setUploadingAnexo] = useState(false);
 
+  // Dados da clínica (logo, nome, cor de marca) para dar identidade visual
+  // própria aos documentos impressos (receituário, atestado, laudo, ficha
+  // clínica etc.) em vez de um cabeçalho genérico "OPTOMETRIA" igual pra todo mundo.
+  const [clinicaBranding, setClinicaBranding] = useState<DadosLoja | null>(null);
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase.from('clinic_settings')
+      .select('clinic_name,clinic_document,clinic_phone,clinic_email,clinic_address,clinic_city,clinic_state,logo_url,brand_color')
+      .eq('tenant_id', tenantId).maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        setClinicaBranding({
+          name: data.clinic_name, cnpj: data.clinic_document, phone: data.clinic_phone,
+          email: data.clinic_email, address: data.clinic_address, city: data.clinic_city,
+          state: data.clinic_state, logo_url: data.logo_url, brand_color: data.brand_color,
+        });
+      });
+  }, [tenantId]);
+
   useEffect(() => {
     if (!tenantId) return;
     const SECAO_KEY_MAP: Record<string, Accordion | null> = {
@@ -615,11 +634,12 @@ export default function AtendimentoPage() {
   }
 
   // ── helpers para documentos ─────────────────────────────────────────────────
-  const cabecalhoDoc = () => `
-    <div style="text-align:center; border-bottom: 2px solid #1a3a6b; padding-bottom: 16px; margin-bottom: 24px;">
-      <div style="font-size:32px; color:#1a3a6b; margin-bottom:4px;">⚕</div>
-      <div style="font-size:18px; font-weight:900; color:#1a3a6b; letter-spacing:0.12em;">OPTOMETRIA</div>
-    </div>`;
+  // Cor de marca do tenant (configurada em Configurações → Dados da Clínica);
+  // cai no azul padrão de antes quando o tenant ainda não configurou nenhuma.
+  const corDoc = clinicaBranding?.brand_color || CABECALHO_COR_PADRAO;
+  const corDocClara = tintColor(corDoc);
+
+  const cabecalhoDoc = () => getCabecalhoLoja(clinicaBranding, 'OPTOMETRIA');
 
   const rodapeDoc = (cidade: string, dt: string) => {
     if (rodapeConfig.ativo && rodapeConfig.html) {
@@ -644,8 +664,8 @@ export default function AtendimentoPage() {
 
   const assinaturaDoc = (prof: string, dt: string) => `
     <div style="margin-top:60px; text-align:center;">
-      <div style="border-top:1px solid #000; width:220px; margin:0 auto 6px;"></div>
-      <div style="font-size:13px; font-weight:600;">${prof || 'Optometrista'}</div>
+      <div style="border-top:2px solid ${corDoc}; width:220px; margin:0 auto 6px;"></div>
+      <div style="font-size:13px; font-weight:700;">${prof || 'Optometrista'}</div>
       <div style="font-size:11px; color:#555; margin-top:2px;">${dt}</div>
     </div>`;
 
@@ -653,11 +673,11 @@ export default function AtendimentoPage() {
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: Arial, sans-serif; padding: 40px 40px 120px; color: #111; font-size: 13px; line-height: 1.6; }
-      h2 { text-align: center; font-size: 15px; font-weight: 800; margin-bottom: 24px; letter-spacing: 0.08em; color: #111; }
+      h2 { text-align: center; font-size: 15px; font-weight: 800; margin-bottom: 24px; letter-spacing: 0.08em; color: ${corDoc}; }
       p { margin-bottom: 12px; }
       table { width: 100%; border-collapse: collapse; margin: 12px 0; }
       th, td { border: 1px solid #bbb; padding: 7px 10px; text-align: center; font-size: 12px; }
-      th { background: #e8eaf0; font-weight: 700; color: #1a3a6b; }
+      th { background: ${corDocClara}; font-weight: 700; color: ${corDoc}; }
       td.label-cell { font-weight: 700; text-align: left; background: #f5f5f5; }
       @media print { body { padding: 30px 30px 110px; } }
     </style>`;
@@ -1043,12 +1063,12 @@ export default function AtendimentoPage() {
     const css = `
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; padding: 28px; color: #111; font-size: 12px; }
-        h1 { text-align: center; font-size: 16px; margin-bottom: 2px; }
-        .cabecalho { text-align: center; font-size: 12px; color: #444; margin-bottom: 16px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-        .secao { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; background: #f0f0f0; padding: 5px 10px; margin: 14px 0 6px; border-left: 4px solid #333; }
+        h1 { text-align: center; font-size: 13px; font-weight: 800; letter-spacing: 0.1em; color: #888; margin-bottom: 14px; }
+        .cabecalho { text-align: center; font-size: 12px; color: #444; margin-bottom: 16px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .secao { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; background: ${corDocClara}; color: ${corDoc}; padding: 5px 10px; margin: 14px 0 6px; border-left: 4px solid ${corDoc}; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 12px; }
         th, td { border: 1px solid #ccc; padding: 5px 8px; }
-        th { background: #f5f5f5; font-size: 11px; text-align: center; font-weight: 600; }
+        th { background: ${corDocClara}; color: ${corDoc}; font-size: 11px; text-align: center; font-weight: 700; }
         td.lbl { font-weight: 600; width: 160px; background: #fafafa; }
         .rx-table td { text-align: center; }
         .rx-label { text-align: left !important; font-weight: 700; }
@@ -1056,10 +1076,11 @@ export default function AtendimentoPage() {
         .box { border: 1px solid #ccc; border-radius: 4px; padding: 8px 10px; }
         .box-label { font-size: 10px; font-weight: 700; color: #666; text-transform: uppercase; margin-bottom: 3px; }
         .footer { margin-top: 40px; text-align: center; border-top: 1px solid #ccc; padding-top: 16px; }
-        .assinatura { border-top: 1px solid #000; width: 220px; margin: 0 auto 4px; }
+        .assinatura { border-top: 2px solid ${corDoc}; width: 220px; margin: 0 auto 4px; }
       `;
 
     const body = `
+      ${getCabecalhoLoja(clinicaBranding)}
       <h1>FICHA CLÍNICA — OPTOMETRIA</h1>
       <div class="cabecalho">
         Paciente: <strong>${nome}</strong> &nbsp;|&nbsp;
@@ -1139,6 +1160,113 @@ export default function AtendimentoPage() {
     abrirDocumentoImprimivel({
       title: 'Ficha Clínica — ' + nome,
       filename: 'ficha-clinica-' + slug + '.pdf',
+      css,
+      body,
+      windowFeatures: 'width=800,height=1000',
+    });
+  };
+
+  // ── Receituário compacto ────────────────────────────────────────────────────
+  // Documento separado da Ficha Clínica: só o essencial pra entregar ao
+  // paciente (RX pra óculos), com visual mais parecido com uma receita
+  // profissional de verdade — inspirado no exemplo que a Samara mandou.
+  const gerarReceituario = () => {
+    const nome = consultation?.customer_name ?? '';
+    const prof = docProfissional || consultation?.professional_name || '';
+    const dt = date ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+    const dataBase = date ? new Date(date + 'T12:00:00') : new Date();
+    const validade = new Date(dataBase);
+    validade.setFullYear(validade.getFullYear() + 1);
+    const validadeTxt = validade.toLocaleDateString('pt-BR');
+    const cidade = docCidade || 'Rio de Janeiro';
+
+    const linhaRx = (olho: string, rx: { ESF: string; CIL: string; EIXO: string; DNP: string }) => `
+      <tr>
+        <td class="rx-olho">${olho}</td>
+        <td>${rx.ESF || '—'}</td>
+        <td>${rx.CIL || '—'}</td>
+        <td>${rx.EIXO ? rx.EIXO + '°' : '—'}</td>
+        <td>${rx.DNP || '—'}</td>
+      </tr>`;
+
+    const css = `
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; padding: 36px 40px; color: #1a1a1a; font-size: 13px; }
+      .topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 3px solid ${corDoc}; padding-bottom: 16px; margin-bottom: 24px; }
+      .marca { display: flex; align-items: center; gap: 12px; }
+      .marca img { max-height: 54px; max-width: 180px; object-fit: contain; }
+      .marca-nome { font-size: 17px; font-weight: 800; color: ${corDoc}; text-transform: uppercase; letter-spacing: .02em; }
+      .marca-sub { font-size: 10px; color: #999; margin-top: 2px; }
+      .doc-titulo { text-align: right; font-size: 12px; font-weight: 800; letter-spacing: .14em; color: #999; white-space: nowrap; }
+      .info-paciente { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px 24px; margin-bottom: 22px; font-size: 12.5px; }
+      .info-paciente span { color: #777; }
+      table.rx { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+      table.rx th { background: ${corDocClara}; color: ${corDoc}; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 9px 6px; border: 1px solid #ddd; }
+      table.rx td { border: 1px solid #ddd; padding: 12px 6px; text-align: center; font-size: 15px; font-weight: 600; }
+      td.rx-olho { font-weight: 800; background: #fafafa; width: 60px; color: #444; }
+      .secao-mini { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+      .secao-mini .box { border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; }
+      .secao-mini .box-label { font-size: 10px; text-transform: uppercase; color: #888; font-weight: 700; margin-bottom: 3px; }
+      .secao-mini .box-val { font-size: 13px; font-weight: 600; }
+      .obs { font-size: 12px; color: #333; margin-bottom: 30px; }
+      .rodape-doc { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 46px; }
+      .validade { font-size: 11px; color: #666; line-height: 1.6; }
+      .assinatura { text-align: center; }
+      .assinatura .linha { border-top: 2px solid ${corDoc}; width: 220px; margin: 0 auto 6px; }
+      .legal { margin-top: 34px; border-top: 1px solid #e5e5e5; padding-top: 10px; font-size: 9px; color: #999; text-align: center; line-height: 1.5; }
+      @media print { body { padding: 26px 30px; } }
+    `;
+
+    const body = `
+      <div class="topo">
+        <div class="marca">
+          ${clinicaBranding?.logo_url ? `<img src="${clinicaBranding.logo_url}" />` : ''}
+          <div>
+            <div class="marca-nome">${clinicaBranding?.name || 'Óptica'}</div>
+            <div class="marca-sub">OPTOMETRIA</div>
+          </div>
+        </div>
+        <div class="doc-titulo">RECEITUÁRIO<br>OPTOMÉTRICO</div>
+      </div>
+
+      <div class="info-paciente">
+        <div><span>Paciente:</span> <strong>${nome}</strong></div>
+        <div><span>Data:</span> <strong>${dt}</strong></div>
+      </div>
+
+      <table class="rx">
+        <tr><th></th><th>Esférico</th><th>Cilíndrico</th><th>Eixo</th><th>DNP</th></tr>
+        ${linhaRx('OD', rxOd)}
+        ${linhaRx('OE', rxOe)}
+      </table>
+
+      <div class="secao-mini">
+        <div class="box"><div class="box-label">Adição</div><div class="box-val">${rxAdicao || '—'}</div></div>
+        <div class="box"><div class="box-label">Tipo de lente</div><div class="box-val">${rxTipoLente || '—'}</div></div>
+        <div class="box"><div class="box-label">Tratamento</div><div class="box-val">${rxTratamento || '—'}</div></div>
+      </div>
+
+      ${anamneseObs ? `<div class="obs"><strong>Obs.:</strong> ${anamneseObs}</div>` : ''}
+
+      <div class="rodape-doc">
+        <div class="validade">Receita válida por 1 ano<br>Validade: <strong>${validadeTxt}</strong></div>
+        <div class="assinatura">
+          <div class="linha"></div>
+          <div style="font-weight:700; font-size:13px">${prof || 'Optometrista'}</div>
+          <div style="font-size:11px; color:#555">Optometrista</div>
+        </div>
+      </div>
+
+      <div class="legal">
+        O presente receituário foi emitido por profissional Optometrista, responsável pela correção dos defeitos refrativos através da indicação de lentes corretivas.
+        <br>${cidade}, ${dt}
+      </div>
+    `;
+
+    const slug = (nome || 'paciente').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    abrirDocumentoImprimivel({
+      title: 'Receituário — ' + nome,
+      filename: 'receituario-' + slug + '.pdf',
       css,
       body,
       windowFeatures: 'width=800,height=1000',
@@ -1629,7 +1757,7 @@ export default function AtendimentoPage() {
               </div>
 
               <div style={{ padding: '20px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button className="btn btn-secondary" onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Printer size={14} /> Imprimir Receita</button>
+                <button className="btn btn-secondary" onClick={gerarReceituario} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Printer size={14} /> Imprimir Receita</button>
                 <button className="btn btn-primary" onClick={() => handleSave()} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}</button>
               </div>
             </div>
