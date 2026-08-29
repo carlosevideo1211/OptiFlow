@@ -163,7 +163,7 @@ export default function LoginPage() {
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 28 }}>+ Estoque, Financeiro, NF-e e muito mais</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 28 }}>+ Estoque, Financeiro e muito mais</div>
 
           {/* Planos */}
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 12 }}>ESCOLHA SEU PLANO</div>
