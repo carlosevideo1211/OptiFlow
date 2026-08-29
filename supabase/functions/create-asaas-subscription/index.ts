@@ -10,8 +10,16 @@ const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-const PLANO_VALOR = 99.99;
-const PLANO_DESCRICAO = "Assinatura OptiFlow";
+// Dois planos, dependendo de quais modulos o inquilino tem liberados
+// (tenants.modulo_otica_ativo): quem tem a Otica liberada paga o plano
+// completo (Otica + Consultas/Rx); quem so tem Consultas/Rx (ex: Samara)
+// paga o plano menor. modulo_otica_ativo e NOT NULL DEFAULT true no banco,
+// mas seguimos o mesmo padrao defensivo usado no Shell.tsx (!== false)
+// para o caso de vir null por algum motivo.
+const PLANO_OTICA_VALOR = 99.99;
+const PLANO_OTICA_DESCRICAO = "Assinatura OptiFlow - Otica + Consultas/Rx";
+const PLANO_CONSULTORIO_VALOR = 49.99;
+const PLANO_CONSULTORIO_DESCRICAO = "Assinatura OptiFlow - Consultas/Rx";
 
 // Confere se quem esta chamando e um usuario realmente autenticado no Supabase
 // e devolve o id dele (para depois conferir se pertence ao tenant informado).
@@ -101,10 +109,14 @@ serve(async (req) => {
     const asaasHeaders = { access_token: ASAAS_KEY, "Content-Type": "application/json" };
 
     const tenantsRows = await supabaseFetch(
-      `tenants?id=eq.${tenant_id}&select=id,company_name,email,asaas_customer_id,asaas_authorization_id`
+      `tenants?id=eq.${tenant_id}&select=id,company_name,email,asaas_customer_id,asaas_authorization_id,modulo_otica_ativo`
     );
     const tenant = Array.isArray(tenantsRows) ? tenantsRows[0] : null;
     if (!tenant) throw new Error("Inquilino nao encontrado");
+
+    const temOtica = tenant.modulo_otica_ativo !== false;
+    const PLANO_VALOR = temOtica ? PLANO_OTICA_VALOR : PLANO_CONSULTORIO_VALOR;
+    const PLANO_DESCRICAO = temOtica ? PLANO_OTICA_DESCRICAO : PLANO_CONSULTORIO_DESCRICAO;
 
     // CNPJ/CPF do inquilino: reaproveita o campo ja preenchido em
     // Configuracoes > Dados da Loja (store_settings.cnpj), nao pedimos de novo.

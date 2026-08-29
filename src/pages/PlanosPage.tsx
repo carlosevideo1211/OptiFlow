@@ -6,18 +6,41 @@ import toast from 'react-hot-toast';
 import { Check, QrCode, X, Loader2, CheckCircle, Copy, MessageCircle } from 'lucide-react';
 
 const WHATSAPP = '5592992779106';
-const PLANO_VALOR = 99.99;
 
-const FEATURES = [
-  'Usuarios ilimitados',
-  'Clientes ilimitados',
-  'Vendas / PDV',
-  'Ordens de Servico',
-  'Crediario',
-  'Controle de estoque',
-  'Relatorios avancados',
-  'Suporte por email',
-];
+// Dois planos, dependendo de quais modulos o inquilino tem liberados
+// (tenants.modulo_otica_ativo) -- mesmo criterio usado pela Edge Function
+// create-asaas-subscription pra decidir o valor cobrado. Nao pedimos pro
+// usuario escolher aqui: a tela so mostra o plano que ja corresponde ao que
+// o tenant dele tem habilitado.
+const PLANO_OTICA = {
+  nome: 'Plano Otica',
+  descricao: 'Tudo que sua otica precisa pra rodar no dia a dia',
+  valor: 99.99,
+  features: [
+    'Usuarios ilimitados',
+    'Clientes ilimitados',
+    'Vendas / PDV',
+    'Ordens de Servico',
+    'Crediario',
+    'Controle de estoque',
+    'Consulta / Rx e Agenda',
+    'Relatorios avancados',
+    'Suporte por email',
+  ],
+};
+const PLANO_CONSULTORIO = {
+  nome: 'Plano Consultorio',
+  descricao: 'Consulta / Rx completa, sem os modulos de otica',
+  valor: 49.99,
+  features: [
+    'Usuarios ilimitados',
+    'Clientes ilimitados',
+    'Consulta / Rx completa',
+    'Agenda de atendimentos',
+    'Receituario e atestados',
+    'Suporte por email',
+  ],
+};
 
 // Carrega a mesma biblioteca de QR Code (qrcodejs via CDN) ja usada para
 // desenhar o Pix do carne (ver src/pages/VendasPage.tsx / printDoc.ts),
@@ -53,7 +76,27 @@ export default function PlanosPage() {
   // useEffect abaixo) - nao significa que deu errado, so que ta demorando
   // mais que o normal pra chegar.
   const [demorando, setDemorando] = useState(false);
+  // NOT NULL DEFAULT true no banco; comeca em true (plano Otica) ate a busca
+  // abaixo responder, seguindo o mesmo padrao defensivo do Shell.tsx.
+  const [moduloOticaAtivo, setModuloOticaAtivo] = useState<boolean>(true);
   const qrRef = useRef<HTMLDivElement>(null);
+  const plano = moduloOticaAtivo ? PLANO_OTICA : PLANO_CONSULTORIO;
+
+  useEffect(() => {
+    if (!tenantId) return;
+    let cancelado = false;
+    const buscarModulo = async () => {
+      const { data } = await supabase
+        .from('tenants')
+        .select('modulo_otica_ativo')
+        .eq('id', tenantId)
+        .maybeSingle();
+      if (cancelado) return;
+      setModuloOticaAtivo(data?.modulo_otica_ativo !== false);
+    };
+    buscarModulo();
+    return () => { cancelado = true; };
+  }, [tenantId]);
 
   const assinarComPix = async () => {
     if (!tenantId) { toast.error('Faca login primeiro'); return; }
@@ -181,14 +224,14 @@ export default function PlanosPage() {
         </div>
 
         <div className="card" style={{ padding: 32, borderTop: '3px solid #6366f1' }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Plano OptiFlow</div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>Tudo que sua otica precisa pra rodar no dia a dia</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{plano.nome}</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>{plano.descricao}</div>
           <div style={{ marginBottom: 24 }}>
-            <span style={{ fontSize: 36, fontWeight: 800, color: '#6366f1' }}>R$ {PLANO_VALOR.toFixed(2).replace('.', ',')}</span>
+            <span style={{ fontSize: 36, fontWeight: 800, color: '#6366f1' }}>R$ {plano.valor.toFixed(2).replace('.', ',')}</span>
             <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>/mes</span>
           </div>
           <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px' }}>
-            {FEATURES.map((f, i) => (
+            {plano.features.map((f, i) => (
               <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8, fontSize: 13, color: 'var(--text)' }}>
                 <Check size={14} color="#6366f1" style={{ marginTop: 2, flexShrink: 0 }} />{f}
               </li>
@@ -257,7 +300,7 @@ export default function PlanosPage() {
               <>
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Escaneie para autorizar</h2>
                 <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 }}>
-                  R$ {PLANO_VALOR.toFixed(2).replace('.', ',')}/mes via Pix Automatico
+                  R$ {plano.valor.toFixed(2).replace('.', ',')}/mes via Pix Automatico
                 </p>
                 <div ref={qrRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }} />
                 <button
