@@ -4,43 +4,15 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { Check, QrCode, X, Loader2, CheckCircle, Copy, MessageCircle } from 'lucide-react';
+import { PLANO_OTICA, PLANO_CONSULTORIO } from '../constants/planos';
 
 const WHATSAPP = '5592992779106';
 
-// Dois planos, dependendo de quais modulos o inquilino tem liberados
-// (tenants.modulo_otica_ativo) -- mesmo criterio usado pela Edge Function
-// create-asaas-subscription pra decidir o valor cobrado. Nao pedimos pro
-// usuario escolher aqui: a tela so mostra o plano que ja corresponde ao que
-// o tenant dele tem habilitado.
-const PLANO_OTICA = {
-  nome: 'Plano Otica',
-  descricao: 'Tudo que sua otica precisa pra rodar no dia a dia',
-  valor: 99.99,
-  features: [
-    'Usuarios ilimitados',
-    'Clientes ilimitados',
-    'Vendas / PDV',
-    'Ordens de Servico',
-    'Crediario',
-    'Controle de estoque',
-    'Consulta / Rx e Agenda',
-    'Relatorios avancados',
-    'Suporte por email',
-  ],
-};
-const PLANO_CONSULTORIO = {
-  nome: 'Plano Consultorio',
-  descricao: 'Consulta / Rx completa, sem os modulos de otica',
-  valor: 49.99,
-  features: [
-    'Usuarios ilimitados',
-    'Clientes ilimitados',
-    'Consulta / Rx completa',
-    'Agenda de atendimentos',
-    'Receituario e atestados',
-    'Suporte por email',
-  ],
-};
+// Qual dos dois planos mostrar depende dos modulos que o inquilino tem
+// liberados (tenants.modulo_otica_ativo) -- mesmo criterio usado pela Edge
+// Function create-asaas-subscription pra decidir o valor cobrado. Nao
+// pedimos pro usuario escolher aqui: a tela so mostra o plano que ja
+// corresponde ao que o tenant dele tem habilitado.
 
 // Carrega a mesma biblioteca de QR Code (qrcodejs via CDN) ja usada para
 // desenhar o Pix do carne (ver src/pages/VendasPage.tsx / printDoc.ts),
