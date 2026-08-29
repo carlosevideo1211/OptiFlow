@@ -33,6 +33,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { to: '/dashboard',  label: 'Dashboard',       icon: LayoutDashboard, sub: false, roles: [] },
       { to: '/clientes',   label: 'Clientes',         icon: Users,           sub: false, roles: [], requiresModule: 'otica' },
       { to: '/consulta',   label: 'Consulta / Rx',    icon: Eye,             sub: false, roles: [], requiresModule: 'consultas' },
+      { to: '/agenda',     label: 'Agenda',           icon: Calendar,        sub: false, roles: [], requiresModule: 'consultas' },
       { to: '/os',         label: 'Ordem de Serviço', icon: ClipboardList,   sub: false, roles: [], requiresModule: 'otica' },
       { to: '/vendas',     label: 'Vendas / PDV',     icon: ShoppingCart,    sub: false, roles: [], requiresModule: 'otica' },
     ]
