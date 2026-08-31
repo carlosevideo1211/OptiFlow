@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
 import { computeTier, TIER_STYLES, type Tier, type ParcelaRanking } from '../utils/clienteRanking';
 import {
-  CINCO_ANOS_MS, hashPassword, JANELA_LABELS, calcJuros,
+  CINCO_ANOS_MS, hashPassword, JANELA_LABELS, calcJuros, toLocalDateStr,
   type Parcela, type CrediarioResumo, type CobrancaLog,
 } from './crediario/crediarioTypes';
 import {
@@ -187,9 +187,13 @@ export default function CrediarioPage() {
   };
 
 
-  const hoje = new Date().toISOString().split('T')[0];
-  const em5dias = new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0];
-  const menos5dias = new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0];
+  // Corrigido 31/08/2026: usava toISOString() (sempre UTC), fazendo "hoje"
+  // virar o dia seguinte a partir de ~20h no horario de Manaus — uma
+  // parcela vencendo hoje sumia da relacao/filtros durante a noite. Ver
+  // toLocalDateStr() em crediarioTypes.ts.
+  const hoje = toLocalDateStr();
+  const em5dias = toLocalDateStr(new Date(Date.now() + 5 * 86400000));
+  const menos5dias = toLocalDateStr(new Date(Date.now() - 5 * 86400000));
 
   const filtered = useMemo(() => {
     return parcelas.filter(p => {
