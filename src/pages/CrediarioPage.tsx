@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import {
   CreditCard, Search, CheckCircle, Trash2,
-  AlertTriangle, Download, MessageCircle, Calendar, Printer, Lock, User, X, Pencil, Send
+  AlertTriangle, Download, MessageCircle, Calendar, Printer, Lock, User, X, Pencil, Send,
+  Receipt, BadgeCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
@@ -17,6 +18,7 @@ import {
   imprimirReciboParcial,
   imprimirCarneIndividual as imprimirCarneIndividualDoc,
   imprimirCarneCompleto as imprimirCarneCompletoDoc,
+  imprimirQuitacaoCrediario as imprimirQuitacaoCrediarioDoc,
 } from './crediario/crediarioDocumentos';
 
 export default function CrediarioPage() {
@@ -117,6 +119,7 @@ export default function CrediarioPage() {
         qtdEmAtraso: emAtraso.length, ultimaParcelaVencimento,
         tier: tierPorCliente[cr.customer_id] || null,
         created_at: cr.created_at,
+        status: cr.status,
       });
 
       parcelasCr.forEach((p: any) => {
@@ -211,6 +214,15 @@ export default function CrediarioPage() {
       return true;
     });
   }, [parcelas, search, statusFilter, janelaFilter, dateFrom, dateTo, hoje, em5dias, menos5dias]);
+
+  // Crediarios com todas as parcelas pagas (status 'quitado', atualizado pelo
+  // proprio handleConfirmPay/renegociacao) — usado pra so mostrar o botao de
+  // "Emitir Termo de Quitacao" quando realmente nao ha mais nada em aberto
+  // naquele carne (pedido pelo Carlos, 01/09/2026).
+  const crediariosQuitadosIds = useMemo(
+    () => new Set(crediariosResumo.filter(c => c.status === 'quitado').map(c => c.id)),
+    [crediariosResumo]
+  );
 
   const totalAberto = parcelas.filter(p => p.status !== 'pago' && !p.arquivado).reduce((s, p) => s + p.amount, 0);
   const totalVencido = parcelas.filter(p => p.status !== 'pago' && !p.arquivado && p.due_date && p.due_date < hoje).reduce((s, p) => s + p.amount, 0);
@@ -374,6 +386,9 @@ export default function CrediarioPage() {
   // só passando `tenantId` explicitamente em vez de via closure.
   const imprimirCarneIndividual = (p: Parcela) => imprimirCarneIndividualDoc(p, tenantId);
   const imprimirCarneCompleto = (p: Parcela) => imprimirCarneCompletoDoc(p, tenantId);
+  // Emite o Termo de Quitacao Total do carne — so faz sentido pra um crediario
+  // que ja esta com todas as parcelas pagas (ver crediariosQuitadosIds abaixo).
+  const imprimirQuitacaoCrediario = (crediarioId: string) => imprimirQuitacaoCrediarioDoc(crediarioId, tenantId);
   const payModal = showPayModal && selectedParcela ? (
     <div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.85)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center'}}
       onClick={()=>setShowPayModal(false)}>
@@ -753,11 +768,24 @@ export default function CrediarioPage() {
                         style={{ background: podeCobrarAuto?'rgba(239,68,68,.1)':'rgba(148,163,184,.06)', border:'1px solid ' + (podeCobrarAuto?'rgba(239,68,68,.2)':'rgba(148,163,184,.12)'), borderRadius:7, padding:'5px 8px', cursor: podeCobrarAuto?'pointer':'not-allowed', color: podeCobrarAuto?'#ef4444':'var(--text-muted)', display:'flex', alignItems:'center', opacity: podeCobrarAuto?0.9:0.4 }}>
                       <Send size={14}/>
                     </button>
-                    <button onClick={() => imprimirCarneIndividual(p)} title="Imprimir recibo desta parcela"
-                              style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#f59e0b', display:'flex', alignItems:'center' }}>
-                              <Printer size={14}/>
-                            </button>
+                    {pago ? (
+                      <button onClick={() => imprimirCarneIndividual(p)} title="Comprovante de Pagamento desta parcela"
+                                style={{ background:'rgba(34,197,94,.1)', border:'1px solid rgba(34,197,94,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#22c55e', display:'flex', alignItems:'center' }}>
+                                <Receipt size={14}/>
+                              </button>
+                    ) : (
+                      <button onClick={() => imprimirCarneIndividual(p)} title="Imprimir recibo desta parcela"
+                                style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#f59e0b', display:'flex', alignItems:'center' }}>
+                                <Printer size={14}/>
+                              </button>
+                    )}
                        <button onClick={() => imprimirCarneCompleto(p)} title="Imprimir carne completo" style={{ background:'rgba(34,197,94,.1)', border:'1px solid rgba(34,197,94,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', marginLeft:2 }}><span style={{fontSize:14}}>&#128196;</span></button>
+                       {pago && crediariosQuitadosIds.has(p.crediario_id) && (
+                         <button onClick={() => imprimirQuitacaoCrediario(p.crediario_id)} title="Emitir Termo de Quitacao (carne totalmente pago)"
+                           style={{ background:'rgba(59,130,246,.1)', border:'1px solid rgba(59,130,246,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#3b82f6', display:'flex', alignItems:'center', marginLeft:2 }}>
+                           <BadgeCheck size={14}/>
+                         </button>
+                       )}
                             {pago && (
                               <button onClick={async () => {
                                 if (!confirm('Desmarcar pagamento desta parcela?')) return;
