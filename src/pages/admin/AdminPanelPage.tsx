@@ -6,7 +6,7 @@ import {
   LogOut, RefreshCw, Search, Users, TrendingUp, Shield,
   AlertTriangle, DollarSign, X, Save, Edit2, CheckCircle,
   XCircle, Clock, Ban, Calendar, Plus, Download, Bell,
-  Activity, BarChart2, ChevronUp, ChevronDown, ExternalLink
+  Activity, BarChart2, ChevronUp, ChevronDown, ExternalLink, RotateCcw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -26,6 +26,11 @@ interface Tenant {
   state?: string;
   created_at: string;
   boleto_habilitado?: boolean;
+  // Guarda o valor anterior de next_billing logo antes da ultima confirmacao
+  // de pagamento manual, para permitir "Desfazer" caso o admin confirme um
+  // numero de meses errado (pedido pelo Carlos, 01/09/2026). Fica null/undefined
+  // quando nao ha nada para desfazer (nunca confirmado, ou ja desfeito).
+  next_billing_anterior?: string | null;
 }
 
 const PLANS: Plan[] = ['trial','basico','profissional','clinica','lancamento','cancelado'];
@@ -55,6 +60,22 @@ function diasRestantes(d?: string): number | null {
   if (!d) return null;
   const diff = new Date(d+'T00:00:00').getTime() - new Date().setHours(0,0,0,0);
   return Math.ceil(diff / (1000*60*60*24));
+}
+
+const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+// "Pago ate": mostra o MES coberto pelo pagamento (ultimo dia antes do
+// vencimento), nao a data do proximo vencimento em si. Pedido pelo Carlos
+// (01/09/2026) porque a data crua (ex: 01/10) estava confundindo -- parecia
+// que o mes de Outubro tinha sido marcado como pago, quando na verdade
+// 01/10 e so a data em que a PROXIMA cobranca vence (ou seja, Setembro que
+// esta pago).
+function pagoAteLabel(nextBilling?: string): string | null {
+  if (!nextBilling) return null;
+  const d = new Date(nextBilling+'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  d.setDate(d.getDate()-1);
+  return MESES_PT[d.getMonth()] + '/' + d.getFullYear();
 }
 
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
@@ -212,19 +233,52 @@ export default function AdminPanelPage() {
     await updateField(t.id, 'trial_end_date', nova);
   };
 
-  // Confirma que o(s) Pix manual(is) foi(ram) recebido(s) e conferido(s) — renova
-  // o ciclo a partir de hoje (nao a partir do vencimento antigo, para nao
-  // acumular atraso caso o cliente pague alguns dias depois do vencimento),
-  // avancando 30 dias por mes efetivamente pago. Pedido pelo Carlos
-  // (01/09/2026): quem esta varios meses atrasado e paga tudo de uma vez
-  // precisa poder confirmar mais de 1 mes de uma vez (ver mesesAberto acima
-  // e o seletor na coluna de vencimento) — antes so dava pra confirmar 1 mes
-  // por clique, entao o aviso de vencido nao sumia do sistema do inquilino.
+  // Confirma que o(s) Pix manual(is) foi(ram) recebido(s) e conferido(s).
+  // Base do calculo (revisado 01/09/2026 a pedido do Carlos, pra parar de
+  // "pular" mes sem necessidade): se o inquilino ja esta com o vencimento em
+  // dia (next_billing no futuro), os meses confirmados agora somam a partir
+  // dessa data (nao reinicia do zero); se esta vencido ou nunca teve
+  // cobranca, conta a partir de hoje. Antes de gravar, guarda o
+  // next_billing antigo em next_billing_anterior para permitir "Desfazer"
+  // caso o admin confirme um numero errado de meses (foi o que aconteceu
+  // com a Otica do Povo e a Otica Evangelista Altazes).
   const confirmarPagamentoManual = async (t: Tenant, meses: number = 1) => {
     const label = meses === 1 ? '1 mes' : meses + ' meses';
     if (!confirm('Confirmar pagamento de ' + label + ' de ' + t.company_name + ' e liberar o acesso?')) return;
-    const nb = new Date(); nb.setDate(nb.getDate() + meses*30);
-    await updateField(t.id, 'next_billing', nb.toISOString().split('T')[0]);
+    const hoje = new Date();
+    const vencimentoAtual = t.next_billing ? new Date(t.next_billing+'T00:00:00') : null;
+    const base = (vencimentoAtual && vencimentoAtual > hoje) ? vencimentoAtual : hoje;
+    const nb = new Date(base); nb.setDate(nb.getDate() + meses*30);
+    const novoNextBilling = nb.toISOString().split('T')[0];
+    setUpdating(t.id);
+    const { error } = await supabase.from('tenants').update({
+      next_billing: novoNextBilling,
+      next_billing_anterior: t.next_billing || null,
+    }).eq('id', t.id);
+    setUpdating(null);
+    if (error) { toast.error('Erro ao confirmar pagamento: '+error.message); return; }
+    setTenants(prev => prev.map(x => x.id===t.id ? {...x, next_billing:novoNextBilling, next_billing_anterior:t.next_billing||null} : x));
+    toast.success('Pagamento confirmado! Pago ate '+pagoAteLabel(novoNextBilling)+'.');
+    setMesesAberto(null);
+  };
+
+  // Desfaz a ultima confirmacao de pagamento (volta next_billing para o
+  // valor de antes), para corrigir uma baixa lancada errada. So funciona
+  // enquanto next_billing_anterior estiver guardado — ou seja, cobre apenas
+  // a confirmacao mais recente feita depois dessa funcionalidade existir.
+  const desfazerPagamento = async (t: Tenant) => {
+    if (!t.next_billing_anterior) return;
+    const valorAnterior = t.next_billing_anterior;
+    if (!confirm('Desfazer o ultimo pagamento confirmado de ' + t.company_name + '? O vencimento volta para ' + fmtDate(valorAnterior) + '.')) return;
+    setUpdating(t.id);
+    const { error } = await supabase.from('tenants').update({
+      next_billing: valorAnterior,
+      next_billing_anterior: null,
+    }).eq('id', t.id);
+    setUpdating(null);
+    if (error) { toast.error('Erro ao desfazer: '+error.message); return; }
+    setTenants(prev => prev.map(x => x.id===t.id ? {...x, next_billing:valorAnterior, next_billing_anterior:null} : x));
+    toast.success('Pagamento desfeito.');
     setMesesAberto(null);
   };
 
@@ -525,23 +579,38 @@ export default function AdminPanelPage() {
                           const diasCobranca = diasRestantes(t.next_billing);
                           const corCobranca = diasCobranca===null ? 'var(--text-muted)' : diasCobranca<=0 ? '#f87171' : diasCobranca<=3 ? '#f59e0b' : '#22c55e';
                           const aberto = mesesAberto === t.id;
+                          const pagoAte = pagoAteLabel(t.next_billing);
                           return (
                             <div>
+                              {pagoAte && (
+                                <div style={{ fontSize:11, fontWeight:700, color:'#22c55e' }}>
+                                  Pago ate {pagoAte}
+                                </div>
+                              )}
                               <div onClick={()=>setMesesAberto(aberto ? null : t.id)}
-                                title="Clique para confirmar pagamento de 1 ou mais meses"
+                                title="Clique para confirmar pagamento de 1 ou mais meses, ou desfazer o ultimo"
                                 style={{ fontSize:12, fontWeight:700, color:corCobranca, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:2 }}>
                                 {diasCobranca!==null && diasCobranca<=0 ? 'Vencido '+Math.abs(diasCobranca)+'d atras' : diasCobranca+'d restantes'}
                                 {aberto ? <ChevronUp size={11}/> : <ChevronDown size={11}/>}
                               </div>
                               <div style={{ fontSize:10, color:'var(--text-muted)' }}>{fmtDate(t.next_billing)}</div>
                               {aberto && (
-                                <div style={{ display:'flex', flexWrap:'wrap', gap:4, justifyContent:'center', marginTop:4, maxWidth:120, marginLeft:'auto', marginRight:'auto' }}>
-                                  {[1,2,3,6].map(m=>(
-                                    <button key={m} onClick={()=>confirmarPagamentoManual(t,m)}
-                                      style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:4, border:'1px solid rgba(34,197,94,.3)', background:'rgba(34,197,94,.1)', color:'#22c55e', cursor:'pointer' }}>
-                                      {m===1 ? '1 mes pago' : m+' meses pagos'}
+                                <div style={{ marginTop:4 }}>
+                                  <div style={{ display:'flex', flexWrap:'wrap', gap:4, justifyContent:'center', maxWidth:140, marginLeft:'auto', marginRight:'auto' }}>
+                                    {[1,2,3,6].map(m=>(
+                                      <button key={m} onClick={()=>confirmarPagamentoManual(t,m)}
+                                        style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:4, border:'1px solid rgba(34,197,94,.3)', background:'rgba(34,197,94,.1)', color:'#22c55e', cursor:'pointer' }}>
+                                        {m===1 ? '1 mes pago' : m+' meses pagos'}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  {t.next_billing_anterior && (
+                                    <button onClick={()=>desfazerPagamento(t)}
+                                      title={'Volta o vencimento para '+fmtDate(t.next_billing_anterior)}
+                                      style={{ marginTop:6, width:'100%', fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4, border:'1px solid rgba(248,113,113,.3)', background:'rgba(248,113,113,.1)', color:'#f87171', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
+                                      <RotateCcw size={11}/> Desfazer ultimo pagamento
                                     </button>
-                                  ))}
+                                  )}
                                 </div>
                               )}
                             </div>
