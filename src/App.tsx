@@ -28,6 +28,7 @@ import NfePage from './pages/NfePage';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import AdminPanelPage from './pages/admin/AdminPanelPage';
 import TrialsVencidosPage from './pages/admin/TrialsVencidosPage';
+import LixeiraPage from './pages/admin/LixeiraPage';
 import TrialExpiredPage from './pages/TrialExpiredPage';
 import TermosPage from './pages/TermosPage';
 import ContratoPage from './pages/ContratoPage';
@@ -42,6 +43,7 @@ function AppRoutes() {
         <Route path="/admin-login" element={<AdminLoginPage />} />
         <Route path="/admin"       element={<AdminPanelPage />} />
         <Route path="/admin/trials-vencidos" element={<TrialsVencidosPage />} />
+        <Route path="/admin/lixeira" element={<LixeiraPage />} />
         <Route path="/admin/*"     element={<AdminPanelPage />} />
       </Routes>
     );
@@ -67,6 +69,7 @@ function AppRoutes() {
       <Route path="/admin-login" element={<AdminLoginPage />} />
       <Route path="/admin"       element={<AdminPanelPage />} />
       <Route path="/admin/trials-vencidos" element={<TrialsVencidosPage />} />
+      <Route path="/admin/lixeira" element={<LixeiraPage />} />
       <Route path="/admin/*"     element={<AdminPanelPage />} />
       <Route path="/planos"        element={<PlanosPage />} />
       <Route path="/login"       element={!user ? <LoginPage />    : <Navigate to="/dashboard" />} />
