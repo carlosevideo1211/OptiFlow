@@ -30,6 +30,10 @@ export interface CrediarioResumo {
   negativado: boolean; negativado_em?: string | null;
   valorEmAtraso: number; qtdEmAtraso: number; ultimaParcelaVencimento: string | null;
   tier: Tier; created_at?: string;
+  // Status do carne (ativo/quitado/cancelado) — usado pra saber quando todas
+  // as parcelas ja foram pagas e liberar o icone de "Emitir Termo de
+  // Quitacao" (pedido pelo Carlos, 01/09/2026).
+  status?: string;
 }
 
 export interface CobrancaLog {
