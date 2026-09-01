@@ -159,7 +159,15 @@ export default function AdminPanelPage() {
   const maxCres = Math.max(...crescimento.map(m=>m.total), 1);
 
   const filtered = useMemo(() => {
-    let list = tenants;
+    // Esconde trials ja vencidos da tabela principal — pedido pelo Carlos
+    // (01/09/2026) pra deixar aqui so os ativos e os que ainda estao dentro
+    // do prazo de teste. Os trials vencidos ficam disponiveis na tela
+    // "Trials Vencidos" (/admin/trials-vencidos), sem serem excluidos do banco.
+    let list = tenants.filter(t => {
+      if (t.status !== 'trial') return true;
+      const d = diasRestantes(t.trial_end_date);
+      return d === null || d >= 0;
+    });
     if (planFilter)    list = list.filter(t=>t.plan===planFilter);
     if (statusFilter)  list = list.filter(t=>t.status===statusFilter);
     if (search.trim()) {
@@ -178,7 +186,9 @@ export default function AdminPanelPage() {
   const alertas = tenants.filter(t => {
     if (t.status !== 'trial') return false;
     const d = diasRestantes(t.trial_end_date);
-    return d !== null && d <= 5;
+    // So trials que ainda nao venceram (os ja vencidos foram pra tela
+    // "Trials Vencidos" — nao faz mais sentido alertar sobre eles aqui).
+    return d !== null && d >= 0 && d <= 5;
   }).sort((a,b) => (diasRestantes(a.trial_end_date)||0) - (diasRestantes(b.trial_end_date)||0));
 
   // Clientes ativos (pagamento manual via Pix) cujo ciclo de 30 dias esta vencendo
@@ -438,6 +448,12 @@ export default function AdminPanelPage() {
               </div>
             )}
           </div>
+          <button onClick={()=>navigate('/admin/trials-vencidos')}
+            title="Trials que ja passaram do prazo de teste, fora da tabela principal"
+            style={{ background:'rgba(148,163,184,.1)', border:'1px solid rgba(148,163,184,.2)', borderRadius:8, padding:'8px 14px', cursor:'pointer', color:'#94a3b8', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
+            <Clock size={15}/> Trials Vencidos
+            {stats.expirados > 0 && <span style={{ background:'#94a3b8', color:'#0B1120', borderRadius:10, padding:'1px 7px', fontSize:11, fontWeight:700 }}>{stats.expirados}</span>}
+          </button>
           <button onClick={()=>{setEditing(null);setForm({plan:'trial',status:'trial',trial_end_date:new Date(Date.now()+14*86400000).toISOString().split('T')[0]});setShowModal(true);}}
             style={{ background:'linear-gradient(135deg,#6366f1,#06b6d4)', border:'none', borderRadius:8, padding:'8px 16px', cursor:'pointer', color:'white', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
             <Plus size={15}/> Novo Tenant
