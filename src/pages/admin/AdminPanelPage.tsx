@@ -233,6 +233,30 @@ export default function AdminPanelPage() {
     await updateField(t.id, 'trial_end_date', nova);
   };
 
+  // Grava next_billing (+ next_billing_anterior, quando informado) no
+  // Supabase e atualiza o estado local. Se a coluna next_billing_anterior
+  // ainda nao existir no banco (Carlos precisa rodar o ALTER TABLE uma vez),
+  // tenta de novo salvando so o next_billing, pra a acao principal (mudar o
+  // vencimento) nunca falhar por causa disso — so o "Desfazer" fica
+  // indisponivel ate a coluna ser criada.
+  const salvarVencimento = async (t: Tenant, novoNextBilling: string, anteriorParaSalvar: string | null): Promise<boolean> => {
+    setUpdating(t.id);
+    let { error } = await supabase.from('tenants').update({
+      next_billing: novoNextBilling,
+      next_billing_anterior: anteriorParaSalvar,
+    }).eq('id', t.id);
+    let anteriorSalvo: string | null = anteriorParaSalvar;
+    if (error && /next_billing_anterior/i.test(error.message || '')) {
+      const retry = await supabase.from('tenants').update({ next_billing: novoNextBilling }).eq('id', t.id);
+      error = retry.error;
+      anteriorSalvo = null;
+    }
+    setUpdating(null);
+    if (error) { toast.error('Erro ao salvar vencimento: '+error.message); return false; }
+    setTenants(prev => prev.map(x => x.id===t.id ? {...x, next_billing:novoNextBilling, next_billing_anterior:anteriorSalvo} : x));
+    return true;
+  };
+
   // Confirma que o(s) Pix manual(is) foi(ram) recebido(s) e conferido(s).
   // Base do calculo (revisado 01/09/2026 a pedido do Carlos, pra parar de
   // "pular" mes sem necessidade): se o inquilino ja esta com o vencimento em
@@ -250,14 +274,8 @@ export default function AdminPanelPage() {
     const base = (vencimentoAtual && vencimentoAtual > hoje) ? vencimentoAtual : hoje;
     const nb = new Date(base); nb.setDate(nb.getDate() + meses*30);
     const novoNextBilling = nb.toISOString().split('T')[0];
-    setUpdating(t.id);
-    const { error } = await supabase.from('tenants').update({
-      next_billing: novoNextBilling,
-      next_billing_anterior: t.next_billing || null,
-    }).eq('id', t.id);
-    setUpdating(null);
-    if (error) { toast.error('Erro ao confirmar pagamento: '+error.message); return; }
-    setTenants(prev => prev.map(x => x.id===t.id ? {...x, next_billing:novoNextBilling, next_billing_anterior:t.next_billing||null} : x));
+    const ok = await salvarVencimento(t, novoNextBilling, t.next_billing || null);
+    if (!ok) return;
     toast.success('Pagamento confirmado! Pago ate '+pagoAteLabel(novoNextBilling)+'.');
     setMesesAberto(null);
   };
@@ -270,15 +288,27 @@ export default function AdminPanelPage() {
     if (!t.next_billing_anterior) return;
     const valorAnterior = t.next_billing_anterior;
     if (!confirm('Desfazer o ultimo pagamento confirmado de ' + t.company_name + '? O vencimento volta para ' + fmtDate(valorAnterior) + '.')) return;
-    setUpdating(t.id);
-    const { error } = await supabase.from('tenants').update({
-      next_billing: valorAnterior,
-      next_billing_anterior: null,
-    }).eq('id', t.id);
-    setUpdating(null);
-    if (error) { toast.error('Erro ao desfazer: '+error.message); return; }
-    setTenants(prev => prev.map(x => x.id===t.id ? {...x, next_billing:valorAnterior, next_billing_anterior:null} : x));
+    const ok = await salvarVencimento(t, valorAnterior, null);
+    if (!ok) return;
     toast.success('Pagamento desfeito.');
+    setMesesAberto(null);
+  };
+
+  // Correcao manual: recua o vencimento em N meses (30 dias por mes, o
+  // mesmo criterio usado pra avancar). Pedido pelo Carlos (01/09/2026) pra
+  // corrigir a Otica do Povo e a Otica Evangelista Altazes, que ficaram com
+  // o vencimento um mes a mais — casos que nao tem next_billing_anterior
+  // salvo (a baixa errada foi lancada antes do "Desfazer" existir), entao
+  // precisam de um jeito de corrigir manualmente, nao so desfazer a ultima acao.
+  const retrocederPagamento = async (t: Tenant, meses: number = 1) => {
+    if (!t.next_billing) return;
+    const atual = new Date(t.next_billing+'T00:00:00');
+    const nb = new Date(atual); nb.setDate(nb.getDate() - meses*30);
+    const novoNextBilling = nb.toISOString().split('T')[0];
+    if (!confirm('Corrigir o vencimento de ' + t.company_name + ', voltando ' + meses + ' mes(es)? Nova data: ' + fmtDate(novoNextBilling) + ' (pago ate ' + pagoAteLabel(novoNextBilling) + ').')) return;
+    const ok = await salvarVencimento(t, novoNextBilling, t.next_billing);
+    if (!ok) return;
+    toast.success('Vencimento corrigido. Pago ate '+pagoAteLabel(novoNextBilling)+'.');
     setMesesAberto(null);
   };
 
@@ -604,10 +634,15 @@ export default function AdminPanelPage() {
                                       </button>
                                     ))}
                                   </div>
+                                  <button onClick={()=>retrocederPagamento(t,1)}
+                                    title="Corrige o vencimento voltando 1 mes (use quando ficou marcado um mes a mais)"
+                                    style={{ marginTop:6, width:'100%', fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4, border:'1px solid rgba(245,158,11,.3)', background:'rgba(245,158,11,.1)', color:'#f59e0b', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
+                                    <RotateCcw size={11}/> Corrigir: voltar 1 mes
+                                  </button>
                                   {t.next_billing_anterior && (
                                     <button onClick={()=>desfazerPagamento(t)}
                                       title={'Volta o vencimento para '+fmtDate(t.next_billing_anterior)}
-                                      style={{ marginTop:6, width:'100%', fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4, border:'1px solid rgba(248,113,113,.3)', background:'rgba(248,113,113,.1)', color:'#f87171', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
+                                      style={{ marginTop:4, width:'100%', fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4, border:'1px solid rgba(248,113,113,.3)', background:'rgba(248,113,113,.1)', color:'#f87171', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
                                       <RotateCcw size={11}/> Desfazer ultimo pagamento
                                     </button>
                                   )}
