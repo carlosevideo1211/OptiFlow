@@ -5,6 +5,7 @@ import { formatBRL } from '../types/index';
 import { Users, ClipboardList, ShoppingCart, CreditCard, TrendingUp, AlertTriangle, Package, QrCode } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GerarPixMensalidade from '../components/GerarPixMensalidade';
+import { PLATFORM_PIX_VALOR } from '../config/platformPix';
 
 interface MonthPoint { label: string; total: number; key: string; }
 
@@ -123,7 +124,7 @@ export default function DashboardPage() {
   // 5 dias antes, do mesmo jeito que já era feito no antigo sistema SSótica.
   useEffect(() => {
     if (!tenantId) return;
-    supabase.from('tenants').select('status, trial_end_date, next_billing, mrr_value').eq('id', tenantId).single()
+    supabase.from('tenants').select('status, trial_end_date, next_billing').eq('id', tenantId).single()
       .then(({ data }) => {
         if (!data) return;
         const hoje = new Date();
@@ -134,7 +135,9 @@ export default function DashboardPage() {
         if (data.status === 'ativo' || data.status === 'inadimplente') {
           const diasCobranca = diasRestantes(data.next_billing);
           if (diasCobranca !== null && diasCobranca <= 5) {
-            setBillingInfo({ dias: diasCobranca, valor: data.mrr_value || 0 });
+            // Valor fixo pedido pelo Carlos (01/09/2026): R$ 99,99 para todos
+            // os inquilinos, independente do mrr_value de cada um.
+            setBillingInfo({ dias: diasCobranca, valor: PLATFORM_PIX_VALOR });
           } else {
             setBillingInfo(null);
           }
