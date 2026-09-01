@@ -3,12 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { ArrowLeft, Search, Clock, RotateCcw, Trash2, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
+// fmtDate/diasRestantes centralizados em utils/adminDates.ts (01/09/2026) —
+// antes essa tela tinha sua propria copia dessas 2 funcoes.
+import { fmtDate, diasRestantes } from '../../utils/adminDates';
 
 // Tela separada pra listar so os trials ja vencidos (pedido pelo Carlos,
 // 01/09/2026), tirados da tabela principal do Admin pra ela ficar limpa —
 // so com ativos/inadimplentes/bloqueados/cancelados e trials que ainda nao
 // venceram. Nenhum tenant e apagado do banco so por aparecer aqui; a acao
-// de excluir continua manual, um por um.
+// de excluir move o tenant pra Lixeira (soft-delete via excluido_em), a
+// mesma logica do Painel principal.
 interface TenantVencido {
   id: string;
   company_name: string;
@@ -19,18 +23,7 @@ interface TenantVencido {
   status: string;
   trial_end_date?: string;
   created_at: string;
-}
-
-function fmtDate(d?: string) {
-  if (!d) return '--';
-  const dt = d.includes('T') ? new Date(d) : new Date(d+'T00:00:00');
-  return isNaN(dt.getTime()) ? '--' : dt.toLocaleDateString('pt-BR');
-}
-
-function diasRestantes(d?: string): number | null {
-  if (!d) return null;
-  const diff = new Date(d+'T00:00:00').getTime() - new Date().setHours(0,0,0,0);
-  return Math.ceil(diff / (1000*60*60*24));
+  excluido_em?: string | null;
 }
 
 export default function TrialsVencidosPage() {
@@ -49,7 +42,15 @@ export default function TrialsVencidosPage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('tenants').select('*').eq('status', 'trial').order('trial_end_date', { ascending: true });
+    // Exclui quem esta na Lixeira, senao um trial vencido excluido pelo
+    // Painel principal continuaria aparecendo aqui. Se a coluna excluido_em
+    // ainda nao existir no banco, cai pra carregar todo mundo (comportamento
+    // de antes da Lixeira existir).
+    let { data, error } = await supabase.from('tenants').select('*').eq('status', 'trial').is('excluido_em', null).order('trial_end_date', { ascending: true });
+    if (error) {
+      const retry = await supabase.from('tenants').select('*').eq('status', 'trial').order('trial_end_date', { ascending: true });
+      data = retry.data;
+    }
     setTenants((data as TenantVencido[]) ?? []);
     setLoading(false);
   };
@@ -82,14 +83,27 @@ export default function TrialsVencidosPage() {
     toast.success(t.company_name + ' reativado ate ' + fmtDate(novaData) + '. Ja volta a aparecer no Painel.');
   };
 
+  // Move pra Lixeira em vez de apagar de vez — mesma logica do Painel
+  // principal (pedido pelo Carlos, 01/09/2026). Se a coluna excluido_em
+  // ainda nao existir no banco, oferece o excluir definitivo antigo em vez
+  // de travar a acao.
   const excluir = async (t: TenantVencido) => {
-    if (!confirm('Excluir ' + t.company_name + ' definitivamente? Isso nao pode ser desfeito.')) return;
+    if (!confirm('Mover ' + t.company_name + ' para a Lixeira? Da pra restaurar depois na tela Lixeira.')) return;
     setUpdating(t.id);
-    const { error } = await supabase.from('tenants').delete().eq('id', t.id);
+    let { error } = await supabase.from('tenants').update({ excluido_em: new Date().toISOString() }).eq('id', t.id);
+    if (error && /excluido_em/i.test(error.message || '')) {
+      if (confirm('A Lixeira ainda nao esta configurada no banco (falta rodar um comando no Supabase). Excluir ' + t.company_name + ' DEFINITIVAMENTE agora, sem poder desfazer?')) {
+        const retry = await supabase.from('tenants').delete().eq('id', t.id);
+        error = retry.error;
+      } else {
+        setUpdating(null);
+        return;
+      }
+    }
     setUpdating(null);
     if (error) { toast.error('Erro ao excluir: '+error.message); return; }
     setTenants(prev => prev.filter(x => x.id !== t.id));
-    toast.success('Tenant excluido');
+    toast.success('Tenant movido para a Lixeira');
   };
 
   return (
@@ -174,7 +188,7 @@ export default function TrialsVencidosPage() {
                             style={{background:'rgba(34,197,94,.1)',border:'1px solid rgba(34,197,94,.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'#22c55e',display:'flex',alignItems:'center'}}>
                             <ExternalLink size={13}/>
                           </button>
-                          <button onClick={()=>excluir(t)} title="Excluir definitivamente"
+                          <button onClick={()=>excluir(t)} title="Mover para a Lixeira"
                             disabled={updating===t.id}
                             style={{ background:'rgba(248,113,113,.1)', border:'1px solid rgba(248,113,113,.2)', borderRadius:6, padding:'5px 8px', cursor:'pointer', color:'#f87171', display:'flex', alignItems:'center' }}>
                             <Trash2 size={13}/>
