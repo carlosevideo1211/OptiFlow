@@ -134,7 +134,11 @@ export default function DashboardPage() {
 
         if (data.status === 'ativo' || data.status === 'inadimplente') {
           const diasCobranca = diasRestantes(data.next_billing);
-          if (diasCobranca !== null && diasCobranca <= 5) {
+          // Pedido pelo Carlos (01/09/2026): mesma logica do trial -- a
+          // contagem fica visivel o tempo todo desde que o pagamento e
+          // confirmado (nao so nos ultimos 5 dias como era antes), verde
+          // enquanto nao vence e vermelho depois que vence.
+          if (diasCobranca !== null) {
             // Valor fixo pedido pelo Carlos (01/09/2026): R$ 99,99 para todos
             // os inquilinos, independente do mrr_value de cada um.
             setBillingInfo({ dias: diasCobranca, valor: PLATFORM_PIX_VALOR });
@@ -225,13 +229,16 @@ export default function DashboardPage() {
         );
       })()}
 
-      {/* Banner de mensalidade vencendo/vencida (pagamento manual via Pix,
-          fora do Asaas) — mesmo padrão visual do banner de trial acima. */}
+      {/* Contagem da mensalidade (pagamento manual via Pix, fora do Asaas) —
+          mesma logica do banner de trial acima, mas fica visivel desde o dia
+          em que o pagamento e confirmado (nao so perto do vencimento):
+          verde enquanto esta em dia, vermelho depois que vence. Pedido pelo
+          Carlos (01/09/2026). */}
       {billingInfo && (() => {
         const vencido = billingInfo.dias <= 0;
         return (
           <div style={{
-            background: vencido ? 'linear-gradient(135deg, #dc2626, #b91c1c)' : 'linear-gradient(135deg, #6366f1, #4f46e5)',
+            background: vencido ? 'linear-gradient(135deg, #dc2626, #b91c1c)' : 'linear-gradient(135deg, #16a34a, #15803d)',
             borderRadius: 12,
             padding: '16px 24px',
             marginBottom: 24,
@@ -240,7 +247,7 @@ export default function DashboardPage() {
             justifyContent: 'space-between',
             flexWrap: 'wrap',
             gap: 12,
-            boxShadow: vencido ? '0 4px 20px rgba(220,38,38,0.3)' : '0 4px 20px rgba(99,102,241,0.3)',
+            boxShadow: vencido ? '0 4px 20px rgba(220,38,38,0.3)' : '0 4px 20px rgba(22,163,74,0.3)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 28 }}>{vencido ? '🚨' : '⏰'}</span>
@@ -249,7 +256,9 @@ export default function DashboardPage() {
                   {vencido ? 'Sua mensalidade venceu' : `Sua mensalidade vence em ${billingInfo.dias} dia(s)`}
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 }}>
-                  Gere o Pix e pague quando quiser — o acesso é liberado após a confirmação do pagamento
+                  {vencido
+                    ? 'Gere o Pix e pague quando quiser — o acesso é liberado após a confirmação do pagamento'
+                    : 'Pagamento em dia. Se quiser adiantar, gere o Pix quando quiser.'}
                 </div>
               </div>
             </div>
@@ -258,7 +267,7 @@ export default function DashboardPage() {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 background: 'white',
-                color: vencido ? '#dc2626' : '#6366f1',
+                color: vencido ? '#dc2626' : '#16a34a',
                 border: 'none',
                 borderRadius: 8,
                 padding: '10px 20px',
