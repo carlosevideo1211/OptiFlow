@@ -2,10 +2,19 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { formatBRL } from '../types/index';
-import { Users, ClipboardList, ShoppingCart, CreditCard, TrendingUp, AlertTriangle, Package } from 'lucide-react';
+import { Users, ClipboardList, ShoppingCart, CreditCard, TrendingUp, AlertTriangle, Package, QrCode } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import GerarPixMensalidade from '../components/GerarPixMensalidade';
 
 interface MonthPoint { label: string; total: number; key: string; }
+
+// Mesmo criterio ja usado em AdminPanelPage.tsx (alertasVencimento) para
+// decidir quando avisar sobre o vencimento do pagamento manual via Pix.
+function diasRestantes(d?: string | null): number | null {
+  if (!d) return null;
+  const diff = new Date(d + 'T00:00:00').getTime() - new Date().setHours(0, 0, 0, 0);
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
 
 export default function DashboardPage() {
   const { user, tenantId } = useAuth();
@@ -18,6 +27,8 @@ export default function DashboardPage() {
   });
   const [osRecentes, setOsRecentes] = useState<any[]>([]);
   const [trialInfo, setTrialInfo] = useState<{dias: number, status: string} | null>(null);
+  const [billingInfo, setBillingInfo] = useState<{ dias: number; valor: number } | null>(null);
+  const [showGerarPix, setShowGerarPix] = useState(false);
   const [monthPoints, setMonthPoints] = useState<MonthPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -107,16 +118,28 @@ export default function DashboardPage() {
   const barW = Math.floor(chartW / monthPoints.length) - 6;
 
 
-  // Buscar info do trial
+  // Buscar info do trial e (para quem já é cliente pagante, pagando via Pix
+  // manual — sem Asaas) do vencimento da mensalidade, pra mostrar o aviso de
+  // 5 dias antes, do mesmo jeito que já era feito no antigo sistema SSótica.
   useEffect(() => {
     if (!tenantId) return;
-    supabase.from('tenants').select('status, trial_end_date').eq('id', tenantId).single()
+    supabase.from('tenants').select('status, trial_end_date, next_billing, mrr_value').eq('id', tenantId).single()
       .then(({ data }) => {
-        if (data) {
-          const hoje = new Date();
-          const fim = new Date(data.trial_end_date);
-          const dias = Math.ceil((fim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-          setTrialInfo({ dias, status: data.status });
+        if (!data) return;
+        const hoje = new Date();
+        const fim = new Date(data.trial_end_date);
+        const dias = Math.ceil((fim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+        setTrialInfo({ dias, status: data.status });
+
+        if (data.status === 'ativo' || data.status === 'inadimplente') {
+          const diasCobranca = diasRestantes(data.next_billing);
+          if (diasCobranca !== null && diasCobranca <= 5) {
+            setBillingInfo({ dias: diasCobranca, valor: data.mrr_value || 0 });
+          } else {
+            setBillingInfo(null);
+          }
+        } else {
+          setBillingInfo(null);
         }
       });
   }, [tenantId]);
@@ -198,6 +221,57 @@ export default function DashboardPage() {
           </div>
         );
       })()}
+
+      {/* Banner de mensalidade vencendo/vencida (pagamento manual via Pix,
+          fora do Asaas) — mesmo padrão visual do banner de trial acima. */}
+      {billingInfo && (() => {
+        const vencido = billingInfo.dias <= 0;
+        return (
+          <div style={{
+            background: vencido ? 'linear-gradient(135deg, #dc2626, #b91c1c)' : 'linear-gradient(135deg, #6366f1, #4f46e5)',
+            borderRadius: 12,
+            padding: '16px 24px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            boxShadow: vencido ? '0 4px 20px rgba(220,38,38,0.3)' : '0 4px 20px rgba(99,102,241,0.3)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 28 }}>{vencido ? '🚨' : '⏰'}</span>
+              <div>
+                <div style={{ color: 'white', fontWeight: 700, fontSize: 16 }}>
+                  {vencido ? 'Sua mensalidade venceu' : `Sua mensalidade vence em ${billingInfo.dias} dia(s)`}
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 }}>
+                  Gere o Pix e pague quando quiser — o acesso é liberado após a confirmação do pagamento
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowGerarPix(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'white',
+                color: vencido ? '#dc2626' : '#6366f1',
+                border: 'none',
+                borderRadius: 8,
+                padding: '10px 20px',
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <QrCode size={16} /> Gerar Pix
+            </button>
+          </div>
+        );
+      })()}
+
+      <GerarPixMensalidade open={showGerarPix} onClose={() => setShowGerarPix(false)} valor={billingInfo?.valor || 0} />
 
       {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
