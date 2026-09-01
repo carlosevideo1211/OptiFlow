@@ -211,7 +211,10 @@ export default function AdminPanelPage() {
   // Confirma que o Pix manual do mes foi recebido e conferido — renova o ciclo
   // por mais 30 dias a partir de hoje (nao a partir do vencimento antigo, para
   // nao acumular atraso caso o cliente pague alguns dias depois do vencimento).
+  // Pedido pelo Carlos (01/09/2026): alem do botao no dropdown de Alertas, essa
+  // acao agora tambem tem um icone direto na linha do tenant na tabela.
   const confirmarPagamentoManual = async (t: Tenant) => {
+    if (!confirm('Confirmar pagamento de ' + t.company_name + ' e liberar o acesso por mais 30 dias?')) return;
     const nb = new Date(); nb.setDate(nb.getDate()+30);
     await updateField(t.id, 'next_billing', nb.toISOString().split('T')[0]);
   };
@@ -504,7 +507,21 @@ export default function AdminPanelPage() {
                               ))}
                             </div>
                           </div>
-                        ) : t.next_billing ? (
+                        ) : (t.status==='ativo' || t.status==='inadimplente') && t.next_billing ? (() => {
+                          // Pagamento manual via Pix (fora do Asaas) — mesmo padrao de cor
+                          // do trial acima, pra ficar claro quem esta vencendo/vencido sem
+                          // precisar abrir o dropdown de Alertas.
+                          const diasCobranca = diasRestantes(t.next_billing);
+                          const corCobranca = diasCobranca===null ? 'var(--text-muted)' : diasCobranca<=0 ? '#f87171' : diasCobranca<=3 ? '#f59e0b' : '#22c55e';
+                          return (
+                            <div>
+                              <div style={{ fontSize:12, fontWeight:700, color:corCobranca }}>
+                                {diasCobranca!==null && diasCobranca<=0 ? 'Vencido '+Math.abs(diasCobranca)+'d atras' : diasCobranca+'d restantes'}
+                              </div>
+                              <div style={{ fontSize:10, color:'var(--text-muted)' }}>{fmtDate(t.next_billing)}</div>
+                            </div>
+                          );
+                        })() : t.next_billing ? (
                           <div style={{ fontSize:12, color:'var(--text-muted)' }}>{fmtDate(t.next_billing)}</div>
                         ) : <span style={{ color:'var(--text-muted)' }}>--</span>}
                       </td>
@@ -536,6 +553,13 @@ export default function AdminPanelPage() {
                         }}>
                         Boleto: {t.boleto_habilitado ? 'On' : 'Off'}
                       </button>
+                      {(t.status==='ativo' || t.status==='inadimplente') && (
+                        <button onClick={()=>confirmarPagamentoManual(t)} title="Confirmar pagamento (Pix manual) e liberar por mais 30 dias"
+                          disabled={updating===t.id}
+                          style={{background:'rgba(34,197,94,.1)',border:'1px solid rgba(34,197,94,.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'#22c55e',display:'flex',alignItems:'center',marginRight:4}}>
+                          <CheckCircle size={13}/>
+                        </button>
+                      )}
                       <button onClick={()=>acessarLoja(t.id)} title="Acessar Loja"
                             style={{background:'rgba(34,197,94,.1)',border:'1px solid rgba(34,197,94,.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'#22c55e',display:'flex',alignItems:'center'}}>
                             <ExternalLink size={13}/>
