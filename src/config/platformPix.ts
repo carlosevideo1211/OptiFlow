@@ -20,3 +20,9 @@ export const PLATFORM_PIX_KEY = '40538990287';
 // Nome do recebedor exibido no Pix (máx. 25 caracteres — o gerador de EMV
 // corta e limpa automaticamente se for maior ou tiver acentos/símbolos).
 export const PLATFORM_PIX_NOME = 'OptiFlow';
+
+// Valor cobrado no "Gerar Pix" da mensalidade. Definido pelo Carlos em
+// 01/09/2026: fixo em R$ 99,99 para todos os inquilinos (mesmo valor do
+// Plano Otica, ver src/constants/planos.ts), independente do que estiver
+// em tenants.mrr_value.
+export const PLATFORM_PIX_VALOR = 99.99;
