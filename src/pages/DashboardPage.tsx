@@ -6,16 +6,13 @@ import { Users, ClipboardList, ShoppingCart, CreditCard, TrendingUp, AlertTriang
 import { useNavigate } from 'react-router-dom';
 import GerarPixMensalidade from '../components/GerarPixMensalidade';
 import { PLATFORM_PIX_VALOR } from '../config/platformPix';
+// Mesmo criterio ja usado em AdminPanelPage.tsx (alertasVencimento) para
+// decidir quando avisar sobre o vencimento do pagamento manual via Pix —
+// centralizado em utils/adminDates.ts (01/09/2026) pra parar de ter uma
+// copia dessa funcao em cada arquivo.
+import { diasRestantes } from '../utils/adminDates';
 
 interface MonthPoint { label: string; total: number; key: string; }
-
-// Mesmo criterio ja usado em AdminPanelPage.tsx (alertasVencimento) para
-// decidir quando avisar sobre o vencimento do pagamento manual via Pix.
-function diasRestantes(d?: string | null): number | null {
-  if (!d) return null;
-  const diff = new Date(d + 'T00:00:00').getTime() - new Date().setHours(0, 0, 0, 0);
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
-}
 
 export default function DashboardPage() {
   const { user, tenantId } = useAuth();
