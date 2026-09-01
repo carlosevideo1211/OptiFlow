@@ -84,6 +84,10 @@ export default function AdminPanelPage() {
   const [showAlerts, setShowAlerts] = useState(false);
   const [form, setForm] = useState<Partial<Tenant>>({});
   const [showModal, setShowModal] = useState(false);
+  // Id do tenant cujo seletor de "quantos meses foram pagos" esta aberto na
+  // coluna de vencimento — pedido pelo Carlos (01/09/2026) pra quem esta
+  // varios meses atrasado e paga tudo de uma vez (o botao unico so cobria 1 mes).
+  const [mesesAberto, setMesesAberto] = useState<string|null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data:{ session } }) => {
@@ -208,12 +212,20 @@ export default function AdminPanelPage() {
     await updateField(t.id, 'trial_end_date', nova);
   };
 
-  // Confirma que o Pix manual do mes foi recebido e conferido — renova o ciclo
-  // por mais 30 dias a partir de hoje (nao a partir do vencimento antigo, para
-  // nao acumular atraso caso o cliente pague alguns dias depois do vencimento).
-  const confirmarPagamentoManual = async (t: Tenant) => {
-    const nb = new Date(); nb.setDate(nb.getDate()+30);
+  // Confirma que o(s) Pix manual(is) foi(ram) recebido(s) e conferido(s) — renova
+  // o ciclo a partir de hoje (nao a partir do vencimento antigo, para nao
+  // acumular atraso caso o cliente pague alguns dias depois do vencimento),
+  // avancando 30 dias por mes efetivamente pago. Pedido pelo Carlos
+  // (01/09/2026): quem esta varios meses atrasado e paga tudo de uma vez
+  // precisa poder confirmar mais de 1 mes de uma vez (ver mesesAberto acima
+  // e o seletor na coluna de vencimento) — antes so dava pra confirmar 1 mes
+  // por clique, entao o aviso de vencido nao sumia do sistema do inquilino.
+  const confirmarPagamentoManual = async (t: Tenant, meses: number = 1) => {
+    const label = meses === 1 ? '1 mes' : meses + ' meses';
+    if (!confirm('Confirmar pagamento de ' + label + ' de ' + t.company_name + ' e liberar o acesso?')) return;
+    const nb = new Date(); nb.setDate(nb.getDate() + meses*30);
     await updateField(t.id, 'next_billing', nb.toISOString().split('T')[0]);
+    setMesesAberto(null);
   };
 
   const excluir = async (t: Tenant) => {
@@ -504,7 +516,37 @@ export default function AdminPanelPage() {
                               ))}
                             </div>
                           </div>
-                        ) : t.next_billing ? (
+                        ) : (t.status==='ativo' || t.status==='inadimplente') && t.next_billing ? (() => {
+                          // Pagamento manual via Pix (fora do Asaas) — mesmo padrao de cor
+                          // do trial acima, pra ficar claro quem esta vencendo/vencido sem
+                          // precisar abrir o dropdown de Alertas. Clicar na data abre as
+                          // opcoes de quantos meses foram pagos (pra quem esta varios meses
+                          // atrasado e paga tudo de uma vez — pedido do Carlos, 01/09/2026).
+                          const diasCobranca = diasRestantes(t.next_billing);
+                          const corCobranca = diasCobranca===null ? 'var(--text-muted)' : diasCobranca<=0 ? '#f87171' : diasCobranca<=3 ? '#f59e0b' : '#22c55e';
+                          const aberto = mesesAberto === t.id;
+                          return (
+                            <div>
+                              <div onClick={()=>setMesesAberto(aberto ? null : t.id)}
+                                title="Clique para confirmar pagamento de 1 ou mais meses"
+                                style={{ fontSize:12, fontWeight:700, color:corCobranca, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:2 }}>
+                                {diasCobranca!==null && diasCobranca<=0 ? 'Vencido '+Math.abs(diasCobranca)+'d atras' : diasCobranca+'d restantes'}
+                                {aberto ? <ChevronUp size={11}/> : <ChevronDown size={11}/>}
+                              </div>
+                              <div style={{ fontSize:10, color:'var(--text-muted)' }}>{fmtDate(t.next_billing)}</div>
+                              {aberto && (
+                                <div style={{ display:'flex', flexWrap:'wrap', gap:4, justifyContent:'center', marginTop:4, maxWidth:120, marginLeft:'auto', marginRight:'auto' }}>
+                                  {[1,2,3,6].map(m=>(
+                                    <button key={m} onClick={()=>confirmarPagamentoManual(t,m)}
+                                      style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:4, border:'1px solid rgba(34,197,94,.3)', background:'rgba(34,197,94,.1)', color:'#22c55e', cursor:'pointer' }}>
+                                      {m===1 ? '1 mes pago' : m+' meses pagos'}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })() : t.next_billing ? (
                           <div style={{ fontSize:12, color:'var(--text-muted)' }}>{fmtDate(t.next_billing)}</div>
                         ) : <span style={{ color:'var(--text-muted)' }}>--</span>}
                       </td>
@@ -536,6 +578,13 @@ export default function AdminPanelPage() {
                         }}>
                         Boleto: {t.boleto_habilitado ? 'On' : 'Off'}
                       </button>
+                      {(t.status==='ativo' || t.status==='inadimplente') && (
+                        <button onClick={()=>confirmarPagamentoManual(t)} title="Confirmar pagamento (Pix manual) e liberar por mais 30 dias"
+                          disabled={updating===t.id}
+                          style={{background:'rgba(34,197,94,.1)',border:'1px solid rgba(34,197,94,.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'#22c55e',display:'flex',alignItems:'center',marginRight:4}}>
+                          <CheckCircle size={13}/>
+                        </button>
+                      )}
                       <button onClick={()=>acessarLoja(t.id)} title="Acessar Loja"
                             style={{background:'rgba(34,197,94,.1)',border:'1px solid rgba(34,197,94,.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'#22c55e',display:'flex',alignItems:'center'}}>
                             <ExternalLink size={13}/>
