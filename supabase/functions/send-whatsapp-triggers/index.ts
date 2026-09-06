@@ -132,14 +132,22 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
   }
 
-  const hoje = new Date();
+  // Achado 1 da auditoria: este servidor roda em UTC, entao "new Date()"
+  // direto adianta a data (e, perto da virada do ano, ate o ano) a partir de
+  // ~20h no horario de Manaus (UTC-4, sem horario de verao desde 2019) — o
+  // que fazia esta function selecionar a parcela ERRADA pra avisar "vence
+  // hoje"/"5 dias antes"/"atrasada" nesse intervalo da noite. Ajustamos pelo
+  // offset ANTES de formatar qualquer data, e usamos os getters UTC (que
+  // passam a refletir o relogio de Manaus) daqui pra baixo.
+  const MANAUS_OFFSET_MS = 4 * 60 * 60 * 1000;
+  const hoje = new Date(Date.now() - MANAUS_OFFSET_MS);
   const hojeStr = hoje.toISOString().split("T")[0];
-  const em5dias = new Date(Date.now() + 5 * 86400000).toISOString().split("T")[0];
-  const menos5dias = new Date(Date.now() - 5 * 86400000).toISOString().split("T")[0];
-  const menos7dias = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
-  const menos15dias = new Date(Date.now() - 15 * 86400000).toISOString().split("T")[0];
-  const menos30dias = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
-  const menos365dias = new Date(Date.now() - 365 * 86400000).toISOString().split("T")[0];
+  const em5dias = new Date(Date.now() + 5 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
+  const menos5dias = new Date(Date.now() - 5 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
+  const menos7dias = new Date(Date.now() - 7 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
+  const menos15dias = new Date(Date.now() - 15 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
+  const menos30dias = new Date(Date.now() - 30 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
+  const menos365dias = new Date(Date.now() - 365 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
   const LIMITE_COBRANCA_POR_EXECUCAO = 50;
   const resultado = { aniversario: 0, vencimento: 0, vencimento_dia: 0, vencimento_atraso5: 0, pos_venda: 0, adaptacao: 0, cobranca_atraso: 0, erros: [] as string[], enviados_total: 0, limite_global_atingido: false, tenants_limitados: [] as string[] };
 
@@ -158,7 +166,11 @@ serve(async (req) => {
 
       // Checa o limite diario deste tenant ANTES de comecar a processar seus
       // gatilhos — protege mesmo quando o cron ja rodou varias vezes hoje.
-      const inicioHoje = new Date(); inicioHoje.setHours(0, 0, 0, 0);
+      // Meia-noite de MANAUS (nao do servidor, que roda em UTC) expressa como
+      // instante UTC, reaproveitando o hojeStr ja ajustado acima — sem isso,
+      // a janela do limite diario comecava as 20h de Manaus (meia-noite UTC)
+      // em vez da meia-noite de verdade, encurtando o dia usado no limite.
+      const inicioHoje = new Date(hojeStr + 'T00:00:00-04:00');
       const jaEnviouHoje = await enviosHojeDoTenant(tenant.id, inicioHoje.toISOString());
       if (jaEnviouHoje >= LIMITE_DIARIO_POR_TENANT) {
         if (!resultado.tenants_limitados.includes(tenant.id)) resultado.tenants_limitados.push(tenant.id + ':limite_diario');
@@ -194,7 +206,7 @@ serve(async (req) => {
         if (!podeEnviarMais()) break;
         const telefone = c.whatsapp || c.phone;
         if (!telefone) continue;
-        const refId = `${c.id}:${hoje.getFullYear()}`;
+        const refId = `${c.id}:${hoje.getUTCFullYear()}`;
         if (await jaEnviado(tenant.id, "aniversario", refId)) continue;
 
         const texto = `Olá, ${c.name}! 🎉 A equipe da ${loja} deseja um feliz aniversário! Que seu dia seja repleto de alegria. Um abraço da nossa equipe!`;

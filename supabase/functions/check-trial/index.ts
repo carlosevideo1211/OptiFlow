@@ -25,8 +25,14 @@ serve(async (req) => {
   }
 
   try {
-    const hoje = new Date().toISOString().split("T")[0];
-    const em3dias = new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0];
+    // Achado 1 da auditoria (encontrado numa varredura final): este servidor
+    // roda em UTC, entao "hoje" direto adianta a data a partir de ~20h no
+    // horario de Manaus (UTC-4, sem horario de verao desde 2019) — fazendo
+    // esta busca por trials vencendo usar a data errada nesse intervalo.
+    // Mesmo ajuste ja usado em send-whatsapp-triggers/index.ts.
+    const MANAUS_OFFSET_MS = 4 * 60 * 60 * 1000;
+    const hoje = new Date(Date.now() - MANAUS_OFFSET_MS).toISOString().split("T")[0];
+    const em3dias = new Date(Date.now() + 3 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
 
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/tenants?trial_end_date=gte.${hoje}&trial_end_date=lte.${em3dias}&select=id,company_name,email,trial_end_date,status`,
@@ -68,10 +74,15 @@ serve(async (req) => {
                 <p style="color:#374151">Olá, <strong>${tenant.company_name}</strong>!</p>
                 <p style="color:#374151">Seu trial gratuito do OptiFlow expira em <strong style="color:#ef4444">${diasRestantes} dia(s)</strong> (${new Date(tenant.trial_end_date + "T00:00:00").toLocaleDateString("pt-BR")}).</p>
                 <p style="color:#374151">Para continuar usando sem interrupções, escolha um plano:</p>
+                <!-- Achado 6 da auditoria (corrigido 06/09/2026): este bloco anunciava
+                     3 planos ficticios (Basico/Pro/Premium a R$97/147/197) que nunca
+                     existiram de fato. Os 2 planos reais, unica fonte em
+                     src/constants/planos.ts e cobrados de verdade pela
+                     create-asaas-subscription, sao Otica+Consultorio (R$99,99) e
+                     Consultorio (R$49,99). -->
                 <div style="background:#f1f5f9;border-radius:8px;padding:16px;margin:16px 0">
-                  <p style="margin:4px 0;color:#374151">✅ <strong>Plano Básico</strong> — R$ 97/mês</p>
-                  <p style="margin:4px 0;color:#374151">✅ <strong>Plano Pro</strong> — R$ 147/mês</p>
-                  <p style="margin:4px 0;color:#374151">✅ <strong>Plano Premium</strong> — R$ 197/mês</p>
+                  <p style="margin:4px 0;color:#374151">✅ <strong>Plano Ótica e Consultório</strong> — R$ 99,99/mês</p>
+                  <p style="margin:4px 0;color:#374151">✅ <strong>Plano Consultório</strong> — R$ 49,99/mês</p>
                 </div>
                 <div style="text-align:center;margin-top:24px">
                   <a href="https://optiflow.com.br/planos" style="background:#6366f1;color:white;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">

@@ -13,6 +13,18 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 // devolve esse mesmo valor no header "asaas-access-token" em toda chamada.
 const ASAAS_WEBHOOK_TOKEN = Deno.env.get("ASAAS_WEBHOOK_TOKEN") || "";
 
+// Achado 1 da auditoria (encontrado numa varredura final): este servidor
+// roda em UTC, entao calcular "daqui a 30 dias" com new Date() direto e
+// toISOString() pode adiantar a data de vencimento em 1 dia quando o webhook
+// chega entre ~20h e meia-noite no horario de Manaus (UTC-4, sem horario de
+// verao desde 2019). Mesmo ajuste ja usado em send-whatsapp-triggers/index.ts.
+const MANAUS_OFFSET_MS = 4 * 60 * 60 * 1000;
+function proximoVencimento(diasAPartirDeHoje: number): string {
+  const d = new Date(Date.now() - MANAUS_OFFSET_MS);
+  d.setUTCDate(d.getUTCDate() + diasAPartirDeHoje);
+  return d.toISOString().split("T")[0];
+}
+
 async function supabaseFetch(path: string, init?: RequestInit) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
@@ -78,7 +90,6 @@ serve(async (req) => {
         });
         const tenantId = await tenantDaAutorizacao(authorizationId);
         if (tenantId) {
-          const nb = new Date(); nb.setDate(nb.getDate() + 30);
           await supabaseFetch(`tenants?id=eq.${tenantId}`, {
             method: "PATCH",
             headers: { Prefer: "return=minimal" },
@@ -86,7 +97,7 @@ serve(async (req) => {
               status: "ativo",
               plan: "assinatura_pix_automatico",
               mrr_value: 99.99,
-              next_billing: nb.toISOString().split("T")[0],
+              next_billing: proximoVencimento(30),
             }),
           });
         }
@@ -129,11 +140,10 @@ serve(async (req) => {
       if (pixAuthId) {
         const tenantId = await tenantDaAutorizacao(pixAuthId);
         if (tenantId) {
-          const nb = new Date(); nb.setDate(nb.getDate() + 30);
           await supabaseFetch(`tenants?id=eq.${tenantId}`, {
             method: "PATCH",
             headers: { Prefer: "return=minimal" },
-            body: JSON.stringify({ status: "ativo", next_billing: nb.toISOString().split("T")[0] }),
+            body: JSON.stringify({ status: "ativo", next_billing: proximoVencimento(30) }),
           });
         }
       }

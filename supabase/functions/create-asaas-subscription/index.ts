@@ -176,7 +176,13 @@ serve(async (req) => {
     }
 
     const contractId = String(tenant_id).replace(/-/g, "");
-    const hoje = new Date().toISOString().split("T")[0];
+    // Achado 1 da auditoria (encontrado numa varredura final): este servidor
+    // roda em UTC, entao "hoje" direto adianta a data (startDate da
+    // assinatura) a partir de ~20h no horario de Manaus (UTC-4, sem horario
+    // de verao desde 2019). Mesmo ajuste ja usado em
+    // send-whatsapp-triggers/index.ts.
+    const MANAUS_OFFSET_MS = 4 * 60 * 60 * 1000;
+    const hoje = new Date(Date.now() - MANAUS_OFFSET_MS).toISOString().split("T")[0];
 
     const auth = await chamarAsaas(`${BASE}/pix/automatic/authorizations`, {
       method: "POST",

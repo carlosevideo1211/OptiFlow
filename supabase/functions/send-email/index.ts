@@ -9,13 +9,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Confere se quem esta chamando e um usuario realmente autenticado no Supabase.
-// Isso impede que qualquer pessoa sem login use esta funcao como um "relay"
-// de email aberto (spam/phishing usando nossa conta do Resend).
-async function usuarioAutenticado(req: Request): Promise<boolean> {
+// Confere se quem esta chamando e um usuario realmente autenticado no Supabase
+// e devolve o email dele (usado abaixo para travar o destinatario). Isso
+// impede que qualquer pessoa sem login use esta funcao como um "relay" de
+// email aberto (spam/phishing usando nossa conta do Resend).
+async function usuarioAutenticado(req: Request): Promise<string | null> {
   const authHeader = req.headers.get('Authorization') || '';
   const token = authHeader.replace('Bearer ', '').trim();
-  if (!token) return false;
+  if (!token) return null;
 
   const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     headers: {
@@ -23,7 +24,9 @@ async function usuarioAutenticado(req: Request): Promise<boolean> {
       Authorization: `Bearer ${token}`,
     },
   });
-  return res.ok;
+  if (!res.ok) return null;
+  const user = await res.json();
+  return user?.email || null;
 }
 
 serve(async (req) => {
@@ -31,8 +34,8 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const autenticado = await usuarioAutenticado(req);
-  if (!autenticado) {
+  const emailUsuario = await usuarioAutenticado(req);
+  if (!emailUsuario) {
     return new Response(JSON.stringify({ error: 'Nao autenticado' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -47,7 +50,19 @@ serve(async (req) => {
   }
 
   try {
-    const { to, subject, html } = await req.json();
+    // Observacao da Parte 6 da auditoria (corrigida 06/09/2026): antes o
+    // destinatario ("to") vinha livre do corpo da requisicao — qualquer
+    // usuario autenticado, inclusive alguem que acabou de criar uma conta
+    // trial gratuita de 14 dias, podia mandar email pra QUALQUER endereco
+    // atraves da nossa conta no Resend (relay aberto = risco de spam/phishing
+    // usando nosso dominio/reputacao). Agora o destinatario e sempre o email
+    // do proprio usuario autenticado (vindo do token, nunca do corpo da
+    // requisicao) — a unica funcionalidade real que usa esta function hoje
+    // (email de boas-vindas apos cadastro, ver src/lib/email.ts) ja manda pro
+    // proprio email do usuario que acabou de se cadastrar, entao nada muda
+    // pra ela.
+    const { subject, html } = await req.json();
+    const to = emailUsuario;
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
