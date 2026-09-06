@@ -255,11 +255,25 @@ export default function VendasPage() {
       for (const item of cartItems) { if (item.product_id) { const prod = products.find(p => p.id === item.product_id); if (prod) await supabase.from('products').update({ stock: Math.max(0, prod.stock - item.quantity) }).eq('id', item.product_id); } }
       if (osVinculada?.id) { await supabase.from('service_orders').update({ status: 'entregue' }).eq('id', osVinculada.id); }
       if (payment === 'crediario' && selectedCustomer && installments > 0) {
-        const { data: credData } = await supabase.from('crediario').insert([{ tenant_id: tenantId, customer_id: selectedCustomer, customer_name: customerName, sale_id: saleData.id, total_amount: saldo, installments, status: 'ativo' }]).select().single();
-        if (credData) {
+        // Corrigido 31/08/2026: se este insert falhasse (RLS, rede, etc.),
+        // credData ficava undefined e o bloco abaixo era simplesmente
+        // pulado em silêncio — a venda era concluída normalmente mas o
+        // crediário e as parcelas nunca eram criados, e ninguém ficava
+        // sabendo até o cliente reclamar semanas depois. Agora qualquer
+        // falha aqui gera um aviso bem visível pro operador, com o número
+        // da venda, pra dar pra corrigir na hora.
+        const { data: credData, error: credErr } = await supabase.from('crediario').insert([{ tenant_id: tenantId, customer_id: selectedCustomer, customer_name: customerName, sale_id: saleData.id, total_amount: saldo, installments, status: 'ativo' }]).select().single();
+        if (credErr || !credData) {
+          console.error('Falha ao criar crediário para a venda #' + saleData.sale_number + ':', credErr);
+          toast.error('⚠ A venda #' + saleData.sale_number + ' foi registrada, mas houve uma falha ao criar o crediário. Avise o suporte para corrigir — o cliente não vai aparecer na relação de crediário até isso ser resolvido.', { duration: 12000 });
+        } else {
           const totalDevedor = Math.max(0, subtotal - (discount||0) - (entrada||0));
           const parcelas = parcelasEdit.length === installments ? parcelasEdit : Array.from({ length: installments }, (_, i) => { const due = dueDate ? new Date(dueDate + 'T12:00:00') : new Date(); due.setMonth(due.getMonth() + i); return { amount: totalDevedor/installments, due_date: due.toISOString().split('T')[0] }; });
-          await supabase.from('crediario_parcelas').insert(parcelas.map((p, i) => ({ crediario_id: credData.id, tenant_id: tenantId, installment_number: i+1, due_date: p.due_date, amount: p.amount, status: 'pendente' })));
+          const { error: parcErr } = await supabase.from('crediario_parcelas').insert(parcelas.map((p, i) => ({ crediario_id: credData.id, tenant_id: tenantId, installment_number: i+1, due_date: p.due_date, amount: p.amount, status: 'pendente' })));
+          if (parcErr) {
+            console.error('Falha ao criar parcelas do crediário (crediario_id=' + credData.id + ') para a venda #' + saleData.sale_number + ':', parcErr);
+            toast.error('⚠ Venda #' + saleData.sale_number + ' registrada e crediário criado, mas as parcelas não foram salvas. Avise o suporte para corrigir.', { duration: 12000 });
+          }
         }
       }
       try {

@@ -136,6 +136,62 @@ export const imprimirCarneIndividual = async (p: Parcela, tenantId: string | nul
   });
 };
 
+// Termo de Quitacao Total do crediario — pedido pelo Carlos (01/09/2026) pra
+// quando um cliente termina de pagar todas as parcelas de um carne, dar um
+// comprovante formal de que a divida foi totalmente quitada (nada mais a
+// cobrar). So faz sentido chamar quando o crediario ja esta com status
+// 'quitado' (todas as parcelas pagas) — a tela (CrediarioPage.tsx) so mostra
+// o botao nesse caso. Mesmo padrao/redacao do "Termo de Quitacao Total" que
+// ja existia para vendas (vendaDocumentos.ts / imprimirQuitacao), so que
+// baseado direto na tabela crediario em vez de sale.
+export const imprimirQuitacaoCrediario = async (crediarioId: string, tenantId: string | null) => {
+  const { data: credData } = await supabase.from('crediario').select('*').eq('id', crediarioId).single();
+  const cr = credData as any || {};
+  const { data: parc } = await supabase.from('crediario_parcelas').select('*').eq('crediario_id', crediarioId).order('installment_number', { ascending: true });
+  const lista = (parc || []) as any[];
+  const nP = lista.length || cr.installments || 1;
+  // Valor efetivamente recebido (usa paid_amount quando existir, senao o
+  // valor da parcela) — cobre os casos de desconto/pagamento parcial.
+  const totalPago = lista.length > 0
+    ? lista.reduce((s: number, p: any) => s + (p.paid_amount != null ? p.paid_amount : p.amount), 0)
+    : (cr.total_amount || 0);
+  let cust: any = {};
+  if (cr.customer_id) {
+    const { data: custData } = await supabase.from('customers').select('cpf,rg,phone,address,city,state').eq('id', cr.customer_id).single();
+    cust = custData || {};
+  }
+  const fmtV = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const fmtD2 = (d: string) => { if (!d) return '--'; const dt=d.includes('T')?new Date(d):new Date(d+'T12:00:00'); return isNaN(dt.getTime())?'--':dt.toLocaleDateString('pt-BR'); };
+  let sName = 'Otica'; let sCnpj = ''; let sAddr = ''; let sCity = ''; let sState = ''; let sPhone = ''; let sLogo = '';
+  try {
+    const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single();
+    if (ss) { sName = ss.name || ss.company_name || 'Otica'; sCnpj = ss.cnpj || ''; sAddr = ss.address || ''; sCity = ss.city || ''; sState = ss.state || ''; sPhone = ss.phone || ''; sLogo = ss.logo_url || ''; }
+  } catch(e) {}
+  const custCpf = cust.cpf || '';
+  const custRg = cust.rg || '';
+  const dataExtenso = new Date().toLocaleDateString('pt-BR',{day:'numeric',month:'long',year:'numeric'});
+  const dataAbertura = fmtD2(cr.created_at);
+  const css = '@page{size:A4 portrait;margin:15mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#000;background:#fff}.hdr{text-align:center;border-bottom:2px solid #1a3a8f;padding-bottom:12px;margin-bottom:24px}.hdr img{max-height:60px;margin-bottom:4px}.hn{font-size:20px;font-weight:900;color:#1a3a8f}.hs{font-size:11px;color:#444;margin-top:2px}.wrap{overflow:hidden;margin-bottom:16px}.selo{float:right;border:3px solid #e53e3e;color:#e53e3e;padding:6px 14px;border-radius:4px;font-weight:900;font-size:14px;transform:rotate(-12deg);margin-top:-8px;letter-spacing:1px}h3{text-align:center;text-decoration:underline;font-size:14px;margin:0 0 20px;text-transform:uppercase}p{margin:10px 0;text-align:justify;line-height:1.7}.sig{margin-top:50px;text-align:center}.sig-line{display:inline-block;min-width:260px;border-top:1px solid #000;padding-top:6px;font-size:11px}';
+  const cnpjLine = sCnpj ? ', inscrita no CNPJ sob o n. '+sCnpj+',' : ',';
+  const cpfLine = custCpf ? ', inscrito(a) no CPF sob o n. '+custCpf+(custRg?', RG n. '+custRg:'') : '';
+  const html = '<div class="hdr">'+(sLogo?'<img src="'+sLogo+'"/><br/>':'')+'<div class="hn">'+sName+'</div>'+(sCnpj?'<div class="hs">CNPJ: '+sCnpj+'</div>':'')+(sAddr?'<div class="hs">'+sAddr+(sCity?', '+sCity:'')+(sState?' - '+sState:'')+'</div>':'')+(sPhone?'<div class="hs">Tel: '+sPhone+'</div>':'')+'</div>'
+    +'<div class="wrap"><div class="selo">DEBITO QUITADO</div><h3>Termo de Quitacao Total</h3></div>'
+    +'<p>Pelo presente instrumento particular, a empresa <b>'+sName+'</b>'+cnpjLine+' declara para os devidos fins que o(a) Sr(a). <b>'+(cr.customer_name||'')+'</b>'+cpfLine+', efetuou o pagamento integral de todos os debitos referentes ao crediario aberto em <b>'+dataAbertura+'</b>.</p>'
+    +'<p>O valor total liquidado foi de <b>'+fmtV(totalPago)+'</b>, correspondente a <b>'+nP+'</b> parcela(s) do crediario proprio, todas devidamente quitadas ate a presente data.</p>'
+    +'<p>Desta forma, damos plena, geral e irrevogavel quitacao de todos os valores e obrigacoes decorrentes deste crediario, nada mais havendo o que reclamar ou exigir a qualquer titulo.</p>'
+    +'<p>Por ser a expressao da verdade, firmamos o presente.</p>'
+    +'<p style="margin-top:30px">, '+dataExtenso+'</p>'
+    +'<div class="sig"><div class="sig-line">'+sName+'<br/><span style="font-size:10px;color:#666">Assinatura da Empresa</span></div></div>';
+
+  abrirDocumentoImprimivel({
+    title: 'Quitacao',
+    filename: 'quitacao-crediario-' + (cr.customer_name||'').replace(/\s+/g,'-').toLowerCase() + '.pdf',
+    css,
+    body: html,
+    windowFeatures: 'width=800,height=960',
+  });
+};
+
 export const imprimirCarneCompleto = async (p: Parcela, tenantId: string | null) => {
   const { data: cred } = await supabase.from('crediario').select('*').eq('id', p.crediario_id).single();
   const cr = cred as any || {};

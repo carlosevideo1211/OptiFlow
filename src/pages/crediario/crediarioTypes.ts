@@ -30,6 +30,10 @@ export interface CrediarioResumo {
   negativado: boolean; negativado_em?: string | null;
   valorEmAtraso: number; qtdEmAtraso: number; ultimaParcelaVencimento: string | null;
   tier: Tier; created_at?: string;
+  // Status do carne (ativo/quitado/cancelado) — usado pra saber quando todas
+  // as parcelas ja foram pagas e liberar o icone de "Emitir Termo de
+  // Quitacao" (pedido pelo Carlos, 01/09/2026).
+  status?: string;
 }
 
 export interface CobrancaLog {
@@ -44,6 +48,22 @@ export const JANELA_LABELS: Record<string, string> = {
   cobranca_manual: 'Manual (via sistema)',
   cobranca_manual_local: 'Manual (WhatsApp pessoal)',
 };
+
+// Retorna a data local (fuso do navegador) no formato YYYY-MM-DD.
+// IMPORTANTE: nunca usar `new Date().toISOString().split('T')[0]` para
+// "qual e o dia de hoje" — toISOString() sempre converte para UTC, o que
+// no horario de Manaus (UTC-4) faz "hoje" virar "amanha" a partir de
+// aproximadamente 20h. Como due_date e armazenado como data local (sem
+// horario), comparar com uma string "hoje" em UTC faz uma parcela que
+// vence hoje sumir das listas de "vence hoje"/"vencidas" durante a noite.
+// Corrigido 31/08/2026 apos relato da Otica Solar (Larissa): parcela do
+// dia sumindo da relacao de crediario e aparecendo com data errada.
+export function toLocalDateStr(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 export const JUROS_DIA = 0.07;
 
