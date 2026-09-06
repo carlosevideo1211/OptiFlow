@@ -32,11 +32,20 @@ export default function ContratoPage() {
     setLoading(false);
   };
 
+  // Corrigido 06/09/2026 (Achado 6 da auditoria): esta tabela tinha 3 planos
+  // pagos ficticios (basico/profissional/clinica a R$89/149/249) que nao
+  // batiam nem com os planos reais nem com a tabela separada que existia em
+  // AdminPanelPage.tsx (que por sua vez tinha OUTROS precos ficticios,
+  // R$97/147/197, pros mesmos nomes de plano) — ou seja, o valor mostrado
+  // neste contrato assinado digitalmente podia nao corresponder a nada que o
+  // cliente realmente pagasse. Os unicos 2 planos reais (confirmados pelo
+  // Carlos), mesmos de src/constants/planos.ts e do AdminPanelPage.tsx
+  // corrigido, sao Otica+Consultorio (R$99,99) e Consultorio (R$49,99).
   const planLabel: Record<string, string> = {
-    trial: 'Trial', basico: 'Basico', profissional: 'Profissional', clinica: 'Clinica'
+    trial: 'Trial', otica: 'Otica e Consultorio', consultorio: 'Consultorio', cancelado: 'Cancelado'
   };
   const planValue: Record<string, string> = {
-    trial: '0,00', basico: '89,00', profissional: '149,00', clinica: '249,00'
+    trial: '0,00', otica: '99,99', consultorio: '49,99', cancelado: '0,00'
   };
 
   const handleSign = async () => {

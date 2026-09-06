@@ -16,7 +16,14 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type Plan = 'trial' | 'basico' | 'profissional' | 'clinica' | 'lancamento' | 'cancelado';
+// Achado 6 da auditoria (corrigido 06/09/2026): antes esse tipo tinha 4
+// planos ficticios (basico/profissional/clinica/lancamento, a R$97/147/197/110)
+// que nunca corresponderam ao que a OptiFlow realmente vende ou cobra. Os
+// unicos 2 planos reais (confirmados pelo Carlos) sao os mesmos de
+// src/constants/planos.ts / PlanosPage.tsx / create-asaas-subscription:
+// Otica+Consultorio (R$99,99) e Consultorio (R$49,99), escolhidos por
+// tenants.modulo_otica_ativo.
+type Plan = 'trial' | 'otica' | 'consultorio' | 'cancelado';
 
 interface Tenant {
   id: string;
@@ -51,13 +58,12 @@ interface Tenant {
   excluido_em?: string | null;
 }
 
-const PLANS: Plan[] = ['trial','basico','profissional','clinica','lancamento','cancelado'];
+const PLANS: Plan[] = ['trial','otica','consultorio','cancelado'];
 const PLAN_LABELS: Record<Plan,string> = {
-  trial:'Trial', basico:'Basico', profissional:'Pro',
-  clinica:'Premium', lancamento:'Lancamento', cancelado:'Cancelado'
+  trial:'Trial', otica:'Otica e Consultorio', consultorio:'Consultorio', cancelado:'Cancelado'
 };
 const PLAN_PRICES: Record<Plan,number> = {
-  trial:0, basico:97, profissional:147, clinica:197, lancamento:110, cancelado:0
+  trial:0, otica:99.99, consultorio:49.99, cancelado:0
 };
 const STATUS_LIST = [
   { value:'trial',        label:'Trial',        color:'#f59e0b', bg:'rgba(245,158,11,.15)' },
@@ -231,16 +237,18 @@ export default function AdminPanelPage() {
     return d !== null && d <= 5;
   }).sort((a,b) => (diasRestantes(a.next_billing)||0) - (diasRestantes(b.next_billing)||0));
 
-  const PLAN_PRICES_MAP: Record<string,number> = {
-    trial:0, basico:97, profissional:147, clinica:197, lancamento:110, cancelado:0
-  };
+  // Corrigido 06/09/2026 (Achado 6 da auditoria): antes havia uma segunda
+  // tabela de precos aqui dentro (PLAN_PRICES_MAP), copiada e colada da
+  // PLAN_PRICES la em cima, com os mesmos planos ficticios — exatamente o
+  // tipo de duplicacao que causou o banner "Basico/Pro/Premium" desatualizado
+  // mencionado em src/constants/planos.ts. Reaproveita PLAN_PRICES direto.
   const updateField = async (id: string, field: string, value: any) => {
     setUpdating(id);
     const updates: any = { [field]: value };
 
     // Ao mudar plano para um plano pago, ativa o status automaticamente
     if (field === 'plan') {
-      updates.mrr_value = PLAN_PRICES_MAP[value] || 0;
+      updates.mrr_value = PLAN_PRICES[value as Plan] || 0;
       if (value !== 'trial' && value !== 'cancelado') {
         updates.status = 'ativo';
         const nb = new Date(); nb.setDate(nb.getDate()+30);

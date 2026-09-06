@@ -1,5 +1,11 @@
 // ── Planos ──────────────────────────────────────────────────
-export type Plan = 'trial' | 'basico' | 'profissional' | 'clinica' | 'cancelado';
+// Corrigido 06/09/2026 (Achado 6 da auditoria): tinha os mesmos planos
+// ficticios do AdminPanelPage.tsx/ContratoPage.tsx antigos. Este tipo (e a
+// interface Tenant abaixo) nao sao importados em nenhum outro arquivo hoje
+// (AdminPanelPage.tsx define seu proprio Plan/Tenant local), mas mantido
+// coerente com os 2 planos reais para nao reintroduzir a mesma confusao se
+// alguem importar daqui no futuro.
+export type Plan = 'trial' | 'otica' | 'consultorio' | 'cancelado';
 
 // ── Usuário ──────────────────────────────────────────────────
 export interface UserProfile {
@@ -247,11 +253,14 @@ export const formatDate = (d: string) =>
 export const formatDateTime = (d: string) =>
   new Date(d).toLocaleString('pt-BR');
 
+// Corrigido 06/09/2026 (Achado 6 da auditoria), mesmo motivo do tipo Plan
+// acima: nao importado em nenhum outro arquivo hoje (AdminPanelPage.tsx tem
+// sua propria PLAN_LABELS local, ja corrigida), mas alinhado aos 2 planos
+// reais para nao reintroduzir a mesma confusao.
 export const PLAN_LABELS: Record<Plan, string> = {
   trial: '🕐 Trial',
-  basico: '⭐ Básico',
-  profissional: '👑 Profissional',
-  clinica: '🏥 Clínica',
+  otica: '⭐ Ótica e Consultório',
+  consultorio: '👓 Consultório',
   cancelado: '❌ Cancelado',
 };
 
