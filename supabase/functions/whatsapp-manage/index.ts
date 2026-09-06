@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 const EVOLUTION_BASE_URL = Deno.env.get("EVOLUTION_BASE_URL") || "https://evolution.visionproerp.com.br";
@@ -19,11 +20,20 @@ async function evolutionFetch(path: string, method: string, body?: unknown) {
   return { ok: res.ok, status: res.status, data };
 }
 
-function decodeJwtPayload(token: string): any {
-  const base64Url = token.split(".")[1];
-  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-  const json = atob(base64);
-  return JSON.parse(json);
+// Confere se quem esta chamando e um usuario realmente autenticado no Supabase
+// (valida a assinatura do token de verdade, perguntando pro proprio Supabase
+// quem e o dono dele) e devolve o id. Antes esta funcao so decodificava o
+// token localmente (atob + JSON.parse) e confiava direto no campo "sub", sem
+// nunca checar a assinatura - o que permitia forjar um token com qualquer
+// "sub" e ser aceito como se fosse um login de verdade. Mesmo padrao ja usado
+// em create-asaas-subscription/index.ts.
+async function usuarioAutenticado(token: string): Promise<string | null> {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => null);
+  return data?.id || null;
 }
 
 async function supabaseFetch(path: string, init?: RequestInit) {
@@ -50,17 +60,11 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization") || "";
-    const token = authHeader.replace("Bearer ", "");
+    const token = authHeader.replace("Bearer ", "").trim();
     if (!token) return json({ error: "unauthorized" }, 401);
 
-    let payload: any;
-    try {
-      payload = decodeJwtPayload(token);
-    } catch {
-      return json({ error: "token inválido" }, 401);
-    }
-    const userId = payload.sub;
-    if (!userId) return json({ error: "unauthorized" }, 401);
+    const userId = await usuarioAutenticado(token);
+    if (!userId) return json({ error: "token inválido" }, 401);
 
     const profiles = await supabaseFetch(`user_profiles?id=eq.${userId}&select=id,tenant_id,role,full_name`);
     const profile = Array.isArray(profiles) ? profiles[0] : null;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { ADMIN_EMAIL } from '../../constants/admin';
 import { ArrowLeft, Search, Trash2, RotateCcw, ExternalLink, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { fmtDate } from '../../utils/adminDates';
@@ -32,8 +33,11 @@ export default function LixeiraPage() {
   const [colunaFaltando, setColunaFaltando] = useState(false);
 
   useEffect(() => {
+    // Mesma checagem de identidade do AdminPanelPage.tsx: esta tela tem um
+    // botão de excluir um tenant definitivamente, então "existe sessão?" não
+    // é suficiente — precisa ser a sessão do administrador (Carlos).
     supabase.auth.getSession().then(({ data:{ session } }) => {
-      if (!session) navigate('/admin-login');
+      if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) navigate('/admin-login');
       else load();
     });
   }, []);

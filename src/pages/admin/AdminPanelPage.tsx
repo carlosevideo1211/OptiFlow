@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { ADMIN_EMAIL } from '../../constants/admin';
 import { formatBRL } from '../../types/index';
 import { fmtDate, diasRestantes, pagoAteLabel } from '../../utils/adminDates';
 import {
@@ -104,8 +105,13 @@ export default function AdminPanelPage() {
   const [lixeiraCount, setLixeiraCount] = useState(0);
 
   useEffect(() => {
+    // Confere não só se existe uma sessão, mas se é a sessão do administrador
+    // (Carlos) — antes, qualquer usuário autenticado no sistema (dono ou
+    // funcionário de qualquer ótica cliente) que digitasse /admin na barra de
+    // endereço passava por essa checagem, porque ela só perguntava "existe
+    // sessão?", não "é o Carlos?".
     supabase.auth.getSession().then(({ data:{ session } }) => {
-      if (!session) navigate('/admin-login');
+      if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) navigate('/admin-login');
       else { load(); carregarLixeiraCount(); }
     });
   }, []);

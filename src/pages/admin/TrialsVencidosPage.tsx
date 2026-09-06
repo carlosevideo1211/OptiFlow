@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { ADMIN_EMAIL } from '../../constants/admin';
 import { ArrowLeft, Search, Clock, RotateCcw, Trash2, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 // fmtDate/diasRestantes centralizados em utils/adminDates.ts (01/09/2026) —
@@ -34,8 +35,9 @@ export default function TrialsVencidosPage() {
   const [updating, setUpdating] = useState<string|null>(null);
 
   useEffect(() => {
+    // Mesma checagem de identidade do AdminPanelPage.tsx.
     supabase.auth.getSession().then(({ data:{ session } }) => {
-      if (!session) navigate('/admin-login');
+      if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) navigate('/admin-login');
       else load();
     });
   }, []);
