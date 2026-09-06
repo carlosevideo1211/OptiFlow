@@ -6,6 +6,10 @@ import { Plus, Check, RotateCcw, Trash2, Edit2, X, AlertTriangle, Wallet, Downlo
 import { formatBRL, formatDate } from '../../types/index';
 import { exportarCSV } from '../../lib/exportCsv';
 import toast from 'react-hot-toast';
+// Achado 1 da auditoria: "hoje" precisa ser calculado em horario LOCAL, nao
+// via toISOString() (que converte pra UTC e adianta o dia a partir de ~20h
+// em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 const CATEGORIAS_RECEITA = ['consulta', 'outros'];
 const CATEGORIAS_DESPESA = ['comissao_profissional', 'comissao_convenio', 'outros'];
@@ -15,7 +19,7 @@ function emptyForm(type: string) {
   return {
     type, category: type === 'receita' ? 'consulta' : 'outros',
     description: '', amount: '' as any,
-    due_date: new Date().toISOString().split('T')[0],
+    due_date: toLocalDateStr(),
     payment_method: 'pix',
   };
 }
@@ -26,8 +30,8 @@ export default function FinanceiroConsultas() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'receber' | 'pagar' | 'todos'>('receber');
   const [statusFilter, setStatusFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState(new Date().toISOString().slice(0, 8) + '01');
-  const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
+  const [dateFrom, setDateFrom] = useState(toLocalDateStr().slice(0, 8) + '01');
+  const [dateTo, setDateTo] = useState(toLocalDateStr());
   // Filtros extras (Profissional / Parceria-Ótica / Forma de Pagamento) e as
   // listas pra popular os selects - pedido da Samara pra ficar parecido com
   // o relatório que ela já usava (OptoVision), que tem esses três filtros
@@ -67,7 +71,7 @@ export default function FinanceiroConsultas() {
 
   useEffect(() => { if (tenantId) load(); }, [tenantId, dateFrom, dateTo]);
 
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = toLocalDateStr();
   const formasPagamento = Array.from(new Set(entries.map(e => e.payment_method).filter(Boolean))).sort();
   const base = entries.filter(e => tab === 'todos' || (tab === 'receber' && e.type === 'receita') || (tab === 'pagar' && e.type === 'despesa'));
   const filtered = base
@@ -84,7 +88,7 @@ export default function FinanceiroConsultas() {
   const toggleStatus = async (e: any) => {
     const newStatus = e.status === 'pago' ? 'pendente' : 'pago';
     const { error } = await supabase.from('clinic_financial_entries').update({
-      status: newStatus, paid_date: newStatus === 'pago' ? new Date().toISOString().split('T')[0] : null,
+      status: newStatus, paid_date: newStatus === 'pago' ? toLocalDateStr() : null,
     }).eq('id', e.id);
     if (error) { toast.error('Erro ao atualizar'); return; }
     toast.success(newStatus === 'pago' ? '✅ Marcado como pago!' : 'Reaberto');

@@ -226,7 +226,7 @@ export default function CrediarioPage() {
 
   const totalAberto = parcelas.filter(p => p.status !== 'pago' && !p.arquivado).reduce((s, p) => s + p.amount, 0);
   const totalVencido = parcelas.filter(p => p.status !== 'pago' && !p.arquivado && p.due_date && p.due_date < hoje).reduce((s, p) => s + p.amount, 0);
-  const totalRecebidoMes = parcelas.filter(p => p.status === 'pago' && p.paid_at && p.paid_at.startsWith(new Date().toISOString().slice(0,7))).reduce((s, p) => s + (p.paid_amount || p.amount), 0);
+  const totalRecebidoMes = parcelas.filter(p => p.status === 'pago' && p.paid_at && p.paid_at.startsWith(hoje.slice(0,7))).reduce((s, p) => s + (p.paid_amount || p.amount), 0);
 
   const pagarParcela = (p: Parcela) => {
     setSelectedParcela(p);
@@ -260,11 +260,32 @@ export default function CrediarioPage() {
       const saldo = payForm.is_partial ? Math.round((total - pago) * 100) / 100 : 0;
       await supabase.from('crediario_parcelas').update({ status: 'pago', paid_at: new Date().toISOString(), paid_amount: pago, payment_method: payForm.payment_method }).eq('id', p.id);
       if (payForm.is_partial && saldo > 0) {
-        await supabase.from('crediario_parcelas').insert([{ crediario_id: p.crediario_id, tenant_id: tenantId, installment_number: p.installment_number, due_date: payForm.partial_due_date, amount: saldo, status: 'aberta' }]);
+        const { data: novaParcelaSaldo } = await supabase.from('crediario_parcelas').insert([{ crediario_id: p.crediario_id, tenant_id: tenantId, installment_number: p.installment_number, due_date: payForm.partial_due_date, amount: saldo, status: 'aberta' }]).select('id').single();
+        // Lanca o saldo restante como uma nova conta a receber em Financeiro, ja
+        // vinculada a nova parcela criada acima (ver correcao de 06/09/2026 logo
+        // abaixo sobre o vinculo crediario_parcela_id).
+        if (novaParcelaSaldo) {
+          await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + ' (saldo) - ' + p.customer_name, category: 'Crediário', amount: saldo, due_date: payForm.partial_due_date, paid_at: null, status: 'pendente', payment_method: null, crediario_parcela_id: novaParcelaSaldo.id }]);
+        }
       }
-      await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + ' - ' + p.customer_name, category: 'Crediario', amount: pago, due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: payForm.payment_method }]);
+      // Corrigido 06/09/2026: antes disto sempre INSERIA um lancamento novo
+      // "pago" aqui, e o lancamento "pendente" original (criado na venda, em
+      // VendasPage.tsx) nunca era tocado — ficava para sempre como pendente em
+      // Financeiro > Contas a Receber, reaparecendo como uma "divida fantasma"
+      // mesmo com a parcela ja paga/excluida no Crediario (bug relatado pela
+      // Larissa, Otica Solar). Agora atualiza o lancamento ja existente, vinculado
+      // via crediario_parcela_id; so insere um novo (comportamento antigo) se a
+      // parcela nao tiver um lancamento vinculado — caso de parcelas criadas antes
+      // desta correcao existir.
+      const { data: finAtualizado } = await supabase.from('financial_transactions')
+        .update({ status: 'pago', paid_at: new Date().toISOString(), amount: pago, payment_method: payForm.payment_method })
+        .eq('crediario_parcela_id', p.id)
+        .select('id');
+      if (!finAtualizado || finAtualizado.length === 0) {
+        await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + ' - ' + p.customer_name, category: 'Crediário', amount: pago, due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: payForm.payment_method, crediario_parcela_id: p.id }]);
+      }
       // Corrigido 22/07/2026: havia uma gravacao duplicada aqui (mesmo insert rodava 2x a cada pagamento)
-      await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount+calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial?Math.round((p.amount+calcJuros(p)-pago)*100)/100:0, operator_name: funcs[0].name, paid_date: new Date().toISOString().split('T')[0], payment_method: payForm.payment_method }]);
+      await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount+calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial?Math.round((p.amount+calcJuros(p)-pago)*100)/100:0, operator_name: funcs[0].name, paid_date: hoje, payment_method: payForm.payment_method }]);
       // Verificar se todas as parcelas do crediario estao pagas -> quitar
       if (!payForm.is_partial) {
         const { data: todasParcelas } = await supabase
@@ -408,7 +429,7 @@ export default function CrediarioPage() {
           <input className="form-input" value={payForm.is_partial ? payForm.paid_amount : (Math.max(0, selectedParcela.amount + calcJuros(selectedParcela) - (parseFloat((payForm.desconto||'0').replace(',','.')) || 0))).toFixed(2).replace('.',',')}
             onChange={e=>setPayForm(f=>({...f,paid_amount:e.target.value}))} readOnly={!payForm.is_partial} style={{marginBottom:10}}/>
           <label style={{display:'block',fontSize:12,fontWeight:600,marginBottom:6}}>Data do Pagamento</label>
-          <input className="form-input" type="date" value={payForm.partial_due_date || new Date().toISOString().split('T')[0]}
+          <input className="form-input" type="date" value={payForm.partial_due_date || hoje}
             onChange={e=>setPayForm(f=>({...f,partial_due_date:e.target.value}))}/>
         </div>
         <div style={{marginBottom:14}}>
@@ -489,6 +510,9 @@ export default function CrediarioPage() {
     try {
       const { error } = await supabase.from('crediario_parcelas').update({ due_date: newDate }).eq('id', parcelaId);
       if (error) { toast.error('Erro ao salvar data'); return; }
+      // Mantem o vencimento em sincronia com o lancamento espelhado em Financeiro
+      // (so mexe se ainda estiver pendente, pra nao alterar um lancamento ja pago).
+      await supabase.from('financial_transactions').update({ due_date: newDate }).eq('crediario_parcela_id', parcelaId).eq('status', 'pendente');
       toast.success('Data atualizada!');
       setEditingDateParcela(null);
       setNewDate('');
@@ -506,6 +530,9 @@ export default function CrediarioPage() {
     try {
       const { error } = await supabase.from('crediario_parcelas').update({ amount: val }).eq('id', id);
       if (error) { toast.error('Erro ao salvar valor'); return; }
+      // Mesma logica da data acima: mantem o valor em sincronia com o lancamento
+      // espelhado em Financeiro, so enquanto ele ainda estiver pendente.
+      await supabase.from('financial_transactions').update({ amount: val }).eq('crediario_parcela_id', id).eq('status', 'pendente');
       toast.success('Valor atualizado!');
       setEditingValueParcela(null);
       setNewValue('');
@@ -551,7 +578,7 @@ export default function CrediarioPage() {
       if (credErr || !novoCred) { toast.error('Erro ao criar renegociacao'); return; }
 
       // Criar novas parcelas
-      const novasParcelas = [];
+      const novasParcelas: { crediario_id: string; tenant_id: string | null; installment_number: number; due_date: string; amount: number; status: string }[] = [];
       const dtBase = new Date(renego.dataInicio + 'T12:00:00');
       for (let i = 0; i < numP; i++) {
         const dt = new Date(dtBase);
@@ -565,15 +592,46 @@ export default function CrediarioPage() {
           status: 'pendente',
         });
       }
-      await supabase.from('crediario_parcelas').insert(novasParcelas);
+      const { data: novasParcelasInseridas } = await supabase.from('crediario_parcelas').insert(novasParcelas).select('id, installment_number');
 
-      // Tratar carne original
+      // Corrigido 06/09/2026: o carne renegociado nunca era lancado em
+      // Financeiro > Contas a Receber (so o carne original aparecia por la, e
+      // ficava por conta do proximo bloco abaixo). Lanca as novas parcelas ja
+      // vinculadas via crediario_parcela_id, igual ao que VendasPage.tsx faz numa
+      // venda nova.
+      if (novasParcelasInseridas && novasParcelasInseridas.length > 0) {
+        const finRowsRenego = novasParcelasInseridas
+          .slice().sort((a: any, b: any) => a.installment_number - b.installment_number)
+          .map((np: any) => ({
+            tenant_id: tenantId, type: 'receita',
+            description: 'Crediário (renegociado) — Parcela ' + np.installment_number + '/' + numP + (clienteRenegociando ? ' — ' + clienteRenegociando : ''),
+            category: 'Crediário', amount: novasParcelas[np.installment_number - 1].amount,
+            due_date: novasParcelas[np.installment_number - 1].due_date, paid_at: null, status: 'pendente', payment_method: 'crediario',
+            crediario_parcela_id: np.id,
+          }));
+        await supabase.from('financial_transactions').insert(finRowsRenego);
+      }
+
+      // Tratar carne original — e o lancamento correspondente em Financeiro, que
+      // ate esta correcao NUNCA era tocado aqui: renegociar ou cancelar um carne
+      // no Crediario nao tirava a divida original de Financeiro > Contas a
+      // Receber, que continuava pendente pra sempre mesmo com o carne renegociado
+      // (o "Renego" e a unica acao da tela que recria um carne — bug relatado
+      // pela Larissa, Otica Solar: a notificacao reaparecia mesmo apos excluir/
+      // recriar, e o carne antigo sumia do Crediario por estar cancelado).
+      const idsParcelasOriginaisRenego = parcelasDoCarneRenegociando.map(p => p.id);
       if (renego.destino === 'cancelar') {
         await supabase.from('crediario').update({ status: 'cancelado' }).eq('id', renegociando);
         await supabase.from('crediario_parcelas').update({ status: 'cancelado' }).eq('crediario_id', renegociando).neq('status', 'pago');
+        if (idsParcelasOriginaisRenego.length > 0) {
+          await supabase.from('financial_transactions').delete().in('crediario_parcela_id', idsParcelasOriginaisRenego).eq('status', 'pendente');
+        }
       } else if (renego.destino === 'quitado') {
         await supabase.from('crediario').update({ status: 'quitado' }).eq('id', renegociando);
-        await supabase.from('crediario_parcelas').update({ status: 'pago', paid_at: new Date().toISOString().split('T')[0] }).eq('crediario_id', renegociando).neq('status', 'pago');
+        await supabase.from('crediario_parcelas').update({ status: 'pago', paid_at: hoje }).eq('crediario_id', renegociando).neq('status', 'pago');
+        if (idsParcelasOriginaisRenego.length > 0) {
+          await supabase.from('financial_transactions').update({ status: 'pago', paid_at: new Date().toISOString() }).in('crediario_parcela_id', idsParcelasOriginaisRenego).eq('status', 'pendente');
+        }
       }
 
       toast.success('Renegociacao criada com sucesso!');
@@ -790,6 +848,11 @@ export default function CrediarioPage() {
                               <button onClick={async () => {
                                 if (!confirm('Desmarcar pagamento desta parcela?')) return;
                                 await supabase.from('crediario_parcelas').update({ status:'pendente', paid_at:null, paid_amount:null }).eq('id', p.id);
+                                // Reflete o desfazimento no lancamento correspondente de Financeiro
+                                // (mesmo vinculo crediario_parcela_id da correcao de 06/09/2026 acima),
+                                // voltando o valor para o original da parcela (sem juros/desconto do
+                                // pagamento que foi desfeito).
+                                await supabase.from('financial_transactions').update({ status:'pendente', paid_at:null, amount: p.amount }).eq('crediario_parcela_id', p.id);
                                 toast.success('Parcela desmarcada'); load();
                               }} title="Desfazer pagamento / Retornar para Pendente"
                                 style={{ background:'rgba(248,113,113,.1)', border:'1px solid rgba(248,113,113,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#f87171', display:'flex', alignItems:'center' }}>
@@ -805,6 +868,13 @@ export default function CrediarioPage() {
                             {!pago && (
                               <button onClick={async () => {
                                 if (!confirm('Excluir esta parcela permanentemente?')) return;
+                                // Corrigido 06/09/2026: excluir a parcela aqui nunca excluia o
+                                // lancamento espelhado em financial_transactions (Financeiro >
+                                // Contas a Receber) — ele ficava orfao e continuava aparecendo como
+                                // divida pendente pra sempre, mesmo com a parcela ja excluida daqui
+                                // (bug relatado pela Larissa, Otica Solar). Usa o vinculo
+                                // crediario_parcela_id criado em VendasPage.tsx.
+                                await supabase.from('financial_transactions').delete().eq('crediario_parcela_id', p.id);
                                 await supabase.from('crediario_parcelas').delete().eq('id', p.id);
                                 toast.success('Parcela excluida'); load();
                               }} title="Excluir parcela"
@@ -1020,7 +1090,7 @@ export default function CrediarioPage() {
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                   <thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'4px 6px',textAlign:'center'}}>Parc.</th><th style={{padding:'4px 6px',textAlign:'left'}}>Vencimento</th><th style={{padding:'4px 6px',textAlign:'right'}}>Valor</th><th style={{padding:'4px 6px',textAlign:'center'}}>Status</th></tr></thead>
                   <tbody>{renegoSummary.original.map((p:any,i:number)=>{
-                    const atrasada=p.status!=='pago'&&p.due_date&&p.due_date<new Date().toISOString().split('T')[0];
+                    const atrasada=p.status!=='pago'&&p.due_date&&p.due_date<hoje;
                     return <tr key={i} style={{borderBottom:'1px solid var(--border)'}}><td style={{padding:'4px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{renegoSummary.original.length}</td><td style={{padding:'4px 6px',color:atrasada?'#f87171':'var(--text-muted)'}}>{p.due_date?new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</td><td style={{padding:'4px 6px',textAlign:'right'}}>{editingValueParcela===p.id?(<div style={{display:'flex',alignItems:'center',gap:4}}><input type="number" step="0.01" value={newValue} onChange={e=>setNewValue(e.target.value)} style={{width:80,fontSize:11,padding:'2px 4px',border:'1px solid var(--border)',borderRadius:4,background:'var(--surface-2)',color:'var(--text-primary)'}}/><button onClick={()=>handleSaveValue(p.id)} style={{fontSize:10,padding:'2px 6px',background:'#22c55e',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>OK</button><button onClick={()=>setEditingValueParcela(null)} style={{fontSize:10,padding:'2px 4px',background:'#ef4444',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>X</button></div>):(<span>{Number(p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}{p.status!=='pago'&&<button onClick={()=>{setEditingValueParcela(p.id);setNewValue(String(p.amount));}} title="Alterar valor" style={{background:'none',border:'none',cursor:'pointer',padding:2,color:'#f59e0b',display:'inline-flex',alignItems:'center'}}><Pencil size={12}/></button>}</span>)}</td><td style={{padding:'4px 6px',textAlign:'center'}}><span style={{padding:'1px 7px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(251,191,36,.15)',color:p.status==='pago'?'#22c55e':atrasada?'#f87171':'#fbbf24'}}>{p.status==='pago'?'Pago':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
                   })}</tbody>
                 </table>
@@ -1031,7 +1101,7 @@ export default function CrediarioPage() {
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                   <thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'4px 6px',textAlign:'center'}}>Parc.</th><th style={{padding:'4px 6px',textAlign:'left'}}>Vencimento</th><th style={{padding:'4px 6px',textAlign:'right'}}>Valor</th><th style={{padding:'4px 6px',textAlign:'center'}}>Status</th></tr></thead>
                   <tbody>{renegoSummary.novo.map((p:any,i:number)=>{
-                    const atrasada=p.status!=='pago'&&p.due_date&&p.due_date<new Date().toISOString().split('T')[0];
+                    const atrasada=p.status!=='pago'&&p.due_date&&p.due_date<hoje;
                     return <tr key={i} style={{borderBottom:'1px solid var(--border)'}}><td style={{padding:'4px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{renegoSummary.novo.length}</td><td style={{padding:'4px 6px',color:atrasada?'#f87171':'#6366f1'}}>{p.due_date?new Date(p.due_date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}{atrasada?' ⚠️':''}</td><td style={{padding:'4px 6px',textAlign:'right'}}>{editingValueParcela===p.id?(<div style={{display:'flex',alignItems:'center',gap:4}}><input type="number" step="0.01" value={newValue} onChange={e=>setNewValue(e.target.value)} style={{width:80,fontSize:11,padding:'2px 4px',border:'1px solid var(--border)',borderRadius:4,background:'var(--surface-2)',color:'var(--text-primary)'}}/><button onClick={()=>handleSaveValue(p.id)} style={{fontSize:10,padding:'2px 6px',background:'#22c55e',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>OK</button><button onClick={()=>setEditingValueParcela(null)} style={{fontSize:10,padding:'2px 4px',background:'#ef4444',color:'white',border:'none',borderRadius:4,cursor:'pointer'}}>X</button></div>):(<span>{Number(p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}{p.status!=='pago'&&<button onClick={()=>{setEditingValueParcela(p.id);setNewValue(String(p.amount));}} title="Alterar valor" style={{background:'none',border:'none',cursor:'pointer',padding:2,color:'#f59e0b',display:'inline-flex',alignItems:'center'}}><Pencil size={12}/></button>}</span>)}</td><td style={{padding:'4px 6px',textAlign:'center'}}><span style={{padding:'1px 7px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(99,102,241,.15)',color:p.status==='pago'?'#22c55e':atrasada?'#f87171':'#6366f1'}}>{p.status==='pago'?'Pago':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
                   })}</tbody>
                 </table>

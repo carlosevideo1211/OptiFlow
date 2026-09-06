@@ -11,6 +11,10 @@ import { PLATFORM_PIX_VALOR } from '../config/platformPix';
 // centralizado em utils/adminDates.ts (01/09/2026) pra parar de ter uma
 // copia dessa funcao em cada arquivo.
 import { diasRestantes } from '../utils/adminDates';
+// Achado 1 da auditoria: "hoje" precisa ser calculado em horario LOCAL, nao
+// via toISOString() (que converte pra UTC e adianta o dia a partir de ~20h
+// em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from './crediario/crediarioTypes';
 
 interface MonthPoint { label: string; total: number; key: string; }
 
@@ -40,7 +44,7 @@ export default function DashboardPage() {
 
   const loadStats = async () => {
     setLoading(true);
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateStr();
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
     // Últimos 12 meses
@@ -326,7 +330,7 @@ export default function DashboardPage() {
                   const x = i * (chartW / monthPoints.length) + 3;
                   const barH = maxVal > 0 ? (m.total / maxVal) * chartH : 0;
                   const y = chartH - barH;
-                  const isCurrentMonth = m.key === new Date().toISOString().slice(0, 7);
+                  const isCurrentMonth = m.key === toLocalDateStr().slice(0, 7);
                   return (
                     <g key={m.key}>
                       <rect x={x} y={y} width={barW} height={barH}

@@ -10,6 +10,7 @@ import {
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
 import { norm } from '../utils/normalize';
+import { toLocalDateStr } from './crediario/crediarioTypes';
 
 const CATEGORIAS_RECEITA = ['Venda','Crediário','Serviço','Outros'];
 const CATEGORIAS_DESPESA = ['Fornecedor','Aluguel','Salário','Água/Luz','Internet','Laboratório','Manutenção','Impostos','Outros'];
@@ -25,7 +26,7 @@ interface Transaction {
 function emptyForm(type: string) {
   return {
     type, description: '', category: type==='receita'?'Outros':'Outros',
-    amount: 0, due_date: new Date().toISOString().split('T')[0],
+    amount: 0, due_date: toLocalDateStr(),
     status: 'pendente', payment_method: 'pix', notes: ''
   };
 }
@@ -38,8 +39,8 @@ export default function FinanceiroPage() {
   const [typeFilter, setTypeFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch]       = useState('');
-  const [dateFrom, setDateFrom]   = useState(new Date().toISOString().slice(0,8)+'01');
-  const [dateTo, setDateTo]       = useState(new Date().toISOString().slice(0,10));
+  const [dateFrom, setDateFrom]   = useState(toLocalDateStr().slice(0,8)+'01');
+  const [dateTo, setDateTo]       = useState(toLocalDateStr());
   const [showModal, setShowModal] = useState(false);
   const [editType, setEditType]   = useState<'receita'|'despesa'>('receita');
   const [editing, setEditing]     = useState<Transaction | null>(null);
@@ -57,8 +58,11 @@ export default function FinanceiroPage() {
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
 
-  const hoje = new Date().toISOString().split('T')[0];
-  const mesAtual = new Date().toISOString().slice(0,7);
+  // Data/mes "de hoje" em horario LOCAL (Achado 1 da auditoria — nao usar
+  // toISOString() aqui, que converte pra UTC e adianta o dia a partir de
+  // ~20h em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+  const hoje = toLocalDateStr();
+  const mesAtual = hoje.slice(0,7);
 
   // Stats
   const receitasMes  = transactions.filter(t => t.type==='receita' && t.status==='pago' && t.paid_at?.startsWith(mesAtual)).reduce((s,t)=>s+t.amount,0);

@@ -8,6 +8,11 @@ import {
   Upload, Download, CheckCircle, XCircle, AlertTriangle,
   Users, Eye, FileText, CreditCard, ShoppingBag, RefreshCw
 } from 'lucide-react';
+// Achado 1 da auditoria: usado so como fallback quando a planilha nao tem a
+// data preenchida — precisa ser horario LOCAL, nao toISOString() (que
+// converte pra UTC e adianta o dia a partir de ~20h em Manaus).
+// toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from './crediario/crediarioTypes';
 
 type Tab = 'clientes' | 'consultas' | 'vendas' | 'crediario' | 'os' | 'produtos';
 
@@ -159,7 +164,7 @@ export default function ImportacaoPage() {
                 customer_name: (nomeCliente.trim() || cpf || 'Importado'),
                 professional_name: row['Medico'] || row['medico'] || 'Importado',
                 procedure_type: 'Consulta',
-                date: (() => { const d = row['Data_Consulta']; if (!d) return new Date().toISOString().split('T')[0]; const s = String(d).trim(); if (s.includes('/')) { const p = s.split('/'); return p.length===3 ? p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0') : s; } if (typeof d === 'number') { const dt = new Date(Math.round((d-25569)*86400*1000)); return dt.toISOString().split('T')[0]; } return s; })(),
+                date: (() => { const d = row['Data_Consulta']; if (!d) return toLocalDateStr(); const s = String(d).trim(); if (s.includes('/')) { const p = s.split('/'); return p.length===3 ? p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0') : s; } if (typeof d === 'number') { const dt = new Date(Math.round((d-25569)*86400*1000)); return dt.toISOString().split('T')[0]; } return s; })(),
                 time: '08:00',
                 time_end: '08:30',
                 status: 'concluida',
@@ -272,7 +277,7 @@ export default function ImportacaoPage() {
                     crediario_id: credData.id,
                     tenant_id: tenantId,
                     installment_number: i + 1,
-                    due_date: venc.toISOString().split('T')[0],
+                    due_date: toLocalDateStr(venc),
                     amount: valorParcela,
                     status: row['Status'] === 'quitado' ? 'pago' : 'pendente',
                   });

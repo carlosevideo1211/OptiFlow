@@ -6,6 +6,10 @@ import type { Customer } from '../../types/index';
 import { Search, X, UserPlus, ArrowRight, ArrowLeft, Check, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { norm } from '../../utils/normalize';
+// Achado 1 da auditoria: data padrao do agendamento precisa ser calculada em
+// horario LOCAL, nao via toISOString() (que converte pra UTC e adianta o dia
+// a partir de ~20h em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 interface Props { onClose: () => void; onSaved: () => void; }
 
@@ -126,7 +130,7 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
         partnership_id: partnershipId || null,
         payment_method: paymentMethod || null,
         valor_cobrado: valor,
-        date: new Date().toISOString().split('T')[0],
+        date: toLocalDateStr(),
         time, time_end: addMinutes(time, 30),
         status: 'agendada',
       }]);

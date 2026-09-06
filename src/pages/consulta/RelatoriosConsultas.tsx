@@ -5,6 +5,10 @@ import { fetchAllRows } from '../../lib/fetchAll';
 import { DollarSign, TrendingUp, TrendingDown, Award, Handshake, Stethoscope, ListFilter, Download } from 'lucide-react';
 import { formatBRL, formatDate } from '../../types/index';
 import { exportarCSV } from '../../lib/exportCsv';
+// Achado 1 da auditoria: "hoje" precisa ser calculado em horario LOCAL, nao
+// via toISOString() (que converte pra UTC e adianta o dia a partir de ~20h
+// em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 function KpiCard({ icon: Icon, color, value, label }: any) {
   return (
@@ -43,11 +47,12 @@ export default function RelatoriosConsultas() {
   const getRange = () => {
     if (periodo === 'custom' && dateFrom && dateTo) return { from: dateFrom, to: dateTo };
     const hoje = new Date();
-    if (periodo === 'hoje') { const d = hoje.toISOString().split('T')[0]; return { from: d, to: d }; }
-    if (periodo === 'semana') { const from = new Date(hoje); from.setDate(hoje.getDate() - 7); return { from: from.toISOString().split('T')[0], to: hoje.toISOString().split('T')[0] }; }
-    if (periodo === '30dias') { const from = new Date(hoje); from.setDate(hoje.getDate() - 30); return { from: from.toISOString().split('T')[0], to: hoje.toISOString().split('T')[0] }; }
-    if (periodo === 'ano') return { from: hoje.getFullYear() + '-01-01', to: hoje.toISOString().split('T')[0] };
-    return { from: hoje.toISOString().slice(0, 8) + '01', to: hoje.toISOString().split('T')[0] };
+    const hojeStr = toLocalDateStr(hoje);
+    if (periodo === 'hoje') { return { from: hojeStr, to: hojeStr }; }
+    if (periodo === 'semana') { const from = new Date(hoje); from.setDate(hoje.getDate() - 7); return { from: toLocalDateStr(from), to: hojeStr }; }
+    if (periodo === '30dias') { const from = new Date(hoje); from.setDate(hoje.getDate() - 30); return { from: toLocalDateStr(from), to: hojeStr }; }
+    if (periodo === 'ano') return { from: hoje.getFullYear() + '-01-01', to: hojeStr };
+    return { from: hojeStr.slice(0, 8) + '01', to: hojeStr };
   };
 
   useEffect(() => { if (tenantId) loadData(); }, [tenantId, periodo, dateFrom, dateTo]);

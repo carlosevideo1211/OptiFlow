@@ -6,6 +6,11 @@ import { Search, Users, Stethoscope, X, Plus } from 'lucide-react';
 import { norm } from '../../utils/normalize';
 import FichaPaciente from './FichaPaciente';
 import toast from 'react-hot-toast';
+// Achado 1 da auditoria: a data do atendimento iniciado "agora" precisa ser
+// calculada em horario LOCAL, nao via toISOString() (que converte pra UTC e
+// adianta o dia a partir de ~20h em Manaus). toLocalDateStr() ja existe em
+// crediarioTypes.ts.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 interface PacienteResumo {
   customer_id: string;
@@ -96,7 +101,7 @@ export default function PacientesTab() {
       professional_name: prof?.name || '',
       procedure_id: atenderForm.procedure_id,
       procedure_type: proc?.name || 'Consulta',
-      date: now.toISOString().split('T')[0],
+      date: toLocalDateStr(now),
       time: hhmm,
       time_end: hhmm,
       status: 'agendada',

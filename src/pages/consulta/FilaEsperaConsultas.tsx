@@ -4,6 +4,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Clock, User, Stethoscope, Handshake, RefreshCw, XCircle, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+// Achado 1 da auditoria: "hoje" precisa ser calculado em horario LOCAL, nao
+// via toISOString() (que converte pra UTC e adianta o dia a partir de ~20h
+// em Manaus) — aqui o efeito e direto na busca ao banco, nao so em exibicao.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 export default function FilaEsperaConsultas() {
   const { tenantId } = useAuth();
@@ -13,7 +17,7 @@ export default function FilaEsperaConsultas() {
 
   const load = async () => {
     setLoading(true);
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = toLocalDateStr();
     const [{ data: consultas }, { data: partnerships }] = await Promise.all([
       supabase.from('consultations').select('*')
         .eq('tenant_id', tenantId).eq('date', hoje).eq('status', 'agendada')

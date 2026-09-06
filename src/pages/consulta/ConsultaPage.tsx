@@ -20,6 +20,10 @@ import RelatoriosOperacionais from './RelatoriosOperacionais';
 import toast from 'react-hot-toast';
 import { norm } from '../../utils/normalize';
 import AuditoriaConsultas from './AuditoriaConsultas';
+// Achado 1 da auditoria: "hoje" precisa ser calculado em horario LOCAL, nao
+// via toISOString() (que converte pra UTC e adianta o dia a partir de ~20h
+// em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 export default function ConsultaPage() {
   const { tenantId, user } = useAuth();
@@ -69,7 +73,7 @@ export default function ConsultaPage() {
 
   const total      = consultations.length;
   const realizadas = consultations.filter(c => c.status === 'realizada').length;
-  const hoje_count = consultations.filter(c => c.date === new Date().toISOString().split('T')[0]).length;
+  const hoje_count = consultations.filter(c => c.date === toLocalDateStr()).length;
   const com_os     = consultations.filter(c => c.generated_os).length;
 
   const STATUS_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {

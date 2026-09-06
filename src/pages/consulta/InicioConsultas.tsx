@@ -5,6 +5,10 @@ import {
   Users, CalendarCheck, ClipboardCheck, DollarSign, Cake, AlertTriangle,
   MessageCircle, ArrowRight, CalendarClock,
 } from 'lucide-react';
+// Achado 1 da auditoria: "hoje" precisa ser calculado em horario LOCAL, nao
+// via toISOString() (que converte pra UTC e adianta o dia a partir de ~20h
+// em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 const WHATSAPP_SUPORTE = '5592992779106';
 
@@ -33,7 +37,7 @@ export default function InicioConsultas({ onVerTodasConsultas }: Props) {
     (async () => {
       setLoading(true);
       const hoje = new Date();
-      const hojeStr = hoje.toISOString().split('T')[0];
+      const hojeStr = toLocalDateStr(hoje);
       const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0];
       const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().split('T')[0];
       const hoje12MesesAtras = new Date(hoje.getFullYear() - 1, hoje.getMonth(), hoje.getDate()).toISOString().split('T')[0];

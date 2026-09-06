@@ -6,6 +6,11 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, X, Save, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { norm } from '../utils/normalize';
+// Achado 1 da auditoria: "hoje"/datas do calendario precisam ser calculadas
+// em horario LOCAL, nao via toISOString() (que converte pra UTC e adianta o
+// dia a partir de ~20h em Manaus). toLocalDateStr() ja existe em
+// crediarioTypes.ts.
+import { toLocalDateStr } from './crediario/crediarioTypes';
 
 const DIAS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -45,7 +50,7 @@ function getWeekDates(baseDate: Date) {
   });
 }
 
-function fmt(d: Date) { return d.toISOString().split('T')[0]; }
+function fmt(d: Date) { return toLocalDateStr(d); }
 
 function emptyForm() {
   return {
@@ -53,7 +58,7 @@ function emptyForm() {
     professional_name: '', professional_id: '',
     procedure_type: 'Consulta', procedure_id: '',
     partnership_id: '', prioridade: false,
-    date: new Date().toISOString().split('T')[0],
+    date: fmt(new Date()),
     time: '08:00',
     time_end: '08:30',
     notes: '',

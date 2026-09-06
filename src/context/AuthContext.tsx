@@ -61,17 +61,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
   const signIn = async (email: string, password: string) => {
-    const key = `login_attempts_${email}`;    const attemptsData = JSON.parse(localStorage.getItem(key) || '{"count":0,"time":0}');
+    const key = `login_attempts_${email}`;
+    let attemptsData = JSON.parse(localStorage.getItem(key) || '{"count":0,"time":0}');
     const now = Date.now();
     if (attemptsData.count >= 5 && (now -attemptsData.time) < 15 * 60 * 1000) {
       const mins = Math.ceil((15 * 60 * 1000 - (now - attemptsData.time)) / 60000);
       throw new Error(`Muitas tentativas.Aguarde ${mins} minuto(s) para tentar novamente.`);
     }
     if ((now - attemptsData.time) >= 15 *60 * 1000) {
-      localStorage.setItem(key, JSON.stringify({count: 0, time: now}));
+      attemptsData = { count: 0, time: now };
+      localStorage.setItem(key, JSON.stringify(attemptsData));
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (!error) {
+      // Login valido (dono da conta): zera o contador de tentativas erradas.
+      localStorage.removeItem(key);
       const uid = (await supabase.auth.getUser()).data.user?.id;
       if (uid) {
         const ok = await loadProfile(uid, email);
@@ -106,7 +110,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         token = tokenPlain;
       }
-      if (!token) throw error;
+      if (!token) {
+        // Nem dono nem funcionario reconheceu essas credenciais: e uma
+        // tentativa de login realmente errada, entao conta pro bloqueio de
+        // 5 tentativas (antes esse contador nunca era incrementado em lugar
+        // nenhum do sistema, entao o bloqueio nunca disparava de verdade).
+        attemptsData = { count: (attemptsData.count || 0) + 1, time: attemptsData.time || now };
+        localStorage.setItem(key, JSON.stringify(attemptsData));
+        throw error;
+      }
       // Trava o auto-load do listener onAuthStateChange: sem isso, ele
       // pode tentar carregar o perfil ANTES de claim_funcionario_session
       // terminar de criá-lo, e deslogaria por engano (corrida de estado).
@@ -125,6 +137,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profileLoadPromiseRef.current = null;
         throw new Error('Sessão do funcionário não encontrada');
       }
+      // Login valido (funcionario): zera o contador de tentativas erradas.
+      localStorage.removeItem(key);
       profileLoadPromiseRef.current = null;
       await loadProfile(uid);
       return;

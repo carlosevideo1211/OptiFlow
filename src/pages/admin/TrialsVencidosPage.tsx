@@ -7,6 +7,11 @@ import toast from 'react-hot-toast';
 // fmtDate/diasRestantes centralizados em utils/adminDates.ts (01/09/2026) —
 // antes essa tela tinha sua propria copia dessas 2 funcoes.
 import { fmtDate, diasRestantes } from '../../utils/adminDates';
+// Achado 1 da auditoria: "+14 dias a partir de hoje" precisa ser calculado em
+// horario LOCAL, nao via toISOString() (que converte pra UTC e pode dar 15
+// dias em vez de 14 se usado a noite em Manaus). toLocalDateStr() ja existe
+// em crediarioTypes.ts.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 // Tela separada pra listar so os trials ja vencidos (pedido pelo Carlos,
 // 01/09/2026), tirados da tabela principal do Admin pra ela ficar limpa —
@@ -76,7 +81,7 @@ export default function TrialsVencidosPage() {
   const reativarTrial = async (t: TenantVencido) => {
     if (!confirm('Reativar o trial de ' + t.company_name + ' por mais 14 dias?')) return;
     const nova = new Date(); nova.setDate(nova.getDate()+14);
-    const novaData = nova.toISOString().split('T')[0];
+    const novaData = toLocalDateStr(nova);
     setUpdating(t.id);
     const { error } = await supabase.from('tenants').update({ trial_end_date: novaData }).eq('id', t.id);
     setUpdating(null);

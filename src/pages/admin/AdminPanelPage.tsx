@@ -4,6 +4,10 @@ import { supabase } from '../../lib/supabase';
 import { ADMIN_EMAIL } from '../../constants/admin';
 import { formatBRL } from '../../types/index';
 import { fmtDate, diasRestantes, pagoAteLabel } from '../../utils/adminDates';
+// Achado 1 da auditoria: "hoje"/datas calculadas a partir de "agora" precisam
+// usar horario LOCAL, nao toISOString() (que converte pra UTC e adianta o dia
+// a partir de ~20h em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 import {
   LogOut, RefreshCw, Search, Users, TrendingUp, Shield,
   AlertTriangle, DollarSign, X, Save, Edit2, CheckCircle,
@@ -139,8 +143,9 @@ export default function AdminPanelPage() {
     if (!error) setLixeiraCount(count || 0);
   };
 
-  const hoje = new Date().toISOString().split('T')[0];
-  const mesAtual = new Date().toISOString().slice(0,7);
+  // (a antiga variavel "hoje" aqui nunca era usada em lugar nenhum do
+  // arquivo — removida; era codigo morto, sem efeito real.)
+  const mesAtual = toLocalDateStr().slice(0,7);
 
   // Stats
   const stats = useMemo(() => {
@@ -163,7 +168,7 @@ export default function AdminPanelPage() {
     const meses: {label:string; total:number}[] = [];
     for (let i=5; i>=0; i--) {
       const d = new Date(); d.setMonth(d.getMonth()-i);
-      const key = d.toISOString().slice(0,7);
+      const key = toLocalDateStr(d).slice(0,7);
       const label = d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'});
       const total = tenants.filter(t=>t.created_at?.startsWith(key)).length;
       meses.push({label, total});
@@ -239,7 +244,7 @@ export default function AdminPanelPage() {
       if (value !== 'trial' && value !== 'cancelado') {
         updates.status = 'ativo';
         const nb = new Date(); nb.setDate(nb.getDate()+30);
-        updates.next_billing = nb.toISOString().split('T')[0];
+        updates.next_billing = toLocalDateStr(nb);
       }
       if (value === 'cancelado') updates.status = 'cancelado';
     }
@@ -248,7 +253,7 @@ export default function AdminPanelPage() {
     if (field === 'status' && value === 'ativo') {
       const tenantAtual = tenants.find(t => t.id === id);
       const nb = new Date(); nb.setDate(nb.getDate()+30);
-      updates.next_billing = nb.toISOString().split('T')[0];
+      updates.next_billing = toLocalDateStr(nb);
       if (tenantAtual && tenantAtual.plan === 'trial') {
         toast.error('Selecione o plano pago antes de ativar (o campo Plano ainda esta em "Trial").', { duration: 5000 });
         setUpdating(null);
@@ -265,7 +270,7 @@ export default function AdminPanelPage() {
   const estenderTrial = async (t: Tenant, dias: number) => {
     const base = t.trial_end_date ? new Date(t.trial_end_date+'T00:00:00') : new Date();
     base.setDate(base.getDate()+dias);
-    const nova = base.toISOString().split('T')[0];
+    const nova = toLocalDateStr(base);
     await updateField(t.id, 'trial_end_date', nova);
   };
 
@@ -319,7 +324,7 @@ export default function AdminPanelPage() {
     const vencimentoAtual = t.next_billing ? new Date(t.next_billing+'T00:00:00') : null;
     const base = (vencimentoAtual && vencimentoAtual > hoje) ? vencimentoAtual : hoje;
     const nb = new Date(base); nb.setDate(nb.getDate() + meses*30);
-    const novoNextBilling = nb.toISOString().split('T')[0];
+    const novoNextBilling = toLocalDateStr(nb);
     const ok = await salvarVencimento(t, novoNextBilling, t.next_billing || null);
     if (!ok) return;
     toast.success('Pagamento confirmado! Pago ate '+pagoAteLabel(novoNextBilling)+'.');
@@ -534,7 +539,7 @@ export default function AdminPanelPage() {
             <Trash2 size={15}/> Lixeira
             {lixeiraCount > 0 && <span style={{ background:'#94a3b8', color:'#0B1120', borderRadius:10, padding:'1px 7px', fontSize:11, fontWeight:700 }}>{lixeiraCount}</span>}
           </button>
-          <button onClick={()=>{setEditing(null);setForm({plan:'trial',status:'trial',trial_end_date:new Date(Date.now()+14*86400000).toISOString().split('T')[0]});setShowModal(true);}}
+          <button onClick={()=>{setEditing(null);setForm({plan:'trial',status:'trial',trial_end_date:toLocalDateStr(new Date(Date.now()+14*86400000))});setShowModal(true);}}
             style={{ background:'linear-gradient(135deg,#6366f1,#06b6d4)', border:'none', borderRadius:8, padding:'8px 16px', cursor:'pointer', color:'white', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
             <Plus size={15}/> Novo Tenant
           </button>

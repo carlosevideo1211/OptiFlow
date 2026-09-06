@@ -8,6 +8,10 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+// Achado 1 da auditoria: "hoje" precisa ser calculado em horario LOCAL, nao
+// via toISOString() (que converte pra UTC e adianta o dia a partir de ~20h
+// em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 interface Props {
   customerId: string;
@@ -72,7 +76,7 @@ export default function FichaPaciente({ customerId, onBack }: Props) {
 
   const load = async () => {
     setLoading(true);
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = toLocalDateStr();
 
     const [cust, cons, os, sal, anx] = await Promise.all([
       supabase.from('customers').select('*').eq('id', customerId).single(),

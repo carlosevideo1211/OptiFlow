@@ -98,7 +98,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         .select('*', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
         .eq('status', 'pronta');
-      const today = new Date().toISOString().split('T')[0];
+      // (a variavel "today" que existia aqui nunca era usada na consulta
+      // logo abaixo — removida; era codigo morto, sem efeito real.)
       const { count: parcCount } = await supabase
         .from('crediario_parcelas')
         .select('*', { count: 'exact', head: true })

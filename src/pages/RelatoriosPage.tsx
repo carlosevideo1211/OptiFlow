@@ -10,6 +10,10 @@ import {
 import { formatBRL } from '../types/index';
 import BaixasTab from './BaixasTab';
 import { abrirDocumentoImprimivel, getCabecalhoLoja, printBaseStyle, type DadosLoja } from '../utils/printDoc';
+// Achado 1 da auditoria: "hoje" precisa ser calculado em horario LOCAL, nao
+// via toISOString() (que converte pra UTC e adianta o dia a partir de ~20h
+// em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from './crediario/crediarioTypes';
 
 const PAGAMENTO_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro', pix: 'PIX', credito: 'Cartão Crédito',
@@ -63,11 +67,12 @@ export default function RelatoriosPage() {
       return { from: `${mesEspecifico}-01`, to: `${mesEspecifico}-${String(ultimoDia).padStart(2,'0')}` };
     }
     const hoje = new Date();
-    if (periodo === 'hoje') { const d = hoje.toISOString().split('T')[0]; return { from: d, to: d }; }
-    if (periodo === 'semana') { const from = new Date(hoje); from.setDate(hoje.getDate() - 7); return { from: from.toISOString().split('T')[0], to: hoje.toISOString().split('T')[0] }; }
-    if (periodo === 'mes') return { from: hoje.toISOString().slice(0,8)+'01', to: hoje.toISOString().split('T')[0] };
-    if (periodo === 'ano') return { from: hoje.getFullYear()+'-01-01', to: hoje.toISOString().split('T')[0] };
-    return { from: hoje.toISOString().slice(0,8)+'01', to: hoje.toISOString().split('T')[0] };
+    const hojeStr = toLocalDateStr(hoje);
+    if (periodo === 'hoje') { return { from: hojeStr, to: hojeStr }; }
+    if (periodo === 'semana') { const from = new Date(hoje); from.setDate(hoje.getDate() - 7); return { from: toLocalDateStr(from), to: hojeStr }; }
+    if (periodo === 'mes') return { from: hojeStr.slice(0,8)+'01', to: hojeStr };
+    if (periodo === 'ano') return { from: hoje.getFullYear()+'-01-01', to: hojeStr };
+    return { from: hojeStr.slice(0,8)+'01', to: hojeStr };
   };
 
   const loadData = async () => {
@@ -230,7 +235,7 @@ export default function RelatoriosPage() {
         const credIds = (creds||[]).map((c:any)=>c.id);
         if (credIds.length > 0) {
           const parcelas = await fetchAllRows<any>((rf, rt) => supabase.from('crediario_parcelas').select('amount,status,due_date').in('crediario_id', credIds).range(rf, rt));
-          const hoje = new Date().toISOString().split('T')[0];
+          const hoje = toLocalDateStr();
           (parcelas||[]).forEach((p:any) => {
             if (p.status === 'pago') recebido += p.amount;
             else if (p.due_date && p.due_date < hoje) vencido += p.amount;

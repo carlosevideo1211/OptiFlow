@@ -7,6 +7,10 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
+// Achado 1 da auditoria: data padrao de emissao precisa ser calculada em
+// horario LOCAL, nao via toISOString() (que converte pra UTC e adianta o dia
+// a partir de ~20h em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from './crediario/crediarioTypes';
 
 interface FiscalConfig {
   id?: string; tenant_id: string; razao_social: string; cnpj: string;
@@ -83,7 +87,7 @@ export default function NfePage() {
   // Form NF-e
   const [nfeForm, setNfeForm] = useState({
     natureza_operacao: 'Venda de mercadoria',
-    data_emissao: new Date().toISOString().split('T')[0],
+    data_emissao: toLocalDateStr(),
     cliente_nome: '', cliente_cpf_cnpj: '', cliente_endereco: '',
     observacoes: '', sale_id: ''
   });
@@ -312,7 +316,7 @@ export default function NfePage() {
 
       toast.success('NF-e #' + novoNumero + ' gerada com sucesso!');
       setShowModal(false);
-      setNfeForm({ natureza_operacao:'Venda de mercadoria', data_emissao: new Date().toISOString().split('T')[0], cliente_nome:'', cliente_cpf_cnpj:'', cliente_endereco:'', observacoes:'', sale_id:'' });
+      setNfeForm({ natureza_operacao:'Venda de mercadoria', data_emissao: toLocalDateStr(), cliente_nome:'', cliente_cpf_cnpj:'', cliente_endereco:'', observacoes:'', sale_id:'' });
       setItens([emptyItem()]);
       load();
       setShowXml(nfeData as Nfe);
