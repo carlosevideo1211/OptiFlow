@@ -35,7 +35,10 @@ export default function ConfiguracaoPage() {
   useEffect(() => {
     if (!tenantId) return;
     setForm(f => ({...f, tenant_id: tenantId}));
-    supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single()
+    // Corrigido 06/09/2026 (Achado 7 da auditoria): .single() lanca erro
+    // (inofensivo, mas desnecessario) pra tenant novo sem store_settings
+    // salvo ainda; .maybeSingle() so retorna null nesse caso.
+    supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => {
         if (data) setForm({...data, asaas_key: (data as any).asaas_key||'', asaas_env: (data as any).asaas_env||'sandbox', asaas_enabled: (data as any).asaas_enabled||false} as StoreSettings);
         setLoading(false);

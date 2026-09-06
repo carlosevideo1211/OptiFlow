@@ -125,7 +125,10 @@ export default function OrdemServicoPage() {
   };
 
   useEffect(() => {
-    if (tenantId) supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single().then(({data}) => { if (data) setStoreSettings(data); });
+    // Corrigido 06/09/2026 (Achado 7 da auditoria): .single() lanca erro
+    // (inofensivo, mas desnecessario) pra tenant novo sem store_settings
+    // salvo ainda; .maybeSingle() so retorna null nesse caso.
+    if (tenantId) supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle().then(({data}) => { if (data) setStoreSettings(data); });
   }, [tenantId]);
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);

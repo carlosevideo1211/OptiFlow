@@ -323,10 +323,13 @@ export default function CrediarioPage() {
     // impressos deste arquivo), para nao depender de um carregamento previo que
     // poderia nao terminar a tempo e cair no texto de reserva.
     let nomeLoja = 'nossa ótica';
+    // Corrigido 06/09/2026 (Achados 3 e 7 da auditoria): .single() lanca erro
+    // pra tenant sem store_settings salvo ainda; .maybeSingle() so retorna
+    // null. Catch agora loga em vez de engolir qualquer outro erro real.
     try {
-      const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single();
+      const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle();
       if (ss) nomeLoja = ss.name || ss.company_name || nomeLoja;
-    } catch (e) {}
+    } catch (e) { console.error('CrediarioPage: falha ao buscar store_settings', e); }
 
     const msg = encodeURIComponent(
       diasAtraso >= 30

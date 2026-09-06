@@ -52,7 +52,10 @@ export default function RelatoriosPage() {
 
   useEffect(() => {
     if (!tenantId) return;
-    supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single()
+    // Corrigido 06/09/2026 (Achado 7 da auditoria): .single() lanca erro
+    // (inofensivo, mas desnecessario) pra tenant novo sem store_settings
+    // salvo ainda; .maybeSingle() so retorna null nesse caso.
+    supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => { if (data) setStoreSettings(data as DadosLoja); });
     supabase.from('funcionarios').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name')
       .then(({ data }) => setFuncionarios((data || []) as {id:string;name:string}[]));

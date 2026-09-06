@@ -75,8 +75,14 @@ export const imprimirCarneIndividual = async (p: Parcela, tenantId: string | nul
   let storeAddr = '';
   let storeTel = '';
   let storeLogo = '';
+  // Corrigido 06/09/2026 (Achados 3 e 7 da auditoria): .single() lanca erro
+  // quando o tenant ainda nao tem store_settings salvo (comum em tenant
+  // novo) — trocado por .maybeSingle(), que so retorna null nesse caso. E o
+  // catch vazio escondia qualquer outro erro real (rede, RLS) sem deixar
+  // rastro nenhum; agora ao menos loga no console, mantendo o mesmo
+  // fallback nos dados padrao (nao muda o comportamento pro operador).
   try {
-    const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single();
+    const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle();
     if (ss) {
       storeName = (ss.name || ss.company_name || 'OPTIFLOW').toUpperCase();
       storeCnpj = ss.cnpj || '';
@@ -84,7 +90,7 @@ export const imprimirCarneIndividual = async (p: Parcela, tenantId: string | nul
       storeTel = ss.phone || '';
       storeLogo = ss.logo_url || '';
     }
-  } catch(e) {}
+  } catch(e) { console.error('imprimirCarneIndividual: falha ao buscar store_settings', e); }
   const logoHtml = storeLogo
     ? '<img src="'+storeLogo+'" style="width:60px;height:60px;object-fit:contain;border-radius:8px;" />'
     : '<div style="width:60px;height:60px;background:linear-gradient(135deg,#6366f1,#06b6d4);border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:18px;">O</div>';
@@ -165,10 +171,13 @@ export const imprimirQuitacaoCrediario = async (crediarioId: string, tenantId: s
   const fmtV = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const fmtD2 = (d: string) => { if (!d) return '--'; const dt=d.includes('T')?new Date(d):new Date(d+'T12:00:00'); return isNaN(dt.getTime())?'--':dt.toLocaleDateString('pt-BR'); };
   let sName = 'Otica'; let sCnpj = ''; let sAddr = ''; let sCity = ''; let sState = ''; let sPhone = ''; let sLogo = '';
+  // Corrigido 06/09/2026 (Achados 3 e 7 da auditoria): mesmo ajuste de
+  // imprimirCarneIndividual acima — .maybeSingle() em vez de .single(), e o
+  // catch agora loga em vez de engolir o erro em silencio.
   try {
-    const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single();
+    const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle();
     if (ss) { sName = ss.name || ss.company_name || 'Otica'; sCnpj = ss.cnpj || ''; sAddr = ss.address || ''; sCity = ss.city || ''; sState = ss.state || ''; sPhone = ss.phone || ''; sLogo = ss.logo_url || ''; }
-  } catch(e) {}
+  } catch(e) { console.error('imprimirQuitacaoCrediario: falha ao buscar store_settings', e); }
   const custCpf = cust.cpf || '';
   const custRg = cust.rg || '';
   const dataExtenso = new Date().toLocaleDateString('pt-BR',{day:'numeric',month:'long',year:'numeric'});
@@ -214,7 +223,10 @@ export const imprimirCarneCompleto = async (p: Parcela, tenantId: string | null)
   const fmtV = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const fmtD = (d: string) => { if (!d) return '--'; const dt = d.includes('T') ? new Date(d) : new Date(d+'T12:00:00'); return isNaN(dt.getTime()) ? '--' : dt.toLocaleDateString('pt-BR'); };
   let sName = 'Otica'; let sPix = ''; let sLogo = ''; let sCnpj = ''; let sAddr = ''; let sCity = ''; let sState = ''; let sPhone = '';
-  try { const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single(); if (ss) { sName = ss.name || ss.company_name || 'Otica'; sPix = ss.pix_key || ''; sLogo = ss.logo_url || ''; sCnpj = ss.cnpj || ''; sAddr = ss.address || ''; sCity = ss.city || ''; sState = ss.state || ''; sPhone = ss.phone || ''; } } catch(e2) {}
+  // Corrigido 06/09/2026 (Achados 3 e 7 da auditoria): mesmo ajuste das duas
+  // funcoes acima — .maybeSingle() em vez de .single(), catch loga em vez de
+  // engolir o erro.
+  try { const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle(); if (ss) { sName = ss.name || ss.company_name || 'Otica'; sPix = ss.pix_key || ''; sLogo = ss.logo_url || ''; sCnpj = ss.cnpj || ''; sAddr = ss.address || ''; sCity = ss.city || ''; sState = ss.state || ''; sPhone = ss.phone || ''; } } catch(e2) { console.error('imprimirCarneCompleto: falha ao buscar store_settings', e2); }
   const mkBC = (seed: number) => { const pat=[3,1,4,1,2,1,1,4,2,1,3,1,1,2,1,4,2,1,1,3,4,1,2,1,3,1,1,2,3,1,4,1,2,1,1,3,2,1,1,2,4,1,3,1]; return pat.map((b,i)=>'<span style="display:inline-block;height:42px;width:'+(b+(seed*3+i)%2)+'px;background:'+(i%2===0?'#000':'#fff')+'"></span>').join(''); };
   // pixEMV agora vem de src/utils/pix.ts (extraido daqui — ver comentario la).
   const custName = p.customer_name;
