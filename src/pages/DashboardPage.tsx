@@ -67,7 +67,11 @@ export default function DashboardPage() {
       supabase.from('products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('active', true).lt('stock', 5),
       supabase.from('sales').select('total').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', monthStart),
       supabase.from('service_orders').select('id, os_number, customer_name, status, delivery_date').eq('tenant_id', tenantId).not('status', 'in', '(entregue,cancelada)').order('created_at', { ascending: false }).limit(5),
-      supabase.from('store_settings').select('name').eq('tenant_id', tenantId).single(),
+      // Corrigido 06/09/2026 (Achado 7 da auditoria, encontrado numa
+      // varredura final — nao estava na lista original): .single() lanca
+      // erro (inofensivo, mas desnecessario) pra tenant novo sem
+      // store_settings salvo ainda; .maybeSingle() so retorna null.
+      supabase.from('store_settings').select('name').eq('tenant_id', tenantId).maybeSingle(),
       supabase.from('sales').select('total, created_at').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', months[0].key + '-01').order('created_at', { ascending: true }),
     ]);
 

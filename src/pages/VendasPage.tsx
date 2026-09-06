@@ -19,6 +19,12 @@ import {
   imprimirInstrumentoDivida as imprimirInstrumentoDividaDoc,
   imprimirQuitacao as imprimirQuitacaoDoc,
 } from './vendas/vendaDocumentos';
+// Achado 1 da auditoria (encontrado numa varredura final — este arquivo nao
+// tinha sido coberto na auditoria original): "hoje"/datas calculadas a
+// partir de "agora" precisam usar horario LOCAL, nao toISOString() (que
+// converte pra UTC e adianta o dia a partir de ~20h em Manaus).
+// toLocalDateStr() ja existe em crediarioTypes.ts.
+import { toLocalDateStr } from './crediario/crediarioTypes';
 
 export default function VendasPage() {
   const { tenantId } = useAuth();
@@ -38,8 +44,8 @@ export default function VendasPage() {
   const [search, setSearch]       = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [vendedorFilter, setVendedorFilter] = useState('');
-  const [dateFrom, setDateFrom]   = useState(new Date().toISOString().slice(0, 10));
-  const [dateTo, setDateTo]       = useState(new Date().toISOString().slice(0, 10));
+  const [dateFrom, setDateFrom]   = useState(toLocalDateStr());
+  const [dateTo, setDateTo]       = useState(toLocalDateStr());
   const [viewSale, setViewSale]   = useState<Sale | null>(null);
 
   // PDV
@@ -62,12 +68,12 @@ export default function VendasPage() {
     const base=firstDate?new Date(firstDate+'T12:00:00'):new Date();
     const vBase=Math.floor((saldoVal/n)*100)/100;
     const resto=Math.round((saldoVal-vBase*n)*100)/100;
-    return Array.from({length:n},(_,i)=>{const d=new Date(base);d.setMonth(d.getMonth()+i);return{amount:i===0?vBase+resto:vBase,due_date:d.toISOString().split('T')[0]};});
+    return Array.from({length:n},(_,i)=>{const d=new Date(base);d.setMonth(d.getMonth()+i);return{amount:i===0?vBase+resto:vBase,due_date:toLocalDateStr(d)};});
   };
   const [received, setReceived]     = useState(0);
   const [funcionario, setFuncionario] = useState('');
   const [osVinculada, setOsVinculada] = useState<OS | null>(null);
-  const [saleDate, setSaleDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [saleDate, setSaleDate]     = useState(toLocalDateStr());
 
   const load = async () => {
     setLoading(true);
@@ -91,7 +97,11 @@ export default function VendasPage() {
     if (!tenantId) return;
     supabase.from('funcionarios').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name')
       .then(({ data }) => setProfissionais((data || []) as {id:string;name:string}[]));
-    supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single()
+    // Corrigido 06/09/2026 (Achado 7 da auditoria, encontrado numa varredura
+    // final — nao estava na lista original): .single() lanca erro
+    // (inofensivo, mas desnecessario) pra tenant novo sem store_settings
+    // salvo ainda; .maybeSingle() so retorna null nesse caso.
+    supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => { if (data) setStoreSettings(data as StoreSettings); });
     supabase.from('tenants').select('boleto_habilitado').eq('id', tenantId).single()
       .then(({ data }) => { setBoletoHabilitado(!!data?.boleto_habilitado); });
@@ -104,7 +114,7 @@ export default function VendasPage() {
   const loadCaixa = async () => {
     if (!tenantId) return;
     setCaixaLoading(true);
-    const hojeStr = new Date().toISOString().slice(0, 10);
+    const hojeStr = toLocalDateStr();
     const { data } = await supabase
       .from('financial_transactions')
       .select('*')
@@ -204,7 +214,7 @@ export default function VendasPage() {
     setCartItems([]); setDiscount(0); setEntrada(0); setPayment('dinheiro');
     setInstallments(1); setNotes(''); setSelectedCustomer(''); setCustomerName('');
     setReceived(0); setOsVinculada(null); setFuncionario(''); setDueDate('');
-    setSaleDate(new Date().toISOString().slice(0, 10));
+    setSaleDate(toLocalDateStr());
   };
 
   const excluirVenda = async (v: Sale) => {
@@ -224,7 +234,7 @@ export default function VendasPage() {
       const { data: cust } = await supabase.from('customers').select('name,cpf,email').eq('id', selectedCustomer).single();
       if (!cust?.cpf) { toast.error('Cliente sem CPF cadastrado. Cadastre o CPF para gerar boleto.'); setSaving(false); return; }
       const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 3);
-      const dueDateStr = dueDate.toISOString().split('T')[0];
+      const dueDateStr = toLocalDateStr(dueDate);
       const { data, error } = await supabase.functions.invoke('create-boleto', {
         body: { customer_name: cust.name, customer_cpf: cust.cpf, customer_email: cust.email || '', amount: total, due_date: dueDateStr, description: 'Venda OptiFlow - ' + customerName, asaas_key: (storeSettings as any)?.asaas_key || '', asaas_env: (storeSettings as any)?.asaas_env || 'sandbox' }
       });
@@ -254,6 +264,20 @@ export default function VendasPage() {
       await supabase.from('sale_items').insert(cartItems.map(i => ({ product_id: i.product_id || null, description: i.description, quantity: i.quantity, unit_price: i.unit_price, total: i.total + i.acrescimo, sale_id: saleData.id, tenant_id: tenantId })));
       for (const item of cartItems) { if (item.product_id) { const prod = products.find(p => p.id === item.product_id); if (prod) await supabase.from('products').update({ stock: Math.max(0, prod.stock - item.quantity) }).eq('id', item.product_id); } }
       if (osVinculada?.id) { await supabase.from('service_orders').update({ status: 'entregue' }).eq('id', osVinculada.id); }
+      // Guardam as parcelas realmente criadas em crediario_parcelas (valor/vencimento
+      // e o id de cada uma) para linkar 1-pra-1 com os lancamentos espelhados em
+      // financial_transactions logo abaixo (crediario_parcela_id). Sem esse vinculo,
+      // excluir/pagar/renegociar uma parcela no Crediario nunca refletia no Financeiro
+      // — o lancamento la ficava orfao pra sempre, reaparecendo como uma "divida
+      // fantasma" mesmo depois de excluida/quitada no Crediario (bug relatado pela
+      // Larissa, Otica Solar, 06/09/2026). Corrigido junto: antes essa lista de
+      // parcelas era recalculada DUAS VEZES (uma pra crediario_parcelas, outra pra
+      // financial_transactions) com condicoes ligeiramente diferentes
+      // (parcelasEdit.length === installments vs > 0), podendo gerar valores
+      // diferentes entre as duas tabelas quando parcelasEdit nao batia com
+      // installments — agora e a mesma lista, calculada uma unica vez.
+      let parcelasCrediarioCriadas: { amount: number; due_date: string }[] = [];
+      let crediarioParcelaIds: string[] = [];
       if (payment === 'crediario' && selectedCustomer && installments > 0) {
         // Corrigido 31/08/2026: se este insert falhasse (RLS, rede, etc.),
         // credData ficava undefined e o bloco abaixo era simplesmente
@@ -268,11 +292,16 @@ export default function VendasPage() {
           toast.error('⚠ A venda #' + saleData.sale_number + ' foi registrada, mas houve uma falha ao criar o crediário. Avise o suporte para corrigir — o cliente não vai aparecer na relação de crediário até isso ser resolvido.', { duration: 12000 });
         } else {
           const totalDevedor = Math.max(0, subtotal - (discount||0) - (entrada||0));
-          const parcelas = parcelasEdit.length === installments ? parcelasEdit : Array.from({ length: installments }, (_, i) => { const due = dueDate ? new Date(dueDate + 'T12:00:00') : new Date(); due.setMonth(due.getMonth() + i); return { amount: totalDevedor/installments, due_date: due.toISOString().split('T')[0] }; });
-          const { error: parcErr } = await supabase.from('crediario_parcelas').insert(parcelas.map((p, i) => ({ crediario_id: credData.id, tenant_id: tenantId, installment_number: i+1, due_date: p.due_date, amount: p.amount, status: 'pendente' })));
+          const parcelas = parcelasEdit.length === installments ? parcelasEdit : Array.from({ length: installments }, (_, i) => { const due = dueDate ? new Date(dueDate + 'T12:00:00') : new Date(); due.setMonth(due.getMonth() + i); return { amount: totalDevedor/installments, due_date: toLocalDateStr(due) }; });
+          const { data: parcelasInseridas, error: parcErr } = await supabase.from('crediario_parcelas').insert(parcelas.map((p, i) => ({ crediario_id: credData.id, tenant_id: tenantId, installment_number: i+1, due_date: p.due_date, amount: p.amount, status: 'pendente' }))).select('id, installment_number');
           if (parcErr) {
             console.error('Falha ao criar parcelas do crediário (crediario_id=' + credData.id + ') para a venda #' + saleData.sale_number + ':', parcErr);
             toast.error('⚠ Venda #' + saleData.sale_number + ' registrada e crediário criado, mas as parcelas não foram salvas. Avise o suporte para corrigir.', { duration: 12000 });
+          } else {
+            parcelasCrediarioCriadas = parcelas;
+            crediarioParcelaIds = (parcelasInseridas || [])
+              .slice().sort((a: any, b: any) => a.installment_number - b.installment_number)
+              .map((p: any) => p.id);
           }
         }
       }
@@ -284,18 +313,29 @@ export default function VendasPage() {
             tenant_id: tenantId, type: 'receita',
             description: 'Venda #' + saleData.sale_number + (customerName ? ' — ' + customerName : ''),
             category: 'Vendas', amount: entradaAmount,
-            due_date: new Date().toISOString().split('T')[0],
+            due_date: toLocalDateStr(),
             paid_at: new Date().toISOString(), status: 'pago', payment_method: payment
           }]);
         }
-        // Lançar parcelas do crediário como contas a receber
-        const parcelasFinanceiro = parcelasEdit.length > 0 ? parcelasEdit : Array.from({length: installments||1}, (_,i) => { const due = dueDate ? new Date(dueDate+'T12:00:00') : new Date(); due.setMonth(due.getMonth()+i); return {amount: Math.max(0,total-(discount||0)-(entrada||0))/(installments||1), due_date: due.toISOString().split('T')[0]}; });
+        // Lançar parcelas do crediário como contas a receber.
+        // Sempre que o crediário/parcelas acima foram criados com sucesso, usa
+        // EXATAMENTE a mesma lista (parcelasCrediarioCriadas) e vincula cada
+        // lançamento à sua parcela real via crediario_parcela_id — é esse vínculo
+        // que permite ao Crediário (excluir parcela, pagar, desmarcar pagamento,
+        // renegociar) manter o Financeiro em sincronia daqui pra frente. Só cai no
+        // fallback antigo (sem vínculo) no caso raro de o crediário ter falhado ao
+        // ser criado acima, pra não perder o registro do valor devido.
+        const usarParcelasVinculadas = crediarioParcelaIds.length > 0 && crediarioParcelaIds.length === parcelasCrediarioCriadas.length;
+        const parcelasFinanceiro = usarParcelasVinculadas
+          ? parcelasCrediarioCriadas
+          : (parcelasEdit.length > 0 ? parcelasEdit : Array.from({length: installments||1}, (_,i) => { const due = dueDate ? new Date(dueDate+'T12:00:00') : new Date(); due.setMonth(due.getMonth()+i); return {amount: Math.max(0,total-(discount||0)-(entrada||0))/(installments||1), due_date: toLocalDateStr(due)}; }));
         if (payment === 'crediario' && parcelasFinanceiro.length > 0) {
           const parcelasTransactions = parcelasFinanceiro.map((p: any, i: number) => ({
             tenant_id: tenantId, type: 'receita',
             description: 'Crediário Venda #' + saleData.sale_number + ' — Parcela ' + (i+1) + '/' + parcelasFinanceiro.length + (customerName ? ' — ' + customerName : ''),
             category: 'Crediário', amount: p.amount,
-            due_date: p.due_date, paid_at: null, status: 'pendente', payment_method: 'crediario'
+            due_date: p.due_date, paid_at: null, status: 'pendente', payment_method: 'crediario',
+            crediario_parcela_id: usarParcelasVinculadas ? crediarioParcelaIds[i] : null,
           }));
           await supabase.from('financial_transactions').insert(parcelasTransactions);
         }
@@ -683,7 +723,7 @@ export default function VendasPage() {
                     <div key={i} style={{ display:'flex', gap:6, alignItems:'center', marginBottom:6 }}>
                       <span style={{ fontSize:12, fontWeight:700, color:'#6366f1', minWidth:22 }}>{i+1}x</span>
                       <input type="number" step="0.01" value={p.amount} onChange={e => { const novoVal=parseFloat(e.target.value)||0; setParcelasEdit(prev => { const totAntes=prev.slice(0,i).reduce((s,x)=>s+x.amount,0); const resto=saldo-totAntes-novoVal; const restoParcelas=prev.length-i-1; const novaParc=restoParcelas>0?Math.round((resto/restoParcelas)*100)/100:0; return prev.map((x,j)=>j===i?{...x,amount:novoVal}:j>i?{...x,amount:novaParc}:x); }); }} style={{ width:90, padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)', color:'var(--text)', fontSize:12 }}/>
-                      <input type="date" value={p.due_date} onChange={e => { const novaData=e.target.value; setParcelasEdit(prev => prev.map((x,j) => { if(j===i) return {...x,due_date:novaData}; if(j>i && novaData){ const d=new Date(novaData+'T12:00:00'); d.setMonth(d.getMonth()+(j-i)); return {...x,due_date:d.toISOString().split('T')[0]}; } return x; })); }} style={{ flex:1, padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)', color:'var(--text)', fontSize:12 }}/>
+                      <input type="date" value={p.due_date} onChange={e => { const novaData=e.target.value; setParcelasEdit(prev => prev.map((x,j) => { if(j===i) return {...x,due_date:novaData}; if(j>i && novaData){ const d=new Date(novaData+'T12:00:00'); d.setMonth(d.getMonth()+(j-i)); return {...x,due_date:toLocalDateStr(d)}; } return x; })); }} style={{ flex:1, padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)', color:'var(--text)', fontSize:12 }}/>
                     </div>
                   ))}
                 </div>
