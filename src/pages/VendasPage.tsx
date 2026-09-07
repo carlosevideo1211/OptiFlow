@@ -217,11 +217,69 @@ export default function VendasPage() {
     setSaleDate(toLocalDateStr());
   };
 
+  // Corrigido 07/09/2026 (pedido do Carlos, ao investigar a venda #27541):
+  // antes, excluir uma venda so apagava a propria venda e os itens vendidos
+  // — nada mais era desfeito. Isso deixava pra tras: estoque baixado sem
+  // devolver, o lancamento da entrada (e de qualquer parcela de crediario)
+  // continuando no Financeiro como dinheiro "fantasma", o crediario/parcelas
+  // orfaos apontando pra uma venda que nao existe mais, e a OS vinculada
+  // travada como "entregue" pra sempre (o que ate impedia vincula-la numa
+  // venda nova, ja que a busca de OS na tela de Vendas exclui as que estao
+  // "entregue"). Agora excluir desfaz tudo: devolve o estoque, remove os
+  // lancamentos financeiros gerados por esta venda, apaga o crediario/
+  // parcelas dela, e libera a OS vinculada de volta pra "Pronta p/ Entrega".
   const excluirVenda = async (v: Sale) => {
-    if (!confirm('Excluir permanentemente a venda #' + String(v.sale_number).padStart(4, '0') + '?')) return;
-    await supabase.from('sale_items').delete().eq('sale_id', v.id);
-    await supabase.from('sales').delete().eq('id', v.id);
-    toast.success('Venda excluída'); load();
+    if (!confirm('Excluir permanentemente a venda #' + String(v.sale_number).padStart(4, '0') + '? Isso devolve o estoque dos itens vendidos, remove os lançamentos financeiros gerados por ela e libera a OS vinculada para ser usada numa nova venda.')) return;
+    try {
+      // 1) Devolver ao estoque os produtos vendidos nesta venda.
+      const { data: itens } = await supabase.from('sale_items').select('product_id, quantity').eq('sale_id', v.id);
+      for (const item of (itens || []) as { product_id: string | null; quantity: number }[]) {
+        if (item.product_id) {
+          const { data: prod } = await supabase.from('products').select('stock').eq('id', item.product_id).maybeSingle();
+          if (prod) await supabase.from('products').update({ stock: (prod.stock || 0) + item.quantity }).eq('id', item.product_id);
+        }
+      }
+
+      // 2) Remover o crediario desta venda (se houver) e suas parcelas,
+      //    junto com os lancamentos do Financeiro vinculados a cada parcela
+      //    (via crediario_parcela_id, o vinculo 1-pra-1 estabelecido em
+      //    finalizeSale).
+      const { data: creds } = await supabase.from('crediario').select('id').eq('sale_id', v.id);
+      for (const cred of (creds || []) as { id: string }[]) {
+        const { data: parcelas } = await supabase.from('crediario_parcelas').select('id').eq('crediario_id', cred.id);
+        const parcelaIds = (parcelas || []).map((p: any) => p.id);
+        if (parcelaIds.length > 0) await supabase.from('financial_transactions').delete().in('crediario_parcela_id', parcelaIds);
+        await supabase.from('crediario_parcelas').delete().eq('crediario_id', cred.id);
+        await supabase.from('crediario').delete().eq('id', cred.id);
+      }
+
+      // 3) Remover os lancamentos financeiros que esta venda gerou
+      //    diretamente: a entrada/pagamento a vista, e qualquer parcela de
+      //    crediario que por algum motivo nao tenha ficado vinculada por
+      //    crediario_parcela_id (vendas antigas, ou uma falha na criacao
+      //    como a da #27541). Casado pelo texto EXATO da descricao (mesmo
+      //    formato usado ao criar o lancamento em finalizeSale) — nunca por
+      //    um LIKE solto sem ancora, pra nao arriscar apagar o lancamento de
+      //    outra venda cujo numero comece com os mesmos digitos (ex: venda
+      //    #275 x #2755).
+      const entradaDesc = 'Venda #' + v.sale_number + (v.customer_name ? ' — ' + v.customer_name : '');
+      await supabase.from('financial_transactions').delete().eq('description', entradaDesc);
+      await supabase.from('financial_transactions').delete().like('description', 'Crediário Venda #' + v.sale_number + ' —%');
+
+      // 4) Reabrir a OS vinculada (se houver) para "Pronta p/ Entrega", pra
+      //    poder ser selecionada de novo numa venda nova.
+      if (v.os_id) await supabase.from('service_orders').update({ status: 'pronta' }).eq('id', v.os_id);
+
+      // 5) Por fim, os itens e a venda em si.
+      await supabase.from('sale_items').delete().eq('sale_id', v.id);
+      await supabase.from('sales').delete().eq('id', v.id);
+
+      toast.success('Venda excluída — estoque devolvido, lançamentos financeiros removidos e OS liberada.');
+      load();
+    } catch (e: any) {
+      console.error('Erro ao excluir venda #' + v.sale_number + ':', e);
+      toast.error('Erro ao excluir a venda: ' + (e.message || 'tente novamente'));
+    }
   };
 
   const gerarBoleto = async () => {
