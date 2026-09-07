@@ -56,6 +56,12 @@ interface Tenant {
   // ser restaurado. Pedido pelo Carlos (01/09/2026) pra excluir deixar de
   // ser uma acao sem volta.
   excluido_em?: string | null;
+  // Sobrescreve o valor padrao do plano (199.99/49.99) na cobranca real via
+  // Pix Automatico (Asaas), so pra ESTE inquilino. Pedido pelo Carlos
+  // (07/09/2026) pra dar desconto caso a caso pra quem nao quiser algum dos
+  // recursos do plano completo (ex: inquilino que nao quer Nota Fiscal),
+  // sem precisar mexer em codigo. Vazio/0 = cobra o valor padrao normal.
+  valor_mensal_customizado?: number | null;
 }
 
 const PLANS: Plan[] = ['trial','otica','consultorio','cancelado'];
@@ -63,7 +69,7 @@ const PLAN_LABELS: Record<Plan,string> = {
   trial:'Trial', otica:'Otica e Consultorio', consultorio:'Consultorio', cancelado:'Cancelado'
 };
 const PLAN_PRICES: Record<Plan,number> = {
-  trial:0, otica:99.99, consultorio:49.99, cancelado:0
+  trial:0, otica:199.99, consultorio:49.99, cancelado:0
 };
 const STATUS_LIST = [
   { value:'trial',        label:'Trial',        color:'#f59e0b', bg:'rgba(245,158,11,.15)' },
@@ -884,6 +890,17 @@ export default function AdminPanelPage() {
                 <div>
                   <label className="form-label">MRR (R$/mes)</label>
                   <input className="form-input" type="number" value={form.mrr_value||0} onChange={e=>setForm(f=>({...f,mrr_value:parseFloat(e.target.value)||0}))}/>
+                </div>
+                <div style={{ gridColumn:'1/-1' }}>
+                  <label className="form-label">Valor mensal personalizado (opcional)</label>
+                  <input className="form-input" type="number" step="0.01" placeholder={`Deixe em branco para cobrar o valor padrao do plano (R$ ${PLAN_PRICES[form.plan||'otica']})`}
+                    value={form.valor_mensal_customizado ?? ''}
+                    onChange={e=>setForm(f=>({...f,valor_mensal_customizado: e.target.value==='' ? null : parseFloat(e.target.value)||0}))}/>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>
+                    Sobrescreve o valor cobrado de VERDADE (Pix Automatico via Asaas) so deste inquilino — use pra dar desconto
+                    a quem nao quiser algum recurso do plano completo (ex: nao quer Nota Fiscal). Nao muda o MRR acima, que e
+                    so pra relatorio — atualize os dois se quiser manter o painel consistente.
+                  </div>
                 </div>
                 <div>
                   <label className="form-label">Cidade</label>

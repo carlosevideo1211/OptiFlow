@@ -16,7 +16,9 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 // paga o plano menor. modulo_otica_ativo e NOT NULL DEFAULT true no banco,
 // mas seguimos o mesmo padrao defensivo usado no Shell.tsx (!== false)
 // para o caso de vir null por algum motivo.
-const PLANO_OTICA_VALOR = 99.99;
+// Reajustado de 99.99 para 199.99 em 07/09/2026 (decisao do Carlos): o plano
+// Otica passou a incluir WhatsApp Oficial (Meta) e Nota Fiscal automatica.
+const PLANO_OTICA_VALOR = 199.99;
 const PLANO_OTICA_DESCRICAO = "Assinatura OptiFlow - Otica + Consultas/Rx";
 const PLANO_CONSULTORIO_VALOR = 49.99;
 const PLANO_CONSULTORIO_DESCRICAO = "Assinatura OptiFlow - Consultas/Rx";
@@ -109,13 +111,21 @@ serve(async (req) => {
     const asaasHeaders = { access_token: ASAAS_KEY, "Content-Type": "application/json" };
 
     const tenantsRows = await supabaseFetch(
-      `tenants?id=eq.${tenant_id}&select=id,company_name,email,asaas_customer_id,asaas_authorization_id,modulo_otica_ativo`
+      `tenants?id=eq.${tenant_id}&select=id,company_name,email,asaas_customer_id,asaas_authorization_id,modulo_otica_ativo,valor_mensal_customizado`
     );
     const tenant = Array.isArray(tenantsRows) ? tenantsRows[0] : null;
     if (!tenant) throw new Error("Inquilino nao encontrado");
 
     const temOtica = tenant.modulo_otica_ativo !== false;
-    const PLANO_VALOR = temOtica ? PLANO_OTICA_VALOR : PLANO_CONSULTORIO_VALOR;
+    // Valor padrao do plano, a nao ser que o Carlos tenha definido um valor
+    // personalizado pra este inquilino especifico (tenants.valor_mensal_customizado,
+    // editavel em Admin > Editar Tenant) — usado, por exemplo, pra dar
+    // desconto a quem nao quiser algum dos recursos do plano completo
+    // (ex: inquilino que nao quer Nota Fiscal). So sobrescreve quando vier
+    // um numero positivo; null/0/ausente cai no valor padrao normalmente.
+    const valorCustomizado = Number(tenant.valor_mensal_customizado);
+    const temValorCustomizado = Number.isFinite(valorCustomizado) && valorCustomizado > 0;
+    const PLANO_VALOR = temValorCustomizado ? valorCustomizado : (temOtica ? PLANO_OTICA_VALOR : PLANO_CONSULTORIO_VALOR);
     const PLANO_DESCRICAO = temOtica ? PLANO_OTICA_DESCRICAO : PLANO_CONSULTORIO_DESCRICAO;
 
     // CNPJ/CPF do inquilino: reaproveita o campo ja preenchido em
