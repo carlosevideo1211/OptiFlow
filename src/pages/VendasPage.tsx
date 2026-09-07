@@ -263,7 +263,20 @@ export default function VendasPage() {
       if (saleErr) throw saleErr;
       await supabase.from('sale_items').insert(cartItems.map(i => ({ product_id: i.product_id || null, description: i.description, quantity: i.quantity, unit_price: i.unit_price, total: i.total + i.acrescimo, sale_id: saleData.id, tenant_id: tenantId })));
       for (const item of cartItems) { if (item.product_id) { const prod = products.find(p => p.id === item.product_id); if (prod) await supabase.from('products').update({ stock: Math.max(0, prod.stock - item.quantity) }).eq('id', item.product_id); } }
-      if (osVinculada?.id) { await supabase.from('service_orders').update({ status: 'entregue' }).eq('id', osVinculada.id); }
+      if (osVinculada?.id) {
+        // Corrigido 06/09/2026 (encontrado ao investigar a venda #27541,
+        // Otica Solar): antes, o campo "Forma de Pagamento" da OS ficava
+        // congelado no que foi cotado/imaginado na hora de montar a OS (ex:
+        // "A vista"), mesmo que o cliente fechasse de forma diferente no
+        // caixa (ex: "Crediario 6x") — os dois campos nunca se falavam.
+        // Alem de confundir quem olhar a OS depois, isso tambem mascarava um
+        // sinal de que a venda pode ter sido fechada com um metodo diferente
+        // do previsto. Agora, ao finalizar a venda, a OS e atualizada com a
+        // forma de pagamento REAL que foi usada (a mesma que aparece no
+        // comprovante da venda).
+        const formaPagamentoReal = (PAGAMENTOS.find(p => p.value === payment)?.label || payment) + (installments > 1 ? ' ' + installments + 'x' : '');
+        await supabase.from('service_orders').update({ status: 'entregue', forma_pagamento: formaPagamentoReal }).eq('id', osVinculada.id);
+      }
       // Guardam as parcelas realmente criadas em crediario_parcelas (valor/vencimento
       // e o id de cada uma) para linkar 1-pra-1 com os lancamentos espelhados em
       // financial_transactions logo abaixo (crediario_parcela_id). Sem esse vinculo,
