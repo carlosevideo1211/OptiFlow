@@ -1,0 +1,489 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 2bd30fa..6c68d68 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -27,6 +27,7 @@ import ImportacaoPage from './pages/ImportacaoPage';
+ import NfePage from './pages/NfePage';
+ import AdminLoginPage from './pages/admin/AdminLoginPage';
+ import AdminPanelPage from './pages/admin/AdminPanelPage';
++import TrialsVencidosPage from './pages/admin/TrialsVencidosPage';
+ import TrialExpiredPage from './pages/TrialExpiredPage';
+ import TermosPage from './pages/TermosPage';
+ import ContratoPage from './pages/ContratoPage';
+@@ -40,6 +41,7 @@ function AppRoutes() {
+       <Routes>
+         <Route path="/admin-login" element={<AdminLoginPage />} />
+         <Route path="/admin"       element={<AdminPanelPage />} />
++        <Route path="/admin/trials-vencidos" element={<TrialsVencidosPage />} />
+         <Route path="/admin/*"     element={<AdminPanelPage />} />
+       </Routes>
+     );
+@@ -64,6 +66,7 @@ function AppRoutes() {
+     <Routes>
+       <Route path="/admin-login" element={<AdminLoginPage />} />
+       <Route path="/admin"       element={<AdminPanelPage />} />
++      <Route path="/admin/trials-vencidos" element={<TrialsVencidosPage />} />
+       <Route path="/admin/*"     element={<AdminPanelPage />} />
+       <Route path="/planos"        element={<PlanosPage />} />
+       <Route path="/login"       element={!user ? <LoginPage />    : <Navigate to="/dashboard" />} />
+diff --git a/src/pages/DashboardPage.tsx b/src/pages/DashboardPage.tsx
+index 7642f39..471a15b 100644
+--- a/src/pages/DashboardPage.tsx
++++ b/src/pages/DashboardPage.tsx
+@@ -2,11 +2,21 @@ import { useState, useEffect } from 'react';
+ import { useAuth } from '../context/AuthContext';
+ import { supabase } from '../lib/supabase';
+ import { formatBRL } from '../types/index';
+-import { Users, ClipboardList, ShoppingCart, CreditCard, TrendingUp, AlertTriangle, Package } from 'lucide-react';
++import { Users, ClipboardList, ShoppingCart, CreditCard, TrendingUp, AlertTriangle, Package, QrCode } from 'lucide-react';
+ import { useNavigate } from 'react-router-dom';
++import GerarPixMensalidade from '../components/GerarPixMensalidade';
++import { PLATFORM_PIX_VALOR } from '../config/platformPix';
+ 
+ interface MonthPoint { label: string; total: number; key: string; }
+ 
++// Mesmo criterio ja usado em AdminPanelPage.tsx (alertasVencimento) para
++// decidir quando avisar sobre o vencimento do pagamento manual via Pix.
++function diasRestantes(d?: string | null): number | null {
++  if (!d) return null;
++  const diff = new Date(d + 'T00:00:00').getTime() - new Date().setHours(0, 0, 0, 0);
++  return Math.ceil(diff / (1000 * 60 * 60 * 24));
++}
++
+ export default function DashboardPage() {
+   const { user, tenantId } = useAuth();
+   const isAdminViewing = localStorage.getItem('admin_viewing_tenant') !== null;
+@@ -18,6 +28,8 @@ export default function DashboardPage() {
+   });
+   const [osRecentes, setOsRecentes] = useState<any[]>([]);
+   const [trialInfo, setTrialInfo] = useState<{dias: number, status: string} | null>(null);
++  const [billingInfo, setBillingInfo] = useState<{ dias: number; valor: number } | null>(null);
++  const [showGerarPix, setShowGerarPix] = useState(false);
+   const [monthPoints, setMonthPoints] = useState<MonthPoint[]>([]);
+   const [loading, setLoading] = useState(true);
+ 
+@@ -107,16 +119,34 @@ export default function DashboardPage() {
+   const barW = Math.floor(chartW / monthPoints.length) - 6;
+ 
+ 
+-  // Buscar info do trial
++  // Buscar info do trial e (para quem já é cliente pagante, pagando via Pix
++  // manual — sem Asaas) do vencimento da mensalidade, pra mostrar o aviso de
++  // 5 dias antes, do mesmo jeito que já era feito no antigo sistema SSótica.
+   useEffect(() => {
+     if (!tenantId) return;
+-    supabase.from('tenants').select('status, trial_end_date').eq('id', tenantId).single()
++    supabase.from('tenants').select('status, trial_end_date, next_billing').eq('id', tenantId).single()
+       .then(({ data }) => {
+-        if (data) {
+-          const hoje = new Date();
+-          const fim = new Date(data.trial_end_date);
+-          const dias = Math.ceil((fim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+-          setTrialInfo({ dias, status: data.status });
++        if (!data) return;
++        const hoje = new Date();
++        const fim = new Date(data.trial_end_date);
++        const dias = Math.ceil((fim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
++        setTrialInfo({ dias, status: data.status });
++
++        if (data.status === 'ativo' || data.status === 'inadimplente') {
++          const diasCobranca = diasRestantes(data.next_billing);
++          // Pedido pelo Carlos (01/09/2026): mesma logica do trial -- a
++          // contagem fica visivel o tempo todo desde que o pagamento e
++          // confirmado (nao so nos ultimos 5 dias como era antes), verde
++          // enquanto nao vence e vermelho depois que vence.
++          if (diasCobranca !== null) {
++            // Valor fixo pedido pelo Carlos (01/09/2026): R$ 99,99 para todos
++            // os inquilinos, independente do mrr_value de cada um.
++            setBillingInfo({ dias: diasCobranca, valor: PLATFORM_PIX_VALOR });
++          } else {
++            setBillingInfo(null);
++          }
++        } else {
++          setBillingInfo(null);
+         }
+       });
+   }, [tenantId]);
+@@ -199,6 +229,62 @@ export default function DashboardPage() {
+         );
+       })()}
+ 
++      {/* Contagem da mensalidade (pagamento manual via Pix, fora do Asaas) —
++          mesma logica do banner de trial acima, mas fica visivel desde o dia
++          em que o pagamento e confirmado (nao so perto do vencimento):
++          verde enquanto esta em dia, vermelho depois que vence. Pedido pelo
++          Carlos (01/09/2026). */}
++      {billingInfo && (() => {
++        const vencido = billingInfo.dias <= 0;
++        return (
++          <div style={{
++            background: vencido ? 'linear-gradient(135deg, #dc2626, #b91c1c)' : 'linear-gradient(135deg, #16a34a, #15803d)',
++            borderRadius: 12,
++            padding: '16px 24px',
++            marginBottom: 24,
++            display: 'flex',
++            alignItems: 'center',
++            justifyContent: 'space-between',
++            flexWrap: 'wrap',
++            gap: 12,
++            boxShadow: vencido ? '0 4px 20px rgba(220,38,38,0.3)' : '0 4px 20px rgba(22,163,74,0.3)',
++          }}>
++            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
++              <span style={{ fontSize: 28 }}>{vencido ? '🚨' : '⏰'}</span>
++              <div>
++                <div style={{ color: 'white', fontWeight: 700, fontSize: 16 }}>
++                  {vencido ? 'Sua mensalidade venceu' : `Sua mensalidade vence em ${billingInfo.dias} dia(s)`}
++                </div>
++                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 }}>
++                  {vencido
++                    ? 'Gere o Pix e pague quando quiser — o acesso é liberado após a confirmação do pagamento'
++                    : 'Pagamento em dia. Se quiser adiantar, gere o Pix quando quiser.'}
++                </div>
++              </div>
++            </div>
++            <button
++              onClick={() => setShowGerarPix(true)}
++              style={{
++                display: 'flex', alignItems: 'center', gap: 8,
++                background: 'white',
++                color: vencido ? '#dc2626' : '#16a34a',
++                border: 'none',
++                borderRadius: 8,
++                padding: '10px 20px',
++                fontWeight: 700,
++                fontSize: 14,
++                cursor: 'pointer',
++                whiteSpace: 'nowrap',
++              }}
++            >
++              <QrCode size={16} /> Gerar Pix
++            </button>
++          </div>
++        );
++      })()}
++
++      <GerarPixMensalidade open={showGerarPix} onClose={() => setShowGerarPix(false)} valor={billingInfo?.valor || 0} />
++
+       {/* KPI Cards */}
+       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
+         {[
+diff --git a/src/pages/admin/AdminPanelPage.tsx b/src/pages/admin/AdminPanelPage.tsx
+index 739a935..7a35cf3 100644
+--- a/src/pages/admin/AdminPanelPage.tsx
++++ b/src/pages/admin/AdminPanelPage.tsx
+@@ -6,7 +6,7 @@ import {
+   LogOut, RefreshCw, Search, Users, TrendingUp, Shield,
+   AlertTriangle, DollarSign, X, Save, Edit2, CheckCircle,
+   XCircle, Clock, Ban, Calendar, Plus, Download, Bell,
+-  Activity, BarChart2, ChevronUp, ChevronDown, ExternalLink
++  Activity, BarChart2, ChevronUp, ChevronDown, ExternalLink, RotateCcw
+ } from 'lucide-react';
+ import toast from 'react-hot-toast';
+ 
+@@ -26,6 +26,11 @@ interface Tenant {
+   state?: string;
+   created_at: string;
+   boleto_habilitado?: boolean;
++  // Guarda o valor anterior de next_billing logo antes da ultima confirmacao
++  // de pagamento manual, para permitir "Desfazer" caso o admin confirme um
++  // numero de meses errado (pedido pelo Carlos, 01/09/2026). Fica null/undefined
++  // quando nao ha nada para desfazer (nunca confirmado, ou ja desfeito).
++  next_billing_anterior?: string | null;
+ }
+ 
+ const PLANS: Plan[] = ['trial','basico','profissional','clinica','lancamento','cancelado'];
+@@ -57,6 +62,22 @@ function diasRestantes(d?: string): number | null {
+   return Math.ceil(diff / (1000*60*60*24));
+ }
+ 
++const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
++
++// "Pago ate": mostra o MES coberto pelo pagamento (ultimo dia antes do
++// vencimento), nao a data do proximo vencimento em si. Pedido pelo Carlos
++// (01/09/2026) porque a data crua (ex: 01/10) estava confundindo -- parecia
++// que o mes de Outubro tinha sido marcado como pago, quando na verdade
++// 01/10 e so a data em que a PROXIMA cobranca vence (ou seja, Setembro que
++// esta pago).
++function pagoAteLabel(nextBilling?: string): string | null {
++  if (!nextBilling) return null;
++  const d = new Date(nextBilling+'T00:00:00');
++  if (isNaN(d.getTime())) return null;
++  d.setDate(d.getDate()-1);
++  return MESES_PT[d.getMonth()] + '/' + d.getFullYear();
++}
++
+ function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
+   const pct = max > 0 ? Math.min(100, (value/max)*100) : 0;
+   return (
+@@ -84,6 +105,10 @@ export default function AdminPanelPage() {
+   const [showAlerts, setShowAlerts] = useState(false);
+   const [form, setForm] = useState<Partial<Tenant>>({});
+   const [showModal, setShowModal] = useState(false);
++  // Id do tenant cujo seletor de "quantos meses foram pagos" esta aberto na
++  // coluna de vencimento — pedido pelo Carlos (01/09/2026) pra quem esta
++  // varios meses atrasado e paga tudo de uma vez (o botao unico so cobria 1 mes).
++  const [mesesAberto, setMesesAberto] = useState<string|null>(null);
+ 
+   useEffect(() => {
+     supabase.auth.getSession().then(({ data:{ session } }) => {
+@@ -134,7 +159,15 @@ export default function AdminPanelPage() {
+   const maxCres = Math.max(...crescimento.map(m=>m.total), 1);
+ 
+   const filtered = useMemo(() => {
+-    let list = tenants;
++    // Esconde trials ja vencidos da tabela principal — pedido pelo Carlos
++    // (01/09/2026) pra deixar aqui so os ativos e os que ainda estao dentro
++    // do prazo de teste. Os trials vencidos ficam disponiveis na tela
++    // "Trials Vencidos" (/admin/trials-vencidos), sem serem excluidos do banco.
++    let list = tenants.filter(t => {
++      if (t.status !== 'trial') return true;
++      const d = diasRestantes(t.trial_end_date);
++      return d === null || d >= 0;
++    });
+     if (planFilter)    list = list.filter(t=>t.plan===planFilter);
+     if (statusFilter)  list = list.filter(t=>t.status===statusFilter);
+     if (search.trim()) {
+@@ -153,7 +186,9 @@ export default function AdminPanelPage() {
+   const alertas = tenants.filter(t => {
+     if (t.status !== 'trial') return false;
+     const d = diasRestantes(t.trial_end_date);
+-    return d !== null && d <= 5;
++    // So trials que ainda nao venceram (os ja vencidos foram pra tela
++    // "Trials Vencidos" — nao faz mais sentido alertar sobre eles aqui).
++    return d !== null && d >= 0 && d <= 5;
+   }).sort((a,b) => (diasRestantes(a.trial_end_date)||0) - (diasRestantes(b.trial_end_date)||0));
+ 
+   // Clientes ativos (pagamento manual via Pix) cujo ciclo de 30 dias esta vencendo
+@@ -208,15 +243,83 @@ export default function AdminPanelPage() {
+     await updateField(t.id, 'trial_end_date', nova);
+   };
+ 
+-  // Confirma que o Pix manual do mes foi recebido e conferido — renova o ciclo
+-  // por mais 30 dias a partir de hoje (nao a partir do vencimento antigo, para
+-  // nao acumular atraso caso o cliente pague alguns dias depois do vencimento).
+-  // Pedido pelo Carlos (01/09/2026): alem do botao no dropdown de Alertas, essa
+-  // acao agora tambem tem um icone direto na linha do tenant na tabela.
+-  const confirmarPagamentoManual = async (t: Tenant) => {
+-    if (!confirm('Confirmar pagamento de ' + t.company_name + ' e liberar o acesso por mais 30 dias?')) return;
+-    const nb = new Date(); nb.setDate(nb.getDate()+30);
+-    await updateField(t.id, 'next_billing', nb.toISOString().split('T')[0]);
++  // Grava next_billing (+ next_billing_anterior, quando informado) no
++  // Supabase e atualiza o estado local. Se a coluna next_billing_anterior
++  // ainda nao existir no banco (Carlos precisa rodar o ALTER TABLE uma vez),
++  // tenta de novo salvando so o next_billing, pra a acao principal (mudar o
++  // vencimento) nunca falhar por causa disso — so o "Desfazer" fica
++  // indisponivel ate a coluna ser criada.
++  const salvarVencimento = async (t: Tenant, novoNextBilling: string, anteriorParaSalvar: string | null): Promise<boolean> => {
++    setUpdating(t.id);
++    let { error } = await supabase.from('tenants').update({
++      next_billing: novoNextBilling,
++      next_billing_anterior: anteriorParaSalvar,
++    }).eq('id', t.id);
++    let anteriorSalvo: string | null = anteriorParaSalvar;
++    if (error && /next_billing_anterior/i.test(error.message || '')) {
++      const retry = await supabase.from('tenants').update({ next_billing: novoNextBilling }).eq('id', t.id);
++      error = retry.error;
++      anteriorSalvo = null;
++    }
++    setUpdating(null);
++    if (error) { toast.error('Erro ao salvar vencimento: '+error.message); return false; }
++    setTenants(prev => prev.map(x => x.id===t.id ? {...x, next_billing:novoNextBilling, next_billing_anterior:anteriorSalvo} : x));
++    return true;
++  };
++
++  // Confirma que o(s) Pix manual(is) foi(ram) recebido(s) e conferido(s).
++  // Base do calculo (revisado 01/09/2026 a pedido do Carlos, pra parar de
++  // "pular" mes sem necessidade): se o inquilino ja esta com o vencimento em
++  // dia (next_billing no futuro), os meses confirmados agora somam a partir
++  // dessa data (nao reinicia do zero); se esta vencido ou nunca teve
++  // cobranca, conta a partir de hoje. Antes de gravar, guarda o
++  // next_billing antigo em next_billing_anterior para permitir "Desfazer"
++  // caso o admin confirme um numero errado de meses (foi o que aconteceu
++  // com a Otica do Povo e a Otica Evangelista Altazes).
++  const confirmarPagamentoManual = async (t: Tenant, meses: number = 1) => {
++    const label = meses === 1 ? '1 mes' : meses + ' meses';
++    if (!confirm('Confirmar pagamento de ' + label + ' de ' + t.company_name + ' e liberar o acesso?')) return;
++    const hoje = new Date();
++    const vencimentoAtual = t.next_billing ? new Date(t.next_billing+'T00:00:00') : null;
++    const base = (vencimentoAtual && vencimentoAtual > hoje) ? vencimentoAtual : hoje;
++    const nb = new Date(base); nb.setDate(nb.getDate() + meses*30);
++    const novoNextBilling = nb.toISOString().split('T')[0];
++    const ok = await salvarVencimento(t, novoNextBilling, t.next_billing || null);
++    if (!ok) return;
++    toast.success('Pagamento confirmado! Pago ate '+pagoAteLabel(novoNextBilling)+'.');
++    setMesesAberto(null);
++  };
++
++  // Desfaz a ultima confirmacao de pagamento (volta next_billing para o
++  // valor de antes), para corrigir uma baixa lancada errada. So funciona
++  // enquanto next_billing_anterior estiver guardado — ou seja, cobre apenas
++  // a confirmacao mais recente feita depois dessa funcionalidade existir.
++  const desfazerPagamento = async (t: Tenant) => {
++    if (!t.next_billing_anterior) return;
++    const valorAnterior = t.next_billing_anterior;
++    if (!confirm('Desfazer o ultimo pagamento confirmado de ' + t.company_name + '? O vencimento volta para ' + fmtDate(valorAnterior) + '.')) return;
++    const ok = await salvarVencimento(t, valorAnterior, null);
++    if (!ok) return;
++    toast.success('Pagamento desfeito.');
++    setMesesAberto(null);
++  };
++
++  // Correcao manual: recua o vencimento em N meses (30 dias por mes, o
++  // mesmo criterio usado pra avancar). Pedido pelo Carlos (01/09/2026) pra
++  // corrigir a Otica do Povo e a Otica Evangelista Altazes, que ficaram com
++  // o vencimento um mes a mais — casos que nao tem next_billing_anterior
++  // salvo (a baixa errada foi lancada antes do "Desfazer" existir), entao
++  // precisam de um jeito de corrigir manualmente, nao so desfazer a ultima acao.
++  const retrocederPagamento = async (t: Tenant, meses: number = 1) => {
++    if (!t.next_billing) return;
++    const atual = new Date(t.next_billing+'T00:00:00');
++    const nb = new Date(atual); nb.setDate(nb.getDate() - meses*30);
++    const novoNextBilling = nb.toISOString().split('T')[0];
++    if (!confirm('Corrigir o vencimento de ' + t.company_name + ', voltando ' + meses + ' mes(es)? Nova data: ' + fmtDate(novoNextBilling) + ' (pago ate ' + pagoAteLabel(novoNextBilling) + ').')) return;
++    const ok = await salvarVencimento(t, novoNextBilling, t.next_billing);
++    if (!ok) return;
++    toast.success('Vencimento corrigido. Pago ate '+pagoAteLabel(novoNextBilling)+'.');
++    setMesesAberto(null);
+   };
+ 
+   const excluir = async (t: Tenant) => {
+@@ -345,6 +448,12 @@ export default function AdminPanelPage() {
+               </div>
+             )}
+           </div>
++          <button onClick={()=>navigate('/admin/trials-vencidos')}
++            title="Trials que ja passaram do prazo de teste, fora da tabela principal"
++            style={{ background:'rgba(148,163,184,.1)', border:'1px solid rgba(148,163,184,.2)', borderRadius:8, padding:'8px 14px', cursor:'pointer', color:'#94a3b8', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
++            <Clock size={15}/> Trials Vencidos
++            {stats.expirados > 0 && <span style={{ background:'#94a3b8', color:'#0B1120', borderRadius:10, padding:'1px 7px', fontSize:11, fontWeight:700 }}>{stats.expirados}</span>}
++          </button>
+           <button onClick={()=>{setEditing(null);setForm({plan:'trial',status:'trial',trial_end_date:new Date(Date.now()+14*86400000).toISOString().split('T')[0]});setShowModal(true);}}
+             style={{ background:'linear-gradient(135deg,#6366f1,#06b6d4)', border:'none', borderRadius:8, padding:'8px 16px', cursor:'pointer', color:'white', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
+             <Plus size={15}/> Novo Tenant
+@@ -510,15 +619,51 @@ export default function AdminPanelPage() {
+                         ) : (t.status==='ativo' || t.status==='inadimplente') && t.next_billing ? (() => {
+                           // Pagamento manual via Pix (fora do Asaas) — mesmo padrao de cor
+                           // do trial acima, pra ficar claro quem esta vencendo/vencido sem
+-                          // precisar abrir o dropdown de Alertas.
++                          // precisar abrir o dropdown de Alertas. Clicar na data abre as
++                          // opcoes de quantos meses foram pagos (pra quem esta varios meses
++                          // atrasado e paga tudo de uma vez — pedido do Carlos, 01/09/2026).
+                           const diasCobranca = diasRestantes(t.next_billing);
+                           const corCobranca = diasCobranca===null ? 'var(--text-muted)' : diasCobranca<=0 ? '#f87171' : diasCobranca<=3 ? '#f59e0b' : '#22c55e';
++                          const aberto = mesesAberto === t.id;
++                          const pagoAte = pagoAteLabel(t.next_billing);
+                           return (
+                             <div>
+-                              <div style={{ fontSize:12, fontWeight:700, color:corCobranca }}>
++                              {pagoAte && (
++                                <div style={{ fontSize:11, fontWeight:700, color:'#22c55e' }}>
++                                  Pago ate {pagoAte}
++                                </div>
++                              )}
++                              <div onClick={()=>setMesesAberto(aberto ? null : t.id)}
++                                title="Clique para confirmar pagamento de 1 ou mais meses, ou desfazer o ultimo"
++                                style={{ fontSize:12, fontWeight:700, color:corCobranca, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:2 }}>
+                                 {diasCobranca!==null && diasCobranca<=0 ? 'Vencido '+Math.abs(diasCobranca)+'d atras' : diasCobranca+'d restantes'}
++                                {aberto ? <ChevronUp size={11}/> : <ChevronDown size={11}/>}
+                               </div>
+                               <div style={{ fontSize:10, color:'var(--text-muted)' }}>{fmtDate(t.next_billing)}</div>
++                              {aberto && (
++                                <div style={{ marginTop:4 }}>
++                                  <div style={{ display:'flex', flexWrap:'wrap', gap:4, justifyContent:'center', maxWidth:140, marginLeft:'auto', marginRight:'auto' }}>
++                                    {[1,2,3,6].map(m=>(
++                                      <button key={m} onClick={()=>confirmarPagamentoManual(t,m)}
++                                        style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:4, border:'1px solid rgba(34,197,94,.3)', background:'rgba(34,197,94,.1)', color:'#22c55e', cursor:'pointer' }}>
++                                        {m===1 ? '1 mes pago' : m+' meses pagos'}
++                                      </button>
++                                    ))}
++                                  </div>
++                                  <button onClick={()=>retrocederPagamento(t,1)}
++                                    title="Corrige o vencimento voltando 1 mes (use quando ficou marcado um mes a mais)"
++                                    style={{ marginTop:6, width:'100%', fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4, border:'1px solid rgba(245,158,11,.3)', background:'rgba(245,158,11,.1)', color:'#f59e0b', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
++                                    <RotateCcw size={11}/> Corrigir: voltar 1 mes
++                                  </button>
++                                  {t.next_billing_anterior && (
++                                    <button onClick={()=>desfazerPagamento(t)}
++                                      title={'Volta o vencimento para '+fmtDate(t.next_billing_anterior)}
++                                      style={{ marginTop:4, width:'100%', fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4, border:'1px solid rgba(248,113,113,.3)', background:'rgba(248,113,113,.1)', color:'#f87171', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
++                                      <RotateCcw size={11}/> Desfazer ultimo pagamento
++                                    </button>
++                                  )}
++                                </div>
++                              )}
+                             </div>
+                           );
+                         })() : t.next_billing ? (
+diff --git a/src/pages/crediario/crediarioDocumentos.ts b/src/pages/crediario/crediarioDocumentos.ts
+index ebc55f1..7f399d2 100644
+--- a/src/pages/crediario/crediarioDocumentos.ts
++++ b/src/pages/crediario/crediarioDocumentos.ts
+@@ -4,9 +4,11 @@
+ // estava lá; imprimirCarneIndividual e imprimirCarneCompleto passam a
+ // receber `tenantId` como parâmetro explícito em vez de via closure.
+ 
++import toast from 'react-hot-toast';
+ import { supabase } from '../../lib/supabase';
+ import { abrirDocumentoImprimivel } from '../../utils/printDoc';
+ import { calcJuros, type Parcela } from './crediarioTypes';
++import { pixEMV } from '../../utils/pix';
+ 
+ export const imprimirReciboParcial = (p: Parcela, pago: number, operador: string) => {
+   const saldo = Math.round((p.amount + calcJuros(p) - pago) * 100) / 100;
+@@ -141,21 +143,29 @@ export const imprimirCarneCompleto = async (p: Parcela, tenantId: string | null)
+   const cr = cred as any || {};
+   const { data: parc } = await supabase.from('crediario_parcelas').select('*').eq('crediario_id', p.crediario_id).order('installment_number', { ascending: true });
+   const lista = (parc || []) as any[];
+-  const nP = lista.length || p.total_installments || 1;
++  // Corrigido 31/08/2026: antes, se essa busca voltasse vazia (falha de
++  // rede, RLS, atraso de replicacao — ou um crediario que nunca teve suas
++  // parcelas criadas), o codigo mais abaixo "inventava" datas novas a
++  // partir de hoje e imprimia um carne com datas sem nenhuma relacao com o
++  // combinado com o cliente, sem avisar ninguem. Agora aborta a impressao e
++  // avisa o operador em vez de imprimir dado fabricado.
++  if (lista.length === 0) {
++    console.error('imprimirCarneCompleto: crediario_parcelas veio vazio para crediario_id=' + p.crediario_id);
++    toast.error('Não foi possível carregar as parcelas deste carnê. Tente novamente em alguns instantes; se persistir, avise o suporte (crediário ' + p.crediario_id + ').', { duration: 8000 });
++    return;
++  }
++  const nP = lista.length;
+   const fmtV = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+   const fmtD = (d: string) => { if (!d) return '--'; const dt = d.includes('T') ? new Date(d) : new Date(d+'T12:00:00'); return isNaN(dt.getTime()) ? '--' : dt.toLocaleDateString('pt-BR'); };
+   let sName = 'Otica'; let sPix = ''; let sLogo = ''; let sCnpj = ''; let sAddr = ''; let sCity = ''; let sState = ''; let sPhone = '';
+   try { const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).single(); if (ss) { sName = ss.name || ss.company_name || 'Otica'; sPix = ss.pix_key || ''; sLogo = ss.logo_url || ''; sCnpj = ss.cnpj || ''; sAddr = ss.address || ''; sCity = ss.city || ''; sState = ss.state || ''; sPhone = ss.phone || ''; } } catch(e2) {}
+   const mkBC = (seed: number) => { const pat=[3,1,4,1,2,1,1,4,2,1,3,1,1,2,1,4,2,1,1,3,4,1,2,1,3,1,1,2,3,1,4,1,2,1,1,3,2,1,1,2,4,1,3,1]; return pat.map((b,i)=>'<span style="display:inline-block;height:42px;width:'+(b+(seed*3+i)%2)+'px;background:'+(i%2===0?'#000':'#fff')+'"></span>').join(''); };
+-  const pixEMV = (chave: string, valor: number, nome: string): string => { const f=(id:string,vv:string)=>id+String(vv.length).padStart(2,'0')+vv; const mai=f('00','BR.GOV.BCB.PIX')+f('01',chave); const amt=valor>0?valor.toFixed(2):''; let p=f('00','01')+f('26',mai)+f('52','0000')+f('53','986')+(amt?f('54',amt):'')+f('58','BR')+f('59',nome.substring(0,25).replace(/[^A-Za-z0-9 ]/g,''))+f('60','SAO PAULO')+f('62',f('05','***'))+'6304'; let crc=0xFFFF; for(let i=0;i<p.length;i++){crc^=p.charCodeAt(i)<<8;for(let j=0;j<8;j++)crc=(crc&0x8000)?(crc<<1)^0x1021:crc<<1;} return p+(crc&0xFFFF).toString(16).toUpperCase().padStart(4,'0'); };
++  // pixEMV agora vem de src/utils/pix.ts (extraido daqui — ver comentario la).
+   const custName = p.customer_name;
+   const slip = (p: any, idx: number) => { const pN=p.installment_number||idx+1; const sd=String(p.crediario_id||'').slice(-4).padStart(4,'0'); const ld=sd+String(pN).padStart(3,'0')+'0000000000000000000'; const vc=p.due_date?fmtD(p.due_date):'--'; const em=fmtD(cr.created_at || new Date().toISOString()); const vs=fmtV(p.amount).replace('R$ ','').replace('R$','').trim(); const pp=sPix?pixEMV(sPix,p.amount,sName):''; const qi='qr_'+String(p.id||idx).replace(/-/g,''); return '<div class="sr"><div class="mn"><div class="sh"><span class="ss">'+sName+'</span><span class="sm"></span><span class="sp">'+pN+'/'+nP+'</span><span class="sd">'+sd+' / '+ld.slice(0,12)+'...</span></div><div class="fr"><div class="fb s"><span class="fl">Parcela</span><span class="fv">'+pN+'</span></div><div class="fb s"><span class="fl">Vencimento</span><span class="fv">'+vc+'</span></div><div class="fb xl"><span class="fl">Cliente</span><span class="fv">'+custName+'</span></div><div class="fb s"><span class="fl">Emissao</span><span class="fv">'+em+'</span></div></div><div class="in">O nao pagamento acarretara juros de R$ 0,07 ao dia. Pagavel somente na loja de origem.</div><div class="bc">'+mkBC(pN*11)+'</div><div class="fr" style="margin-top:4px"><div class="fb xs"><span class="fl">Nr.Doc</span><span class="fv">'+sd+'</span></div><div class="fb xxl"><span class="fl">&nbsp;</span><span class="fv fm">'+ld.slice(0,30)+'</span></div><div class="fb s"><span class="fl">Emissao</span><span class="fv">'+em+'</span></div><div class="fb sv"><span class="fl">Valor</span><span class="fv fb2">R$ '+vs+'</span></div></div></div><div class="ct">&#9986;</div><div class="st"><div class="s2"><span class="s2p">'+pN+'/'+nP+'</span><span class="s2d">'+sd+'</span></div><div class="sr2"><span class="sl">Vencimento</span><span class="sv">'+vc+'</span></div><div class="sr2 hi"><span class="sl">Valor Cobrado</span><span class="sv sb">R$ '+vs+'</span></div><div class="sr2" style="border:none;text-align:center;padding:2px 0;overflow:hidden"><span style="display:block;font-size:11px;font-weight:800;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+custName+'</span></div>'+(pp?'<div id="'+qi+'" data-pix="'+pp+'" style="width:70px;height:70px;margin:4px auto 18px"></div><div style="text-align:center;margin-top:0"><span style="display:block;font-size:11px;font-weight:800;color:#000;word-break:break-all;line-height:1.3;padding:0 2px">Pix: '+sPix+'</span></div>':'')+'</div></div>'; };
+   const capa = '<div class="cp"><div class="ch"><div class="lw">'+(sLogo?'<img src="'+sLogo+'" style="width:62px;height:62px;object-fit:cover;border-radius:4px"/>':'<div class="ls"><div class="lg"></div></div>')+'</div><div class="ct2"><div class="ctit">CARNE DE PAGAMENTO</div><div class="csn">'+sName+'</div>'+(sCnpj?'<div class="csi">CNPJ: '+sCnpj+'</div>':'')+((sAddr||sCity)?'<div class="csi">'+( sAddr||'')+( sCity?', '+sCity:'')+(sState?' - '+sState:'')+'</div>':'')+( sPhone?'<div class="csi">Tel: '+sPhone+'</div>':'')+'</div></div><div class="cb"><div class="cl">CLIENTE / DEVEDOR</div><div class="cn">'+p.customer_name+'</div></div><div class="cf"><div class="ci"><span class="ck">Total da Divida</span><span class="cv">'+fmtV(lista.reduce((s: number,x: any)=>s+x.amount,0))+'</span></div><div class="ci"><span class="ck">No Parcelas</span><span class="cv">'+nP+'</span></div><div class="ci"><span class="ck">Valor/Parcela</span><span class="cv">'+fmtV(lista.reduce((s: number,x: any)=>s+x.amount,0)/nP)+'</span></div><div class="ci"><span class="ck">Emissao</span><span class="cv">'+fmtD(cr.created_at || new Date().toISOString())+'</span></div></div></div>';
+   const css = '@page{size:A4 portrait;margin:8mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#000;background:#fff;display:flex;flex-direction:column}.cp{border:2px solid #1a3a8f;border-radius:4px;overflow:hidden;margin-bottom:0;flex-shrink:0}.ch{background:#1a3a8f;color:#fff;display:flex;align-items:center;gap:12px;padding:18px 14px}.lw{flex-shrink:0}.ls{width:62px;height:62px;border:2px solid rgba(255,255,255,.4);border-radius:4px;background:rgba(255,255,255,.1)}.lg{width:100%;height:100%;background:repeating-linear-gradient(90deg,rgba(255,255,255,.3) 0,rgba(255,255,255,.3) 1px,transparent 1px,transparent 6px) top/6px 6px,repeating-linear-gradient(rgba(255,255,255,.3) 0,rgba(255,255,255,.3) 1px,transparent 1px,transparent 6px)}.ct2{flex:1;text-align:center}.ctit{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.7);margin-bottom:3px}.csn{font-size:22px;font-weight:900}.csi{font-size:10px;color:rgba(255,255,255,.8);margin-top:2px}.cb{padding:20px 14px;border-bottom:1px solid #1a3a8f;flex:1}.cl{font-size:9px;font-weight:700;color:#1a3a8f;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px}.cn{font-size:18px;font-weight:800}.cf{display:flex;background:#f0f4ff;border-top:1px solid #1a3a8f}.ci{flex:1;padding:14px 12px;border-right:1px solid #c7d2fe}.ci:last-child{border-right:none}.ck{display:block;font-size:9px;color:#1a3a8f;font-weight:700;text-transform:uppercase;margin-bottom:2px}.cv{font-size:13px;font-weight:800;color:#111}.sr{display:flex;align-items:stretch;border-top:2px dashed #aaa;padding:3px 0;break-inside:avoid;page-break-inside:avoid;width:100%;height:65mm}.mn{flex:6.5;border:1px solid #444;padding:6px 8px;display:flex;flex-direction:column;gap:3px}.ct{width:18px;display:flex;align-items:center;justify-content:center;font-size:14px;color:#bbb;flex-shrink:0}.st{flex:3;min-width:0;border:1px solid #444;padding:4px 8px;background:#fafafa;display:flex;flex-direction:column;gap:2px;overflow:hidden}.sh{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1a3a8f;padding-bottom:4px;gap:4px}.ss{font-size:11px;font-weight:800;flex:1;color:#1a3a8f}.sm{flex:1}.sp{font-size:11px;font-weight:800;flex-shrink:0;color:#1a3a8f}.sd{font-size:8px;color:#666;flex-shrink:0}.fr{display:flex;gap:3px}.fb{border:1px solid #bbb;padding:3px 5px;min-height:30px}.fb.s{flex:1.2}.fb.xs{flex:0.7}.fb.xl{flex:3}.fb.xxl{flex:4}.fb.sv{flex:1.4}.fl{display:block;font-size:7.5px;color:#777;margin-bottom:2px;font-weight:600;text-transform:uppercase}.fv{font-size:10px;font-weight:700;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fb2{font-size:13px;font-weight:900;color:#1a3a8f}.fm{font-family:monospace;font-size:9px}.in{border:1px solid #e5c840;background:#fffbe6;padding:4px 7px;font-size:9px;color:#555;line-height:1.6}.bc{display:flex;align-items:center;height:46px;border:1px solid #bbb;padding:3px 8px;overflow:hidden}.s2{display:flex;justify-content:space-between;border-bottom:2px solid #1a3a8f;padding-bottom:2px;margin-bottom:2px}.s2p{font-size:12px;font-weight:900;color:#1a3a8f}.s2d{font-size:10px;color:#666}.sr2{border:1px solid #bbb;padding:2px 6px;min-height:22px}.sr2.hi{background:#f0f4ff;border-color:#1a3a8f}.sl{display:block;font-size:8px;color:#777;font-weight:700;text-transform:uppercase;margin-bottom:1px}.sv{font-size:10px;font-weight:700;display:block}.sb{font-size:14px;font-weight:900;color:#1a3a8f}.sbl{min-height:18px;border-bottom:1px solid #555;margin-top:6px}.sc{font-size:10px;font-weight:700;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sig{border-top:1px solid #555;margin-top:auto;padding-top:3px;font-size:11px;text-align:center;color:#000;font-weight:700}@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sr{break-inside:avoid;page-break-inside:avoid}}';
+-  const listaFinal = lista.length > 0 ? lista : Array.from({length: nP}, (_, i) => {
+-    const due = new Date(); due.setMonth(due.getMonth() + i);
+-    return { installment_number: i+1, amount: (cr.total_amount||p.amount*nP)/nP, due_date: due.toISOString().split('T')[0], id: String(i) };
+-  });
++  const listaFinal = lista; // lista real garantida (ver checagem acima)
+   const pg1=listaFinal.slice(0,3);const rest=listaFinal.slice(3);
+   let html='<div class="print-page" style="height:277mm;display:flex;flex-direction:column;page-break-after:always">'+capa+pg1.map((p: any,i: number)=>slip(p,i)).join('')+'</div>';
+   for(let c=0;c<rest.length;c+=4){const grp=rest.slice(c,c+4);html+='<div class="print-page" style="height:277mm;display:flex;flex-direction:column;page-break-after:always">'+grp.map((p: any,i: number)=>slip(p,c+3+i)).join('')+'</div>';}
+diff --git a/src/pages/vendas/vendaDocumentos.ts b/src/pages/vendas/vendaDocumentos.ts
+index c8d1f38..4795527 100644
+--- a/src/pages/vendas/vendaDocumentos.ts
++++ b/src/pages/vendas/vendaDocumentos.ts
+@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase';
+ import { formatBRL } from '../../types/index';
+ import { abrirDocumentoImprimivel } from '../../utils/printDoc';
+ import { PAGAMENTOS, formatDate, formatDateTime, type Sale, type StoreSettings } from './vendasTypes';
++import { pixEMV } from '../../utils/pix';
+ 
+ // ── Cabeçalho empresa para documentos ──
+ export const getCabecalho = (s: StoreSettings | null) => {
+@@ -71,7 +72,7 @@ export const imprimirCarne = async (v: Sale, storeSettings: StoreSettings | null
+   const sState = storeSettings?.state || '';
+   const sPhone = storeSettings?.phone || '';
+   const mkBC = (seed: number) => { const pat=[3,1,4,1,2,1,1,4,2,1,3,1,1,2,1,4,2,1,1,3,4,1,2,1,3,1,1,2,3,1,4,1,2,1,1,3,2,1,1,2,4,1,3,1]; return pat.map((b,i)=>'<span style="display:inline-block;height:42px;width:'+(b+(seed*3+i)%2)+'px;background:'+(i%2===0?'#000':'#fff')+'"></span>').join(''); };
+-  const pixEMV = (chave: string, valor: number, nome: string): string => { const f=(id:string,vv:string)=>id+String(vv.length).padStart(2,'0')+vv; const mai=f('00','BR.GOV.BCB.PIX')+f('01',chave); const amt=valor>0?valor.toFixed(2):''; let p=f('00','01')+f('26',mai)+f('52','0000')+f('53','986')+(amt?f('54',amt):'')+f('58','BR')+f('59',nome.substring(0,25).replace(/[^A-Za-z0-9 ]/g,''))+f('60','SAO PAULO')+f('62',f('05','***'))+'6304'; let crc=0xFFFF; for(let i=0;i<p.length;i++){crc^=p.charCodeAt(i)<<8;for(let j=0;j<8;j++)crc=(crc&0x8000)?(crc<<1)^0x1021:crc<<1;} return p+(crc&0xFFFF).toString(16).toUpperCase().padStart(4,'0'); };
++  // pixEMV agora vem de src/utils/pix.ts (extraido daqui — ver comentario la).
+   const slip = (p: any, idx: number) => { const pN=p.installment_number||idx+1; const sd=String(v.sale_number||'').padStart(4,'0'); const ld=sd+String(pN).padStart(3,'0')+'0000000000000000000'; const vc=p.due_date?fmtD(p.due_date):'--'; const em=fmtD(v.created_at); const vs=fmtV(p.amount).replace('R$ ','').replace('R$','').trim(); const pp=sPix?pixEMV(sPix,p.amount,sName):''; const qi='qr_'+String(p.id||idx).replace(/-/g,''); return '<div class="sr"><div class="mn"><div class="sh"><span class="ss">'+sName+'</span><span class="sm"></span><span class="sp">'+pN+'/'+nP+'</span><span class="sd">'+sd+' / '+ld.slice(0,12)+'...</span></div><div class="fr"><div class="fb s"><span class="fl">Parcela</span><span class="fv">'+pN+'</span></div><div class="fb s"><span class="fl">Vencimento</span><span class="fv">'+vc+'</span></div><div class="fb xl"><span class="fl">Cliente</span><span class="fv">'+v.customer_name+'</span></div><div class="fb s"><span class="fl">Emissao</span><span class="fv">'+em+'</span></div></div><div class="in">O nao pagamento acarretara juros de R$ 0,07 ao dia. Pagavel somente na loja de origem.</div><div class="bc">'+mkBC(pN*11)+'</div><div class="fr" style="margin-top:4px"><div class="fb xs"><span class="fl">Nr.Doc</span><span class="fv">'+sd+'</span></div><div class="fb xxl"><span class="fl">&nbsp;</span><span class="fv fm">'+ld.slice(0,30)+'</span></div><div class="fb s"><span class="fl">Emissao</span><span class="fv">'+em+'</span></div><div class="fb sv"><span class="fl">Valor</span><span class="fv fb2">R$ '+vs+'</span></div></div></div><div class="ct">&#9986;</div><div class="st"><div class="s2"><span class="s2p">'+pN+'/'+nP+'</span><span class="s2d">'+sd+'</span></div><div class="sr2"><span class="sl">Vencimento</span><span class="sv">'+vc+'</span></div><div class="sr2 hi"><span class="sl">Valor Cobrado</span><span class="sv sb">R$ '+vs+'</span></div><div class="sr2" style="border:none;text-align:center;padding:2px 0;overflow:hidden"><span style="display:block;font-size:11px;font-weight:800;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+v.customer_name+'</span></div>'+(pp?'<div id="'+qi+'" data-pix="'+pp+'" style="width:70px;height:70px;margin:4px auto 18px"></div><div style="text-align:center;margin-top:0"><span style="display:block;font-size:11px;font-weight:800;color:#000;word-break:break-all;line-height:1.3;padding:0 2px">Pix: '+sPix+'</span></div>':'')+'</div></div>'; };
+   const capa = '<div class="cp"><div class="ch"><div class="lw">'+(sLogo?'<img src="'+sLogo+'" style="width:62px;height:62px;object-fit:cover;border-radius:4px"/>':'<div class="ls"><div class="lg"></div></div>')+'</div><div class="ct2"><div class="ctit">CARNE DE PAGAMENTO</div><div class="csn">'+sName+'</div>'+(sCnpj?'<div class="csi">CNPJ: '+sCnpj+'</div>':'')+((sAddr||sCity)?'<div class="csi">'+( sAddr||'')+( sCity?', '+sCity:'')+(sState?' - '+sState:'')+'</div>':'')+( sPhone?'<div class="csi">Tel: '+sPhone+'</div>':'')+'</div></div><div class="cb"><div class="cl">CLIENTE / DEVEDOR</div><div class="cn">'+v.customer_name+'</div></div><div class="cf"><div class="ci"><span class="ck">Total da Divida</span><span class="cv">'+fmtV(v.total||0)+'</span></div><div class="ci"><span class="ck">No Parcelas</span><span class="cv">'+nP+'</span></div><div class="ci"><span class="ck">Valor/Parcela</span><span class="cv">'+fmtV((v.total||0)/nP)+'</span></div><div class="ci"><span class="ck">Emissao</span><span class="cv">'+fmtD(v.created_at)+'</span></div></div></div>';
+   const css = '@page{size:A4 portrait;margin:8mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#000;background:#fff;display:flex;flex-direction:column}.cp{border:2px solid #1a3a8f;border-radius:4px;overflow:hidden;margin-bottom:0;flex-shrink:0}.ch{background:#1a3a8f;color:#fff;display:flex;align-items:center;gap:12px;padding:18px 14px}.lw{flex-shrink:0}.ls{width:62px;height:62px;border:2px solid rgba(255,255,255,.4);border-radius:4px;background:rgba(255,255,255,.1)}.lg{width:100%;height:100%;background:repeating-linear-gradient(90deg,rgba(255,255,255,.3) 0,rgba(255,255,255,.3) 1px,transparent 1px,transparent 6px) top/6px 6px,repeating-linear-gradient(rgba(255,255,255,.3) 0,rgba(255,255,255,.3) 1px,transparent 1px,transparent 6px)}.ct2{flex:1;text-align:center}.ctit{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.7);margin-bottom:3px}.csn{font-size:22px;font-weight:900}.csi{font-size:10px;color:rgba(255,255,255,.8);margin-top:2px}.cb{padding:20px 14px;border-bottom:1px solid #1a3a8f;flex:1}.cl{font-size:9px;font-weight:700;color:#1a3a8f;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px}.cn{font-size:18px;font-weight:800}.cf{display:flex;background:#f0f4ff;border-top:1px solid #1a3a8f}.ci{flex:1;padding:14px 12px;border-right:1px solid #c7d2fe}.ci:last-child{border-right:none}.ck{display:block;font-size:9px;color:#1a3a8f;font-weight:700;text-transform:uppercase;margin-bottom:2px}.cv{font-size:13px;font-weight:800;color:#111}.sr{display:flex;align-items:stretch;border-top:2px dashed #aaa;padding:3px 0;break-inside:avoid;page-break-inside:avoid;width:100%;height:65mm}.mn{flex:6.5;border:1px solid #444;padding:6px 8px;display:flex;flex-direction:column;gap:3px}.ct{width:18px;display:flex;align-items:center;justify-content:center;font-size:14px;color:#bbb;flex-shrink:0}.st{flex:3;min-width:0;border:1px solid #444;padding:4px 8px;background:#fafafa;display:flex;flex-direction:column;gap:2px;overflow:hidden}.sh{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1a3a8f;padding-bottom:4px;gap:4px}.ss{font-size:11px;font-weight:800;flex:1;color:#1a3a8f}.sm{flex:1}.sp{font-size:11px;font-weight:800;flex-shrink:0;color:#1a3a8f}.sd{font-size:8px;color:#666;flex-shrink:0}.fr{display:flex;gap:3px}.fb{border:1px solid #bbb;padding:3px 5px;min-height:30px}.fb.s{flex:1.2}.fb.xs{flex:0.7}.fb.xl{flex:3}.fb.xxl{flex:4}.fb.sv{flex:1.4}.fl{display:block;font-size:7.5px;color:#777;margin-bottom:2px;font-weight:600;text-transform:uppercase}.fv{font-size:10px;font-weight:700;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fb2{font-size:13px;font-weight:900;color:#1a3a8f}.fm{font-family:monospace;font-size:9px}.in{border:1px solid #e5c840;background:#fffbe6;padding:4px 7px;font-size:9px;color:#555;line-height:1.6}.bc{display:flex;align-items:center;height:46px;border:1px solid #bbb;padding:3px 8px;overflow:hidden}.s2{display:flex;justify-content:space-between;border-bottom:2px solid #1a3a8f;padding-bottom:2px;margin-bottom:2px}.s2p{font-size:12px;font-weight:900;color:#1a3a8f}.s2d{font-size:10px;color:#666}.sr2{border:1px solid #bbb;padding:2px 6px;min-height:22px}.sr2.hi{background:#f0f4ff;border-color:#1a3a8f}.sl{display:block;font-size:8px;color:#777;font-weight:700;text-transform:uppercase;margin-bottom:1px}.sv{font-size:10px;font-weight:700;display:block}.sb{font-size:14px;font-weight:900;color:#1a3a8f}.sbl{min-height:18px;border-bottom:1px solid #555;margin-top:6px}.sc{font-size:10px;font-weight:700;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sig{border-top:1px solid #555;margin-top:auto;padding-top:3px;font-size:11px;text-align:center;color:#000;font-weight:700}@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sr{break-inside:avoid;page-break-inside:avoid}}';

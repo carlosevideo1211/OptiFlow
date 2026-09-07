@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import {
   Plus, Search, Edit2, Phone, Download, Upload, Camera,
   Trash2, Users, Gift, DollarSign, Wifi, X, Save,
-  Eye, MessageCircle, Paperclip
+  Eye, MessageCircle, Paperclip, BellOff, Bell
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
@@ -57,6 +57,7 @@ export default function ClientesPage() {
   const [editing, setEditing]     = useState<Customer | null>(null);
   const [form, setForm]           = useState(emptyForm());
   const [saving, setSaving]       = useState(false);
+  const [marcandoOptOut, setMarcandoOptOut] = useState(false);
 
   const [rankings, setRankings] = useState<Record<string, string|null>>({});
   const [viewTab, setViewTab] = useState('dados');
@@ -245,6 +246,34 @@ export default function ClientesPage() {
   const toggleActive = async (c: Customer) => {
     await supabase.from('customers').update({ active: !c.active }).eq('id', c.id);
     toast.success(c.active ? 'Cliente inativado' : 'Cliente reativado'); load();
+  };
+
+  // Liga/desliga o recebimento de mensagens automaticas de WhatsApp deste
+  // cliente (aniversario, aviso de vencimento, cobranca, pos-venda,
+  // adaptacao). Pedido da Larissa (Otica Evangelista Castanho), 07/09/2026:
+  // fica a criterio do vendedor/cliente — se o cliente nao quiser mais
+  // receber, o vendedor desativa aqui; se depois ela quiser voltar a
+  // receber, e so ativar de novo. Nao afeta envio manual feito pelo vendedor
+  // pelo botao de WhatsApp da lista.
+  const toggleWhatsappOptOut = async (c: Customer) => {
+    if (marcandoOptOut) return;
+    setMarcandoOptOut(true);
+    const novoValor = !c.whatsapp_opt_out;
+    try {
+      const { error } = await supabase.from('customers').update({
+        whatsapp_opt_out: novoValor,
+        whatsapp_opt_out_em: novoValor ? new Date().toISOString() : null,
+      }).eq('id', c.id);
+      if (error) throw error;
+      const atualizado = { ...c, whatsapp_opt_out: novoValor, whatsapp_opt_out_em: novoValor ? new Date().toISOString() : null };
+      setViewing(atualizado);
+      setCustomers(list => list.map(x => x.id === c.id ? atualizado : x));
+      toast.success(novoValor ? 'Mensagens automáticas de WhatsApp desativadas para este cliente' : 'Mensagens automáticas de WhatsApp reativadas para este cliente');
+    } catch (e: any) {
+      toast.error('Erro ao atualizar: ' + (e.message || e));
+    } finally {
+      setMarcandoOptOut(false);
+    }
   };
 
   const [anexoCliente,setAnexoCliente]=useState<any>(null);
@@ -677,6 +706,25 @@ export default function ClientesPage() {
                 ))}</div>}
               </div>}
               {viewTab==='crediario' && <div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:16,padding:'10px 14px',background:'var(--bg3)',borderRadius:10,border:'1px solid var(--border)'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,fontSize:13}}>
+                    {viewing?.whatsapp_opt_out ? <BellOff size={16} color="#f87171"/> : <Bell size={16} color="#22c55e"/>}
+                    <div>
+                      <div style={{fontWeight:700}}>Mensagens automáticas de WhatsApp</div>
+                      <div style={{fontSize:11,color:'var(--text-muted)'}}>
+                        {viewing?.whatsapp_opt_out
+                          ? 'Desativadas' + (viewing?.whatsapp_opt_out_em ? ' em ' + new Date(viewing.whatsapp_opt_out_em).toLocaleDateString('pt-BR') : '') + ' — este cliente não recebe aniversário, vencimento, cobrança, pós-venda ou adaptação.'
+                          : 'Ativadas — este cliente recebe as mensagens automáticas normalmente. Envio manual não é afetado por esta opção.'}
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => viewing && toggleWhatsappOptOut(viewing)} disabled={marcandoOptOut} className="btn"
+                    style={{ fontSize:12, padding:'6px 12px', whiteSpace:'nowrap',
+                      background: viewing?.whatsapp_opt_out ? 'rgba(34,197,94,.15)' : 'rgba(239,68,68,.15)',
+                      color: viewing?.whatsapp_opt_out ? '#22c55e' : '#f87171' }}>
+                    {marcandoOptOut ? '...' : viewing?.whatsapp_opt_out ? 'Reativar mensagens' : 'Desativar mensagens'}
+                  </button>
+                </div>
                 {viewHist.cr.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhum crediário encontrado</p>:<div>{viewHist.cr.slice().sort((a:any,b:any)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime()).map((cr:any,i:number)=>{
             const parcelas = cr.crediario_parcelas || [];
             const isRenego = cr.notes?.startsWith('Renegociacao:');

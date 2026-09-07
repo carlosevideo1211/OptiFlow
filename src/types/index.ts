@@ -59,6 +59,13 @@ export interface Customer {
   notes?: string;
   active: boolean;
   created_at: string;
+  // Opt-out de WhatsApp automatico — pedido da Larissa (Otica Evangelista
+  // Castanho), 07/09/2026: cliente que nao quer mais receber as mensagens
+  // automaticas (aniversario, vencimento, cobranca, pos-venda, adaptacao)
+  // pode ser desativado aqui, a criterio do vendedor/cliente. Nao afeta
+  // envio manual feito pelo vendedor.
+  whatsapp_opt_out?: boolean;
+  whatsapp_opt_out_em?: string | null;
 }
 
 // ── Consulta ─────────────────────────────────────────────────

@@ -202,8 +202,19 @@ serve(async (req) => {
 
       // ---------- 1) ANIVERSÁRIO ----------
       const aniversariantes = await supabaseRpc("customers_aniversariantes_hoje", { p_tenant_id: tenant.id });
+      // Pedido da Larissa (Otica Evangelista Castanho), 07/09/2026: cliente
+      // pode desativar o recebimento de mensagens automaticas (opt-out feito
+      // na tela de Clientes > aba Crediario). A RPC nao devolve esse campo,
+      // entao buscamos separado pelos IDs retornados antes de enviar.
+      const optOutAniv = new Set<string>();
+      if (Array.isArray(aniversariantes) && aniversariantes.length > 0) {
+        const idsAniv = [...new Set(aniversariantes.map((c: any) => c.id))].join(",");
+        const optOutRows = await supabaseFetch(`customers?id=in.(${idsAniv})&whatsapp_opt_out=eq.true&select=id`);
+        if (Array.isArray(optOutRows)) optOutRows.forEach((r: any) => optOutAniv.add(r.id));
+      }
       for (const c of aniversariantes) {
         if (!podeEnviarMais()) break;
+        if (optOutAniv.has(c.id)) continue;
         const telefone = c.whatsapp || c.phone;
         if (!telefone) continue;
         const refId = `${c.id}:${hoje.getUTCFullYear()}`;
@@ -231,7 +242,7 @@ serve(async (req) => {
           const custIds = [...new Set(creditos.map((c: any) => c.customer_id).filter(Boolean))].join(",");
           const clientesMap: Record<string, any> = {};
           if (custIds) {
-            const clientesCred = await supabaseFetch(`customers?id=in.(${custIds})&select=id,whatsapp,phone`);
+            const clientesCred = await supabaseFetch(`customers?id=in.(${custIds})&select=id,whatsapp,phone,whatsapp_opt_out`);
             for (const c of clientesCred) clientesMap[c.id] = c;
           }
 
@@ -240,6 +251,7 @@ serve(async (req) => {
             const cred = credMap[p.crediario_id];
             if (!cred) continue;
             const clienteInfo = clientesMap[cred.customer_id];
+            if (clienteInfo?.whatsapp_opt_out) continue;
             const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
             if (!telefone) continue;
             const refId = String(p.id);
@@ -270,7 +282,7 @@ serve(async (req) => {
           const custIdsH = [...new Set(creditosH.map((c: any) => c.customer_id).filter(Boolean))].join(",");
           const clientesMapH: Record<string, any> = {};
           if (custIdsH) {
-            const clientesCredH = await supabaseFetch(`customers?id=in.(${custIdsH})&select=id,whatsapp,phone`);
+            const clientesCredH = await supabaseFetch(`customers?id=in.(${custIdsH})&select=id,whatsapp,phone,whatsapp_opt_out`);
             for (const c of clientesCredH) clientesMapH[c.id] = c;
           }
 
@@ -279,6 +291,7 @@ serve(async (req) => {
             const cred = credMapH[p.crediario_id];
             if (!cred) continue;
             const clienteInfo = clientesMapH[cred.customer_id];
+            if (clienteInfo?.whatsapp_opt_out) continue;
             const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
             if (!telefone) continue;
             const refId = String(p.id);
@@ -309,7 +322,7 @@ serve(async (req) => {
           const custIds5 = [...new Set(creditos5.map((c: any) => c.customer_id).filter(Boolean))].join(",");
           const clientesMap5: Record<string, any> = {};
           if (custIds5) {
-            const clientesCred5 = await supabaseFetch(`customers?id=in.(${custIds5})&select=id,whatsapp,phone`);
+            const clientesCred5 = await supabaseFetch(`customers?id=in.(${custIds5})&select=id,whatsapp,phone,whatsapp_opt_out`);
             for (const c of clientesCred5) clientesMap5[c.id] = c;
           }
 
@@ -318,6 +331,7 @@ serve(async (req) => {
             const cred = credMap5[p.crediario_id];
             if (!cred) continue;
             const clienteInfo = clientesMap5[cred.customer_id];
+            if (clienteInfo?.whatsapp_opt_out) continue;
             const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
             if (!telefone) continue;
             const refId = String(p.id);
@@ -341,7 +355,8 @@ serve(async (req) => {
         );
         for (const os of posVenda) {
           if (!podeEnviarMais()) break;
-          const cliente = await supabaseFetch(`customers?id=eq.${os.customer_id}&select=whatsapp,phone`);
+          const cliente = await supabaseFetch(`customers?id=eq.${os.customer_id}&select=whatsapp,phone,whatsapp_opt_out`);
+          if (cliente?.[0]?.whatsapp_opt_out) continue;
           const telefone = cliente?.[0]?.whatsapp || cliente?.[0]?.phone;
           if (!telefone) continue;
           const refId = String(os.id);
@@ -363,7 +378,8 @@ serve(async (req) => {
         );
         for (const os of adaptacao) {
           if (!podeEnviarMais()) break;
-          const cliente = await supabaseFetch(`customers?id=eq.${os.customer_id}&select=whatsapp,phone`);
+          const cliente = await supabaseFetch(`customers?id=eq.${os.customer_id}&select=whatsapp,phone,whatsapp_opt_out`);
+          if (cliente?.[0]?.whatsapp_opt_out) continue;
           const telefone = cliente?.[0]?.whatsapp || cliente?.[0]?.phone;
           if (!telefone) continue;
           const refId = String(os.id);
@@ -392,7 +408,7 @@ serve(async (req) => {
           const custIds2 = [...new Set(creditos2.map((c: any) => c.customer_id).filter(Boolean))].join(",");
           const clientesMap2: Record<string, any> = {};
           if (custIds2) {
-            const clientesCred2 = await supabaseFetch(`customers?id=in.(${custIds2})&select=id,whatsapp,phone`);
+            const clientesCred2 = await supabaseFetch(`customers?id=in.(${custIds2})&select=id,whatsapp,phone,whatsapp_opt_out`);
             for (const c of clientesCred2) clientesMap2[c.id] = c;
           }
 
@@ -401,6 +417,7 @@ serve(async (req) => {
             const cred = credMap2[p.crediario_id];
             if (!cred) continue;
             const clienteInfo = clientesMap2[cred.customer_id];
+            if (clienteInfo?.whatsapp_opt_out) continue;
             const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
             if (!telefone) continue;
             const refId = String(p.id);
