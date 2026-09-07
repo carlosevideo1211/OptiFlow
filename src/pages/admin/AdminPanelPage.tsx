@@ -80,6 +80,16 @@ const STATUS_LIST = [
 ];
 function getStatus(v: string) { return STATUS_LIST.find(s=>s.value===v)||STATUS_LIST[0]; }
 
+// Valor que de fato e cobrado deste inquilino: o personalizado (negociado
+// caso a caso), quando definido, senao o MRR normal. Usado em todo lugar que
+// soma/mostra receita no painel Admin, pra nao ficar desatualizado assim que
+// alguem negocia um valor diferente do padrao do plano.
+function valorEfetivo(t: Tenant): number {
+  const custom = Number(t.valor_mensal_customizado);
+  if (Number.isFinite(custom) && custom > 0) return custom;
+  return t.mrr_value || 0;
+}
+
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = max > 0 ? Math.min(100, (value/max)*100) : 0;
   return (
@@ -166,8 +176,8 @@ export default function AdminPanelPage() {
     const novosmes  = tenants.filter(t=>t.created_at?.startsWith(mesAtual));
     const expirando = trials.filter(t=>{ const d=diasRestantes(t.trial_end_date); return d!==null && d<=7 && d>=0; });
     const expirados = trials.filter(t=>{ const d=diasRestantes(t.trial_end_date); return d!==null && d<0; });
-    const mrr       = ativos.reduce((s,t)=>s+(t.mrr_value||0),0);
-    const mrrTotal  = tenants.reduce((s,t)=>s+(t.mrr_value||0),0);
+    const mrr       = ativos.reduce((s,t)=>s+valorEfetivo(t),0);
+    const mrrTotal  = tenants.reduce((s,t)=>s+valorEfetivo(t),0);
     const conversao = tenants.length > 0 ? Math.round((ativos.length/tenants.length)*100) : 0;
     return { total:tenants.length, ativos:ativos.length, trial:trials.length,
       inadimp:tenants.filter(t=>t.status==='inadimplente').length,
@@ -213,7 +223,7 @@ export default function AdminPanelPage() {
     return list;
   }, [tenants, search, planFilter, statusFilter, sortField, sortDir]);
 
-  const mrrFiltrado = filtered.filter(t=>t.status==='ativo').reduce((s,t)=>s+(t.mrr_value||0),0);
+  const mrrFiltrado = filtered.filter(t=>t.status==='ativo').reduce((s,t)=>s+valorEfetivo(t),0);
 
   // Fatia da lista filtrada que realmente aparece na tela, pra tabela nao
   // renderizar todos os tenants de uma vez so. Se o filtro mudar e a pagina
@@ -770,7 +780,11 @@ export default function AdminPanelPage() {
                         ) : <span style={{ color:'var(--text-muted)' }}>--</span>}
                       </td>
                       <td style={{ textAlign:'right' }}>
-                        <div style={{ fontWeight:700, color:'#22c55e' }}>{formatBRL(t.mrr_value||0)}</div>
+                        <div style={{ fontWeight:700, color:'#22c55e' }}>{formatBRL(valorEfetivo(t))}</div>
+                        {Number(t.valor_mensal_customizado) > 0 && (
+                          <div title="Valor personalizado — diferente do plano padrao"
+                            style={{ fontSize:9, fontWeight:700, color:'#a78bfa', marginTop:1 }}>PERSONALIZADO</div>
+                        )}
                         <div style={{ fontSize:10, color:'var(--text-muted)' }}>/mes</div>
                       </td>
                       <td style={{ textAlign:'center', fontSize:12, color:'var(--text-muted)' }}>
