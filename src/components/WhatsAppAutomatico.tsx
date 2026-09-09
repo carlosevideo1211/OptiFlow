@@ -1,16 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { MessageCircle, QrCode, X, RotateCcw, History } from 'lucide-react';
+import { MessageCircle, QrCode, X, RotateCcw, History, AlertTriangle, Phone } from 'lucide-react';
 import { formatDateTime } from '../types/index';
 import toast from 'react-hot-toast';
 
 const TRIGGER_LABELS: Record<string, string> = {
   aniversario: 'Aniversário',
   vencimento: 'Vencimento de parcela',
+  vencimento_dia: 'Vencimento (no dia)',
+  vencimento_atraso5: 'Vencimento (5 dias de atraso)',
   pos_venda: 'Pós-venda',
   adaptacao: 'Adaptação',
+  cobranca_atraso: 'Cobrança de atraso',
+  cobranca_manual: 'Cobrança manual (robô)',
+  cobranca_manual_local: 'Cobrança manual (WhatsApp do celular)',
+  aviso_negativacao: 'Aviso de negativação (débito > 1 ano)',
+  negociacao_debito_antigo: 'Convite p/ negociar (débito > 1 ano)',
 };
+
+// Mesmo prazo usado em supabase/functions/send-whatsapp-triggers/index.ts
+// (PRAZO_NEGATIVACAO_DIAS) — se um dia for alterado lá, mudar aqui também.
+const PRAZO_NEGATIVACAO_DIAS = 10;
 
 export default function WhatsAppAutomatico() {
   const { user, tenantId } = useAuth();
@@ -21,6 +32,15 @@ export default function WhatsAppAutomatico() {
   const [connecting, setConnecting] = useState(false);
   const [qrcode, setQrcode] = useState<string | null>(null);
   const [historico, setHistorico] = useState<any[]>([]);
+
+  // Cadastro no SPC/Serasa (controla o tom do aviso de debito > 1 ano, ver
+  // send-whatsapp-triggers/index.ts secao 6) e a lista de clientes cujo
+  // prazo de 10 dias ja venceu sem pagamento, para negativacao manual.
+  const [spcAtivo, setSpcAtivo] = useState(false);
+  const [loadingSpc, setLoadingSpc] = useState(true);
+  const [salvandoSpc, setSalvandoSpc] = useState(false);
+  const [aguardandoNeg, setAguardandoNeg] = useState<Array<{ customer_id: string; customer_name: string; phone: string | null; avisado_em: string }>>([]);
+  const [loadingNeg, setLoadingNeg] = useState(false);
 
   const carregarStatus = useCallback(async () => {
     const { data, error } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'status' } });
@@ -40,7 +60,93 @@ export default function WhatsAppAutomatico() {
     setHistorico(data || []);
   }, [tenantId]);
 
-  useEffect(() => { carregarStatus(); carregarHistorico(); }, [carregarStatus, carregarHistorico]);
+  const carregarSpc = useCallback(async () => {
+    if (!tenantId) return;
+    setLoadingSpc(true);
+    const { data } = await supabase.from('tenants').select('spc_serasa_ativo').eq('id', tenantId).single();
+    setSpcAtivo(!!data?.spc_serasa_ativo);
+    setLoadingSpc(false);
+  }, [tenantId]);
+
+  const alternarSpc = async () => {
+    if (!tenantId) return;
+    const novoValor = !spcAtivo;
+    setSalvandoSpc(true);
+    try {
+      const { error } = await supabase.from('tenants').update({ spc_serasa_ativo: novoValor }).eq('id', tenantId);
+      if (error) throw error;
+      setSpcAtivo(novoValor);
+      toast.success(novoValor
+        ? 'Ativado. Débitos com mais de 1 ano agora recebem o aviso formal de prazo/negativação.'
+        : 'Desativado. Débitos com mais de 1 ano agora recebem apenas o convite para negociar.');
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao salvar');
+    } finally {
+      setSalvandoSpc(false);
+    }
+  };
+
+  // Clientes que ja receberam o aviso formal (aviso_negativacao) ha mais de
+  // PRAZO_NEGATIVACAO_DIAS e ainda tem parcela pendente — candidatos a
+  // negativacao manual no SPC/Serasa (o OptiFlow nao faz isso sozinho).
+  const carregarAguardandoNeg = useCallback(async () => {
+    if (!tenantId) return;
+    setLoadingNeg(true);
+    try {
+      const limiteIso = new Date(Date.now() - PRAZO_NEGATIVACAO_DIAS * 86400000).toISOString();
+      const { data: avisos } = await supabase
+        .from('whatsapp_triggers_log')
+        .select('customer_id, sent_at')
+        .eq('tenant_id', tenantId)
+        .eq('trigger_type', 'aviso_negativacao')
+        .eq('success', true)
+        .lte('sent_at', limiteIso)
+        .order('sent_at', { ascending: true });
+
+      const porCliente = new Map<string, string>();
+      for (const a of avisos || []) {
+        if (a.customer_id && !porCliente.has(a.customer_id)) porCliente.set(a.customer_id, a.sent_at);
+      }
+      if (porCliente.size === 0) { setAguardandoNeg([]); return; }
+
+      const idsAvisados = [...porCliente.keys()];
+
+      // So entra na lista quem AINDA deve (se ja pagou tudo, sai da lista
+      // sozinho, sem precisar de nenhuma acao manual de "resolver").
+      const { data: creditosDoCliente } = await supabase
+        .from('crediario')
+        .select('id, customer_id')
+        .in('customer_id', idsAvisados);
+      const credIds = (creditosDoCliente || []).map((c: any) => c.id);
+      const credParaCliente: Record<string, string> = {};
+      for (const c of creditosDoCliente || []) credParaCliente[c.id] = c.customer_id;
+
+      const { data: parcelasPendentes } = credIds.length
+        ? await supabase.from('crediario_parcelas').select('crediario_id').in('crediario_id', credIds).eq('status', 'pendente')
+        : { data: [] as any[] };
+      const aindaDeve = new Set<string>((parcelasPendentes || []).map((p: any) => credParaCliente[p.crediario_id]).filter(Boolean));
+
+      const idsFinal = idsAvisados.filter((id) => aindaDeve.has(id));
+      if (idsFinal.length === 0) { setAguardandoNeg([]); return; }
+
+      const { data: clientes } = await supabase.from('customers').select('id, name, whatsapp, phone').in('id', idsFinal);
+      const nomeECelular: Record<string, { name: string; phone: string | null }> = {};
+      for (const c of clientes || []) nomeECelular[c.id] = { name: c.name, phone: c.whatsapp || c.phone || null };
+
+      setAguardandoNeg(
+        idsFinal.map((id) => ({
+          customer_id: id,
+          customer_name: nomeECelular[id]?.name || 'Cliente',
+          phone: nomeECelular[id]?.phone || null,
+          avisado_em: porCliente.get(id)!,
+        }))
+      );
+    } finally {
+      setLoadingNeg(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => { carregarStatus(); carregarHistorico(); carregarSpc(); carregarAguardandoNeg(); }, [carregarStatus, carregarHistorico, carregarSpc, carregarAguardandoNeg]);
 
   // Enquanto o QR Code está na tela, confere a cada 4s se já conectou
   useEffect(() => {
@@ -150,6 +256,69 @@ export default function WhatsAppAutomatico() {
           </button>
         </div>
       )}
+
+      <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+        <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)' }}>
+          <AlertTriangle size={14} /> Débitos com mais de 1 ano
+        </h4>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Em vez de mandar uma mensagem por parcela atrasada, esses clientes recebem um único aviso consolidado com o valor total (parcelas + juros).
+          {spcAtivo
+            ? ` Como sua loja está cadastrada no SPC/Serasa, o aviso é formal: dá um prazo de ${PRAZO_NEGATIVACAO_DIAS} dias e informa que o nome poderá ser negativado.`
+            : ' Como sua loja ainda não está cadastrada no SPC/Serasa, o aviso é um convite para negociar, sem mencionar negativação.'}
+        </p>
+
+        {!loadingSpc && isMaster && (
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: salvandoSpc ? 'default' : 'pointer', fontSize: 13 }}>
+            <span
+              onClick={salvandoSpc ? undefined : alternarSpc}
+              style={{
+                width: 38, height: 22, borderRadius: 20, position: 'relative', flexShrink: 0,
+                background: spcAtivo ? '#25D366' : 'rgba(255,255,255,.15)',
+                transition: 'background .15s', opacity: salvandoSpc ? 0.6 : 1,
+              }}>
+              <span style={{
+                position: 'absolute', top: 2, left: spcAtivo ? 18 : 2, width: 18, height: 18, borderRadius: '50%',
+                background: '#fff', transition: 'left .15s',
+              }} />
+            </span>
+            Loja tem cadastro ativo no SPC/Serasa
+          </label>
+        )}
+        {!isMaster && (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Só o dono da conta pode alterar essa configuração.</p>
+        )}
+      </div>
+
+      {aguardandoNeg.length > 0 && (
+        <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+          <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#f87171' }}>
+            <Phone size={14} /> Aguardando negativação manual ({aguardandoNeg.length})
+          </h4>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+            O prazo de {PRAZO_NEGATIVACAO_DIAS} dias já venceu para estes clientes e o débito continua em aberto. O OptiFlow não negativa automaticamente — é preciso fazer isso direto no SPC/Serasa (ou ligar antes, se preferir uma última tentativa).
+          </p>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '6px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>Cliente</th>
+                <th style={{ padding: '6px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>WhatsApp</th>
+                <th style={{ padding: '6px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>Avisado em</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aguardandoNeg.map((c) => (
+                <tr key={c.customer_id} style={{ borderBottom: '1px solid rgba(255,255,255,.05)' }}>
+                  <td style={{ padding: '6px 8px' }}>{c.customer_name}</td>
+                  <td style={{ padding: '6px 8px' }}>{c.phone || '—'}</td>
+                  <td style={{ padding: '6px 8px' }}>{formatDateTime(c.avisado_em)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {loadingNeg && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>Carregando...</p>}
 
       <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
         <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)' }}>
