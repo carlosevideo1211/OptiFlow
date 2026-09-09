@@ -47,7 +47,14 @@ export const JANELA_LABELS: Record<string, string> = {
   cobranca_atraso: 'Automatica (atraso 30+ dias)',
   cobranca_manual: 'Manual (via sistema)',
   cobranca_manual_local: 'Manual (WhatsApp pessoal)',
+  aviso_negativacao: 'Aviso de negativação (débito > 1 ano)',
+  negociacao_debito_antigo: 'Convite p/ negociar (débito > 1 ano)',
 };
+
+// Mesmo prazo usado em WhatsAppAutomatico.tsx e em
+// supabase/functions/send-whatsapp-triggers/index.ts (PRAZO_NEGATIVACAO_DIAS)
+// — se um dia for alterado num lugar, mudar nos outros dois tambem.
+export const PRAZO_NEGATIVACAO_DIAS = 10;
 
 // Retorna a data local (fuso do navegador) no formato YYYY-MM-DD.
 // IMPORTANTE: nunca usar `new Date().toISOString().split('T')[0]` para
@@ -75,3 +82,4 @@ export function calcJuros(p: Parcela): number {
   const dias = Math.floor((hoje.getTime() - venc.getTime()) / (1000*60*60*24));
   return Math.round(dias * JUROS_DIA * 100) / 100;
 }
+

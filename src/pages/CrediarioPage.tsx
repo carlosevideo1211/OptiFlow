@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
 import { computeTier, TIER_STYLES, type Tier, type ParcelaRanking } from '../utils/clienteRanking';
 import {
-  CINCO_ANOS_MS, hashPassword, JANELA_LABELS, calcJuros, toLocalDateStr,
+  CINCO_ANOS_MS, hashPassword, JANELA_LABELS, calcJuros, toLocalDateStr, PRAZO_NEGATIVACAO_DIAS,
   type Parcela, type CrediarioResumo, type CobrancaLog,
 } from './crediario/crediarioTypes';
 import {
@@ -57,6 +57,11 @@ export default function CrediarioPage() {
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [enviandoCobranca, setEnviandoCobranca] = useState<Set<string>>(new Set());
   const parcelaActionRef = useRef(false);
+  // Se a loja tem cadastro ativo no SPC/Serasa — mesmo campo usado em
+  // WhatsAppAutomatico.tsx (tenants.spc_serasa_ativo). Decide o tom da
+  // mensagem consolidada de debito > 1 ano nos botoes manuais abaixo
+  // (abrirWhatsApp / handleCobrarAuto).
+  const [spcAtivo, setSpcAtivo] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -144,7 +149,7 @@ export default function CrediarioPage() {
 
     // Carrega o historico de cobrancas (automaticas + manuais) referentes a
     // parcelas de crediario, para mostrar na coluna "Cobranca" da tabela.
-    const tiposCobranca = ['vencimento', 'vencimento_dia', 'vencimento_atraso5', 'cobranca_atraso', 'cobranca_manual', 'cobranca_manual_local'];
+    const tiposCobranca = ['vencimento', 'vencimento_dia', 'vencimento_atraso5', 'cobranca_atraso', 'cobranca_manual', 'cobranca_manual_local', 'aviso_negativacao', 'negociacao_debito_antigo'];
     const { data: logs } = await supabase
       .from('whatsapp_triggers_log')
       .select('reference_id, trigger_type, sent_at, success, error_message')
@@ -158,6 +163,16 @@ export default function CrediarioPage() {
       if (!logMap[l.reference_id]) {
         logMap[l.reference_id] = { trigger_type: l.trigger_type, sent_at: l.sent_at, success: l.success, error_message: l.error_message };
       }
+      // aviso_negativacao / negociacao_debito_antigo gravam reference_id =
+      // customer_id (uma mensagem por CLIENTE, nao por parcela — ver Secao 6
+      // de send-whatsapp-triggers/index.ts e os botoes manuais acima). Pra
+      // coluna "Cobranca" mostrar o aviso em cada parcela antiga desse
+      // cliente, replica o mesmo registro pra cada uma delas.
+      if (l.trigger_type === 'aviso_negativacao' || l.trigger_type === 'negociacao_debito_antigo') {
+        lista.filter(p => p.customer_id === l.reference_id).forEach(p => {
+          if (!logMap[p.id]) logMap[p.id] = { trigger_type: l.trigger_type, sent_at: l.sent_at, success: l.success, error_message: l.error_message };
+        });
+      }
     });
     setCobrancaLogs(logMap);
 
@@ -165,6 +180,16 @@ export default function CrediarioPage() {
   };
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    (async () => {
+      try {
+        const { data } = await supabase.from('tenants').select('spc_serasa_ativo').eq('id', tenantId).maybeSingle();
+        setSpcAtivo(!!data?.spc_serasa_ativo);
+      } catch (e) { console.error('CrediarioPage: falha ao buscar spc_serasa_ativo', e); }
+    })();
+  }, [tenantId]);
 
   // Marca ou desmarca um carne como negativado (enviado ao Serasa). Decisao
   // manual do Carlos, cliente a cliente — o sistema so ajuda a identificar
@@ -331,8 +356,36 @@ export default function CrediarioPage() {
       if (ss) nomeLoja = ss.name || ss.company_name || nomeLoja;
     } catch (e) { console.error('CrediarioPage: falha ao buscar store_settings', e); }
 
-    const msg = encodeURIComponent(
-      diasAtraso >= 30
+    // Debito com mais de 1 ano (365 dias): em vez da mensagem de uma parcela
+    // so, usa o mesmo aviso consolidado (todas as parcelas pendentes ha mais
+    // de 1 ano DESSE cliente, somadas com juros) que o robo automatico manda
+    // na Secao 6 de send-whatsapp-triggers/index.ts. Pedido do Carlos em
+    // 09/09/2026, apos notar que esse botao ainda mandava a mensagem antiga
+    // (de uma parcela so, "atraso ha mais de 30 dias... 5 dias de prazo")
+    // pra clientes com debito muito mais velho que isso.
+    const dividaAntiga = diasAtraso >= 365;
+    let msgTexto: string;
+    let triggerType = 'cobranca_manual_local';
+    let referenceId: string = p.id;
+    let parcelasAfetadas: Parcela[] = [p];
+
+    if (dividaAntiga) {
+      parcelasAfetadas = parcelas.filter(x => x.customer_id === p.customer_id && x.status !== 'pago' && x.due_date &&
+        Math.floor((new Date(hoje+'T00:00:00').getTime() - new Date(x.due_date+'T00:00:00').getTime())/86400000) >= 365);
+      if (parcelasAfetadas.length === 0) parcelasAfetadas = [p];
+      const totalConsolidado = parcelasAfetadas.reduce((s, x) => s + x.amount + calcJuros(x), 0);
+      const maisAntiga = parcelasAfetadas.reduce((min, x) => (!min || (x.due_date && x.due_date < min)) ? x.due_date : min, parcelasAfetadas[0].due_date);
+      const dataFmt = maisAntiga ? new Date(maisAntiga+'T00:00:00').toLocaleDateString('pt-BR') : '--';
+      const valorFmt = totalConsolidado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const parcelasTxt = parcelasAfetadas.length === 1 ? '1 parcela' : parcelasAfetadas.length + ' parcelas';
+      triggerType = spcAtivo ? 'aviso_negativacao' : 'negociacao_debito_antigo';
+      referenceId = p.customer_id || p.id;
+
+      msgTexto = spcAtivo
+        ? 'Prezado(a) ' + p.customer_name + ', a ' + nomeLoja + ' informa que consta em nosso sistema um debito em aberto de ' + parcelasTxt + ' (a mais antiga vencida em ' + dataFmt + '), totalizando ' + valorFmt + '. Solicitamos a regularizacao no prazo de ' + PRAZO_NEGATIVACAO_DIAS + ' dias corridos a partir desta mensagem. Caso o pagamento nao seja identificado ate essa data, seu nome sera incluido nos orgaos de protecao ao credito (SPC/Serasa), conforme previsto em contrato e na legislacao vigente. Para negociar ou tirar duvidas, entre em contato conosco.'
+        : 'Ola ' + p.customer_name + '! Aqui e da ' + nomeLoja + '. Identificamos que seu debito conosco esta em aberto ha mais de um ano (' + parcelasTxt + ', a mais antiga vencida em ' + dataFmt + '), totalizando ' + valorFmt + '. Gostariamos muito de resolver isso da melhor forma pra voce — temos condicoes especiais de parcelamento pra regularizar. Pode nos chamar aqui mesmo ou ligar na loja pra conversarmos?';
+    } else {
+      msgTexto = diasAtraso >= 30
         ? 'Ola ' + p.customer_name + '! Aqui e da ' + nomeLoja + '. Identificamos que sua parcela ' +
           p.installment_number + '/' + p.total_installments +
           ' no valor de R$ ' + total.toFixed(2).replace('.',',') +
@@ -342,19 +395,29 @@ export default function CrediarioPage() {
           p.installment_number + '/' + p.total_installments +
           ' no valor de R$ ' + total.toFixed(2).replace('.',',') +
           (juros > 0 ? ' (incluindo R$ ' + juros.toFixed(2).replace('.',',') + ' de juros)' : '') +
-          ' que vai vencer em ' + venc + '. Qualquer duvida estamos a disposicao!'
-    );
-    window.open('https://wa.me/55' + num + '?text=' + msg, '_blank');
+          ' que vai vencer em ' + venc + '. Qualquer duvida estamos a disposicao!';
+    }
+
+    window.open('https://wa.me/55' + num + '?text=' + encodeURIComponent(msgTexto), '_blank');
 
     // Registra no historico de cobrancas, ja que o sistema nao tem como saber se
     // o WhatsApp Web/app realmente foi enviado apos abrir — mas o pedido do Carlos
     // foi justamente ter esse registro com data assim que ele usa esse botao.
+    // Quando e divida antiga, manda trigger_type/reference_id (customer_id) pra
+    // cair no mesmo padrao usado pelo robo automatico (Secao 6) — assim o
+    // cliente entra certo na lista "Aguardando negativacao manual" depois do
+    // prazo, e o robo nao manda esse aviso de novo quando o WhatsApp
+    // automatico for conectado.
     const agora = new Date().toISOString();
     const { data, error } = await supabase.functions.invoke('whatsapp-manage', {
-      body: { action: 'log_manual_local', parcela_id: p.id, customer_id: p.customer_id, phone: num },
+      body: { action: 'log_manual_local', parcela_id: p.id, customer_id: p.customer_id, phone: num, trigger_type: triggerType, reference_id: referenceId },
     });
     if (!error && data?.ok) {
-      setCobrancaLogs(m => ({ ...m, [p.id]: { trigger_type: 'cobranca_manual_local', sent_at: agora, success: true } }));
+      setCobrancaLogs(m => {
+        const novo = { ...m };
+        parcelasAfetadas.forEach(x => { novo[x.id] = { trigger_type: triggerType, sent_at: agora, success: true }; });
+        return novo;
+      });
     } else {
       toast.error('WhatsApp aberto, mas não foi possível salvar no histórico. Tente marcar de novo mais tarde.');
     }
@@ -368,12 +431,47 @@ export default function CrediarioPage() {
     if (!p.whatsapp) { toast.error('Cliente sem WhatsApp cadastrado'); return; }
     setEnviandoCobranca(s => new Set(s).add(p.id));
     try {
-      const juros = calcJuros(p);
-      const total = p.amount + juros;
-      const { data, error } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'send_collection', phone: p.whatsapp, customer_name: p.customer_name, amount: total, due_date: p.due_date, parcela_id: p.id, customer_id: p.customer_id } });
+      // Debito com mais de 1 ano (365 dias): manda o mesmo aviso consolidado
+      // (todas as parcelas pendentes ha mais de 1 ano DESSE cliente, somadas
+      // com juros) que o robo automatico ja manda na Secao 6 de
+      // send-whatsapp-triggers/index.ts, em vez da cobranca de uma parcela
+      // so — mesmo ajuste feito em abrirWhatsApp acima, pra esse botao
+      // (envio direto pelo robo) se comportar igual. Quem monta o texto
+      // final e decide o tom (SPC ativo ou nao) e a Edge Function
+      // whatsapp-manage (tem o dado do tenant la), por isso so mandamos os
+      // dados consolidados aqui.
+      const diasAtraso = p.due_date ? Math.floor((new Date(hoje+'T00:00:00').getTime() - new Date(p.due_date+'T00:00:00').getTime())/86400000) : 0;
+      const dividaAntiga = diasAtraso >= 365;
+      let total: number;
+      let dueDateParaMsg = p.due_date;
+      let qtdParcelas = 1;
+      let parcelasAfetadas: Parcela[] = [p];
+
+      if (dividaAntiga) {
+        parcelasAfetadas = parcelas.filter(x => x.customer_id === p.customer_id && x.status !== 'pago' && x.due_date &&
+          Math.floor((new Date(hoje+'T00:00:00').getTime() - new Date(x.due_date+'T00:00:00').getTime())/86400000) >= 365);
+        if (parcelasAfetadas.length === 0) parcelasAfetadas = [p];
+        total = parcelasAfetadas.reduce((s, x) => s + x.amount + calcJuros(x), 0);
+        qtdParcelas = parcelasAfetadas.length;
+        dueDateParaMsg = parcelasAfetadas.reduce((min, x) => (!min || (x.due_date && x.due_date < min)) ? x.due_date : min, parcelasAfetadas[0].due_date);
+      } else {
+        const juros = calcJuros(p);
+        total = p.amount + juros;
+      }
+
+      const { data, error } = await supabase.functions.invoke('whatsapp-manage', { body: {
+        action: 'send_collection', phone: p.whatsapp, customer_name: p.customer_name, amount: total,
+        due_date: dueDateParaMsg, parcela_id: p.id, customer_id: p.customer_id,
+        divida_antiga: dividaAntiga, qtd_parcelas: qtdParcelas,
+      } });
       if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Falha ao enviar cobranca');
       toast.success('Cobranca enviada para ' + p.customer_name);
-      setCobrancaLogs(m => ({ ...m, [p.id]: { trigger_type: 'cobranca_manual', sent_at: new Date().toISOString(), success: true } }));
+      const triggerType = dividaAntiga ? (spcAtivo ? 'aviso_negativacao' : 'negociacao_debito_antigo') : 'cobranca_manual';
+      setCobrancaLogs(m => {
+        const novo = { ...m };
+        parcelasAfetadas.forEach(x => { novo[x.id] = { trigger_type: triggerType, sent_at: new Date().toISOString(), success: true }; });
+        return novo;
+      });
     } catch (e: any) {
       toast.error(e.message || 'Erro ao enviar cobranca');
     } finally {
@@ -1166,3 +1264,4 @@ export default function CrediarioPage() {
     </div>
   );
 }
+
