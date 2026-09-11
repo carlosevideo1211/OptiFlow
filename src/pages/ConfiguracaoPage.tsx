@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
   Settings, Save, Store, Phone, Mail, MapPin, Key,
-  MessageCircle, Camera, Upload, X, Eye, EyeOff, Building2
+  MessageCircle, Camera, Upload, X, Building2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import WhatsAppAutomatico from '../components/WhatsAppAutomatico';
@@ -12,9 +12,17 @@ import WhatsAppAutomatico from '../components/WhatsAppAutomatico';
 interface StoreSettings {
   id?: string; tenant_id: string; name: string; cnpj: string;
   phone: string; email: string; address: string; city: string; state: string;
-  logo_url: string; pix_key: string; wa_token: string; wa_phone_id: string; wa_number: string;
+  logo_url: string; pix_key: string; wa_phone_id: string; wa_number: string;
   asaas_key: string; asaas_env: string; asaas_enabled: boolean;
 }
+// wa_token (Token de Acesso da Meta Cloud API) foi removido daqui de
+// proposito, 10/09/2026: esse token dava acesso a mandar mensagem por
+// QUALQUER numero de WhatsApp atribuido ao mesmo usuario de sistema da Meta
+// (nao so o desta otica), entao deixa-lo visivel/editavel numa tela que
+// qualquer Master de QUALQUER tenant pode abrir era um vazamento entre
+// inquilinos. Ele agora mora como segredo do backend (variavel de ambiente
+// META_WHATSAPP_TOKEN nas Edge Functions), nao em store_settings. O Phone
+// ID continua aqui pois sozinho ele nao da acesso a nada.
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -24,11 +32,10 @@ export default function ConfiguracaoPage() {
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
   const [tab, setTab]             = useState<'loja'|'integracoes'|'tema'>('loja');
-  const [showToken, setShowToken] = useState(false);
   const [form, setForm] = useState<StoreSettings>({
     tenant_id: tenantId||'', name:'', cnpj:'', phone:'', email:'',
     address:'', city:'', state:'', logo_url:'',
-    pix_key:'', wa_token:'', wa_phone_id:'', wa_number:'',
+    pix_key:'', wa_phone_id:'', wa_number:'',
     asaas_key:'', asaas_env:'sandbox', asaas_enabled:false
   });
 
@@ -38,7 +45,16 @@ export default function ConfiguracaoPage() {
     // Corrigido 06/09/2026 (Achado 7 da auditoria): .single() lanca erro
     // (inofensivo, mas desnecessario) pra tenant novo sem store_settings
     // salvo ainda; .maybeSingle() so retorna null nesse caso.
-    supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle()
+    //
+    // Corrigido 10/09/2026: trocado "select('*')" por uma lista explicita de
+    // colunas, SEM wa_token. Antes o "*" trazia o token da Meta Cloud API
+    // pro navegador de qualquer Master que abrisse essa tela — mesmo sem
+    // mostrar ele na interface, ele ja tinha vazado pro cliente (visivel via
+    // devtools/network). Selecionar so o que a tela realmente usa garante
+    // que o token nunca sai do backend.
+    supabase.from('store_settings')
+      .select('id,tenant_id,name,cnpj,phone,email,address,city,state,logo_url,pix_key,wa_phone_id,wa_number,asaas_key,asaas_env,asaas_enabled')
+      .eq('tenant_id', tenantId).maybeSingle()
       .then(({ data }) => {
         if (data) setForm({...data, asaas_key: (data as any).asaas_key||'', asaas_env: (data as any).asaas_env||'sandbox', asaas_enabled: (data as any).asaas_enabled||false} as StoreSettings);
         setLoading(false);
@@ -313,26 +329,12 @@ export default function ConfiguracaoPage() {
                 <input className="form-input" value={form.wa_phone_id} onChange={e=>set('wa_phone_id',e.target.value)} placeholder="ID do número no Meta"/>
               </div>
               <div>
-                <label className="form-label">Token de Acesso</label>
-                <div style={{ position:'relative' }}>
-                  <input className="form-input" type={showToken?'text':'password'}
-                    value={form.wa_token} onChange={e=>set('wa_token',e.target.value)}
-                    placeholder="Token da API do WhatsApp Business"
-                    style={{ paddingRight:44 }}/>
-                  <button type="button" onClick={() => setShowToken(s=>!s)}
-                    style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
-                      background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)' }}>
-                    {showToken ? <EyeOff size={16}/> : <Eye size={16}/>}
-                  </button>
-                </div>
-              </div>
-              <div>
                 <label className="form-label">Chave PIX (QR Code nos carnês)</label>
                 <input className="form-input" value={form.pix_key} onChange={e=>set('pix_key',e.target.value)} placeholder="CPF, CNPJ, e-mail ou telefone"/>
               </div>
             </div>
             <div style={{ marginTop:16, padding:'12px 16px', borderRadius:8, background:'rgba(99,102,241,.08)', fontSize:13, color:'var(--text-muted)' }}>
-              💡 Acesse <strong>developers.facebook.com</strong> e crie um app com o produto WhatsApp para obter as credenciais.
+              💡 O Token de Acesso não fica mais nesta tela — ele é configurado uma única vez no backend (fala com o suporte técnico) e vale pra todos os números cadastrados.
             </div>
           </div>
 
@@ -386,3 +388,4 @@ export default function ConfiguracaoPage() {
     </div>
   );
 }
+

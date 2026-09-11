@@ -245,7 +245,8 @@ export interface StoreSettings {
   state?: string;
   logo_url?: string;
   pix_key?: string;
-  wa_token?: string;
+  // wa_token removido 10/09/2026 — nunca mais deve ser buscado nem exibido
+  // no frontend. Ver comentário em ConfiguracaoPage.tsx.
   wa_phone_id?: string;
   wa_number?: string;
 }
@@ -288,3 +289,4 @@ export const OS_STATUS_COLORS: Record<string, string> = {
   entregue: '#00C853',
   cancelada: '#FF6B6B',
 };
+
