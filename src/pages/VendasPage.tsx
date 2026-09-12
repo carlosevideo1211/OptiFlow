@@ -145,12 +145,6 @@ export default function VendasPage() {
   }, [caixaData]);
   const caixaTotal = caixaData.reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
 
-  const totalPeriodo = sales.reduce((s, v) => s + (v.status === 'concluida' ? v.total : 0), 0);
-  const ticketMed    = sales.filter(v => v.status === 'concluida').length ? totalPeriodo / sales.filter(v => v.status === 'concluida').length : 0;
-  const totalDesc    = sales.reduce((s, v) => s + (v.discount || 0), 0);
-  const numVendas    = sales.filter(v => v.status === 'concluida').length;
-  const vendedores   = useMemo(() => [...new Set(sales.map(v => v.vendedor).filter(Boolean))], [sales]);
-
   const filtered = useMemo(() => {
     let list = sales;
     const buscando = search.trim().length > 0;
@@ -167,6 +161,18 @@ export default function VendasPage() {
     }
     return list;
   }, [sales, search, vendedorFilter, dateFrom, dateTo]);
+
+  // Corrigido 12/09/2026: os cards de resumo (Número de Vendas, Tíquete Médio,
+  // Total Líquido, Descontos Conc.) usam a MESMA lista já filtrada por
+  // data/busca/vendedor que a tabela abaixo exibe. Antes usavam `sales` (todo o
+  // historico de vendas do tenant, sem filtro nenhum), entao os cards nunca
+  // batiam com a lista filtrada por data — por isso a "Otica Teste" via 2
+  // vendas / R$480,00 nos cards com so 1 venda de R$200,00 na lista.
+  const totalPeriodo = filtered.reduce((s, v) => s + (v.status === 'concluida' ? v.total : 0), 0);
+  const ticketMed    = filtered.filter(v => v.status === 'concluida').length ? totalPeriodo / filtered.filter(v => v.status === 'concluida').length : 0;
+  const totalDesc    = filtered.reduce((s, v) => s + (v.discount || 0), 0);
+  const numVendas    = filtered.filter(v => v.status === 'concluida').length;
+  const vendedores   = useMemo(() => [...new Set(sales.map(v => v.vendedor).filter(Boolean))], [sales]);
 
   const subtotal = cartItems.reduce((s, i) => s + i.total + i.acrescimo, 0);
   const total    = Math.max(0, subtotal - discount);
