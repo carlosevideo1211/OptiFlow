@@ -676,7 +676,7 @@ export default function OrdemServicoPage() {
        )}
 
       {showModal && (
-        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:780, width:'95%', maxHeight:'92vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">

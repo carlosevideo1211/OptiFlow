@@ -861,7 +861,7 @@ export default function AdminPanelPage() {
 
       {/* Modal editar/criar */}
       {showModal && (
-        <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget){setEditing(null);setForm({});setShowModal(false);} }}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:560, width:'95%' }} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{editing ? 'Editar: '+editing.company_name : 'Novo Tenant'}</h2>

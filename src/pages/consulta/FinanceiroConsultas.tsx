@@ -261,7 +261,7 @@ export default function FinanceiroConsultas() {
       </div>
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, width: '95%' }}>
             <div className="modal-header">
               <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Wallet size={18} /> {editing ? 'Editar lançamento' : (form.type === 'receita' ? 'Nova Receita' : 'Nova Despesa')}</h2>

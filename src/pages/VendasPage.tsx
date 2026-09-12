@@ -834,7 +834,7 @@ export default function VendasPage() {
       )}
 
       {viewSale && (
-        <div className="modal-overlay" onClick={() => setViewSale(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: 520, width: '95%' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Venda #{String(viewSale.sale_number).padStart(4, '0')}</h2>

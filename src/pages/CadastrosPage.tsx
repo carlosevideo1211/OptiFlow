@@ -516,7 +516,7 @@ export default function CadastrosPage() {
 
       {/* Modal Fornecedor */}
       {showModal && (
-        <div className="modal-overlay" onClick={()=>setShowModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:560, width:'95%' }} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{editing?'Editar Fornecedor':'Novo Fornecedor'}</h2>
@@ -556,7 +556,7 @@ export default function CadastrosPage() {
 
       {/* Modal Profissional */}
       {showProfModal && (
-        <div className="modal-overlay" onClick={()=>setShowProfModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:480, width:'95%' }} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{editingProf?'Editar Profissional':'Novo Profissional'}</h2>
@@ -680,7 +680,7 @@ export default function CadastrosPage() {
 
       {/* Modal Funcionário */}
       {showFuncModal && (
-        <div className="modal-overlay" onClick={()=>setShowFuncModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:480, width:'95%' }} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{editingFunc?'Editar Funcionário':'Novo Funcionário'}</h2>

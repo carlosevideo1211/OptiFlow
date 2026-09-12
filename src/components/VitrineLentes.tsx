@@ -282,7 +282,7 @@ export default function VitrineLentes({ onClose, onConfirm }: Props) {
   const tratamentosSelecionados = TRATAMENTOS.filter(t => tratamentos.has(t.id));
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 900, width: '95%', maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">Vitrine de Lentes e Tratamentos</h2>

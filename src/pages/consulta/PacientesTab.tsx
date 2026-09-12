@@ -196,7 +196,7 @@ export default function PacientesTab() {
       )}
 
       {atenderPaciente && (
-        <div className="modal-overlay" onClick={() => setAtenderPaciente(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440, width: '95%' }}>
             <div className="modal-header">
               <h2 className="modal-title" style={{ display:'flex', alignItems:'center', gap:8 }}><Stethoscope size={18}/> Iniciar atendimento</h2>

@@ -512,8 +512,7 @@ export default function CrediarioPage() {
   // que ja esta com todas as parcelas pagas (ver crediariosQuitadosIds abaixo).
   const imprimirQuitacaoCrediario = (crediarioId: string) => imprimirQuitacaoCrediarioDoc(crediarioId, tenantId);
   const payModal = showPayModal && selectedParcela ? (
-    <div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.85)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center'}}
-      onClick={()=>setShowPayModal(false)}>
+    <div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.85)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{background:'var(--card,#1e2130)',borderRadius:12,padding:28,width:'100%',maxWidth:460,boxShadow:'0 20px 60px rgba(0,0,0,0.5)',border:'1px solid rgba(255,255,255,0.08)'}}
         onClick={e=>e.stopPropagation()}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>

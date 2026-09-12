@@ -607,7 +607,7 @@ export default function FinanceiroPage() {
 
       {/* Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={()=>setShowModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:500, width:'95%' }} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title" style={{ color:editType==='receita'?'#22c55e':'#f87171' }}>

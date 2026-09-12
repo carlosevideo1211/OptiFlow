@@ -332,7 +332,7 @@ export default function FichaPaciente({ customerId, onBack }: Props) {
       </div>
 
       {showEdit && (
-        <div className="modal-overlay" onClick={() => setShowEdit(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:520, width:'95%' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Editar dados do paciente</h2>

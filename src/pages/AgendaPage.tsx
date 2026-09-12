@@ -296,7 +296,7 @@ export default function AgendaPage() {
 
       {/* Modal Novo Agendamento */}
       {showModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: 500, width: '95%' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Novo Agendamento</h3>

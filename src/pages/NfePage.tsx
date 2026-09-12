@@ -531,7 +531,7 @@ export default function NfePage() {
 
       {/* Modal Nova NF-e */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:700, width:'95%', maxHeight:'90vh', overflow:'auto' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">📄 Nova NF-e</h2>
@@ -645,7 +645,7 @@ export default function NfePage() {
 
       {/* Modal Ver XML */}
       {showXml && (
-        <div className="modal-overlay" onClick={() => setShowXml(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:800, width:'95%', maxHeight:'90vh' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">📄 XML — NF-e #{String(showXml.numero).padStart(9,'0')}</h2>

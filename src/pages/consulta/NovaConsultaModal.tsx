@@ -168,7 +168,7 @@ export default function NovaConsultaModal({ onClose, onSaved }: Props) {
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 480, width: '95%' }}>
         <div className="modal-header">
           <h3>Nova Consulta</h3>
