@@ -382,17 +382,33 @@ export default function VendasPage() {
           }
         }
       }
+      // Corrigido em 15/09/2026 (2ª reclamação da Larissa, Ótica Solar — mesmo
+      // sintoma: "a venda foi salva mas as parcelas não aplicaram no diário"):
+      // os dois inserts em financial_transactions abaixo (entrada/à vista e
+      // parcelas do crediário) estavam dentro de um try/catch que só fazia
+      // console.error, sem NENHUM aviso pro operador. Diferente do bloco de
+      // crediario/crediario_parcelas acima (que já tinha ganho um toast visível
+      // em 31/08/2026), uma falha aqui passava 100% despercebida: a venda e o
+      // crediário ficavam OK, mas a parcela nunca aparecia em Financeiro >
+      // Contas a Receber — exatamente "não aplicar no diário". Agora cada
+      // insert verifica seu próprio erro e mostra um toast visível, no mesmo
+      // padrão dos avisos de crediário acima, e uma exceção inesperada (rede,
+      // etc.) também gera um aviso em vez de sumir só no console.
       try {
         // Lançamento da entrada ou pagamento à vista
         const entradaAmount = payment === 'crediario' ? (entrada||0) : Math.max(0, total - (discount||0));
         if (entradaAmount > 0) {
-          await supabase.from('financial_transactions').insert([{
+          const { error: entradaErr } = await supabase.from('financial_transactions').insert([{
             tenant_id: tenantId, type: 'receita',
             description: 'Venda #' + saleData.sale_number + (customerName ? ' — ' + customerName : ''),
             category: 'Vendas', amount: entradaAmount,
             due_date: toLocalDateStr(),
             paid_at: new Date().toISOString(), status: 'pago', payment_method: payment
           }]);
+          if (entradaErr) {
+            console.error('Falha ao lançar entrada/pagamento no Financeiro (venda #' + saleData.sale_number + '):', entradaErr);
+            toast.error('⚠ Venda #' + saleData.sale_number + ' registrada, mas o pagamento não apareceu no Financeiro. Avise o suporte para corrigir.', { duration: 12000 });
+          }
         }
         // Lançar parcelas do crediário como contas a receber.
         // Sempre que o crediário/parcelas acima foram criados com sucesso, usa
@@ -414,9 +430,16 @@ export default function VendasPage() {
             due_date: p.due_date, paid_at: null, status: 'pendente', payment_method: 'crediario',
             crediario_parcela_id: usarParcelasVinculadas ? crediarioParcelaIds[i] : null,
           }));
-          await supabase.from('financial_transactions').insert(parcelasTransactions);
+          const { error: parcFinErr } = await supabase.from('financial_transactions').insert(parcelasTransactions);
+          if (parcFinErr) {
+            console.error('Falha ao lançar parcelas do crediário no Financeiro (venda #' + saleData.sale_number + '):', parcFinErr);
+            toast.error('⚠ Venda #' + saleData.sale_number + ' e crediário registrados, mas as parcelas não apareceram em Financeiro > Contas a Receber. Avise o suporte para corrigir.', { duration: 12000 });
+          }
         }
-      } catch (finErr) { console.error('FINANCEIRO ERRO:', finErr); }
+      } catch (finErr: any) {
+        console.error('FINANCEIRO ERRO (exceção inesperada):', finErr);
+        toast.error('⚠ Venda #' + saleData.sale_number + ' registrada, mas houve um erro inesperado ao lançar no Financeiro. Avise o suporte para corrigir.', { duration: 12000 });
+      }
       toast.success('✅ Venda #' + saleData.sale_number + ' finalizada!');
       clearCart(); setTab('lista'); load();
     } catch (err: any) { toast.error(err.message || 'Erro ao finalizar venda'); }
