@@ -27,7 +27,10 @@ export default function WhatsAppAutomatico() {
   const { user, tenantId } = useAuth();
   const isMaster = user?.role === 'master';
 
-  const [status, setStatus] = useState<{ connected: boolean; instance: string | null; state?: string } | null>(null);
+  const [status, setStatus] = useState<{
+    connected: boolean; instance: string | null; state?: string;
+    canal?: 'evolution' | 'meta'; numero?: string; nome_verificado?: string; error?: string;
+  } | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [qrcode, setQrcode] = useState<string | null>(null);
@@ -168,9 +171,15 @@ export default function WhatsAppAutomatico() {
       const { data, error } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'connect' } });
       if (error) throw error;
       if (data?.qrcode) {
+        // Canal Evolution: QR Code pra escanear.
         setQrcode(data.qrcode);
+      } else if (data?.ja_conectado) {
+        // Canal Meta: nao existe QR Code, so confirma que o Phone ID/Token
+        // configurados em Configuração > Integrações estao validos.
+        toast.success(`WhatsApp oficial conectado${data.numero ? ` — número ${data.numero}` : ''}.`);
+        carregarStatus();
       } else {
-        toast.error(data?.error || 'Não foi possível gerar o QR Code agora. Tente de novo em alguns segundos.');
+        toast.error(data?.error || 'Não foi possível conectar agora. Tente de novo em alguns segundos.');
       }
     } catch (e: any) {
       toast.error(e.message || 'Erro ao conectar WhatsApp');
@@ -180,6 +189,14 @@ export default function WhatsAppAutomatico() {
   };
 
   const desconectar = async () => {
+    // Canal Meta: nao existe "sessao" pra desconectar (nao e um WhatsApp Web).
+    // Em vez de chamar a function so pra receber um erro explicativo, ja
+    // avisamos direto aqui, sem o "Tem certeza" (que nao faz sentido pra uma
+    // acao que nao existe).
+    if (status?.canal === 'meta') {
+      toast('Para desativar o canal oficial, remova o Phone ID em Configuração → Integrações.', { icon: 'ℹ️' });
+      return;
+    }
     if (!confirm('Tem certeza que quer desconectar o WhatsApp? Os gatilhos automáticos param de funcionar até reconectar.')) return;
     try {
       const { error } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'disconnect' } });
@@ -207,9 +224,14 @@ export default function WhatsAppAutomatico() {
           </span>
         )}
       </div>
-      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
         Envia mensagens automáticas de aniversário, vencimento de parcela, pós-venda e adaptação de lentes — sem precisar de nada manual.
       </p>
+      {!loadingStatus && status?.canal && (
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, opacity: 0.8 }}>
+          Canal: {status.canal === 'meta' ? 'WhatsApp Business Oficial (Meta)' : 'automação via WhatsApp Web (não-oficial)'}
+        </p>
+      )}
 
       {!isMaster && (
         <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
@@ -217,7 +239,28 @@ export default function WhatsAppAutomatico() {
         </p>
       )}
 
-      {isMaster && !status?.connected && !qrcode && (
+      {/* ---------- Canal Meta (oficial): sem QR Code — a "conexao" e so o
+          Phone ID em Configuração > Integrações estar valido. ---------- */}
+      {isMaster && status?.canal === 'meta' && (
+        <div style={{ marginTop: 4 }}>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+            {status?.connected
+              ? `Canal oficial (Meta Cloud API) ativo${status.numero ? ` — número ${status.numero}` : ''}${status.nome_verificado ? ` (${status.nome_verificado})` : ''}. Nenhuma ação necessária aqui.`
+              : (status?.error
+                  ? `Canal oficial selecionado, mas as credenciais não são válidas: ${status.error}. Confira o Phone ID em Configuração → Integrações.`
+                  : 'Canal oficial (Meta Cloud API) selecionado para esta ótica, mas ainda sem Phone ID cadastrado. Cole o Phone ID em Configuração → Integrações e depois clique em "Verificar conexão".')}
+          </p>
+          <button type="button" onClick={conectar} disabled={connecting}
+            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'none',
+              color: 'var(--text-muted)', fontSize: 13, fontWeight: 600, cursor: connecting ? 'default' : 'pointer', opacity: connecting ? 0.7 : 1 }}>
+            {connecting ? 'Verificando...' : 'Verificar conexão'}
+          </button>
+        </div>
+      )}
+
+      {/* ---------- Canal Evolution (não-oficial): fluxo de QR Code, igual
+          a antes — nada muda aqui pras óticas que continuam nesse canal. ---------- */}
+      {isMaster && status?.canal !== 'meta' && !status?.connected && !qrcode && (
         <button type="button" onClick={conectar} disabled={connecting}
           style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: '#25D366',
             color: '#fff', fontSize: 13, fontWeight: 600, cursor: connecting ? 'default' : 'pointer',
@@ -247,7 +290,7 @@ export default function WhatsAppAutomatico() {
         </div>
       )}
 
-      {isMaster && status?.connected && (
+      {isMaster && status?.canal !== 'meta' && status?.connected && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button type="button" onClick={desconectar}
             style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.08)',
