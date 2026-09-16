@@ -18,6 +18,11 @@ interface FiscalConfig {
   endereco: string; numero: string; complemento: string; bairro: string;
   municipio: string; uf: string; cep: string; codigo_municipio: string;
   ambiente: string; serie_nfe: string; ultimo_numero: number;
+  // Integração Focus NFe (emissão automática no fechamento da venda).
+  // emissao_automatica_ativa e focus_nfe_token só são ligados por SQL
+  // direto pelo Carlos (master do sistema) — não existe campo aqui para
+  // editar isso, só o status informativo abaixo.
+  emissao_automatica_ativa?: boolean;
 }
 
 interface Nfe {
@@ -27,6 +32,11 @@ interface Nfe {
   total_produtos: number; total_desconto: number; total_nota: number;
   xml_gerado: string; observacoes: string; created_at: string;
   sale_id?: string;
+  // Preenchidos quando a nota foi emitida automaticamente pela Focus NFe
+  // (origem: 'automatica') em vez de gerada manualmente nesta tela.
+  origem?: 'manual' | 'automatica';
+  focus_ref?: string; focus_status?: string; chave_nfe?: string;
+  danfe_url?: string; xml_url?: string; erro_mensagem?: string;
 }
 
 interface NfeItem {
@@ -63,6 +73,9 @@ const STATUS_NFE: Record<string, { label: string; color: string; bg: string }> =
   gerado:     { label: 'XML Gerado', color: '#f59e0b', bg: 'rgba(245,158,11,.15)'  },
   autorizado: { label: 'Autorizado', color: '#22c55e', bg: 'rgba(34,197,94,.15)'   },
   cancelado:  { label: 'Cancelado',  color: '#f87171', bg: 'rgba(248,113,113,.15)' },
+  // Só aparece em notas emitidas automaticamente (origem: 'automatica') —
+  // a Focus NFe rejeitou ou deu erro na autorização (ver erro_mensagem).
+  erro:       { label: 'Erro na emissão', color: '#f87171', bg: 'rgba(248,113,113,.15)' },
 };
 
 const REGIMES = [
@@ -338,6 +351,23 @@ export default function NfePage() {
     toast.success('Status atualizado!'); load();
   };
 
+  // Reconsulta uma nota emitida automaticamente (origem: 'automatica') que
+  // ficou "processando" na Focus NFe — raro em NFC-e (a resposta normalmente
+  // já vem pronta na hora), mas serve de rede de segurança em caso de
+  // contingência ou instabilidade da SEFAZ.
+  const [verificando, setVerificando] = useState<string | null>(null);
+  const verificarStatus = async (nfe: Nfe) => {
+    setVerificando(nfe.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('emitir-nfce', { body: { action: 'status', nfe_id: nfe.id } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success('Status atualizado: ' + (STATUS_NFE[data?.status]?.label || data?.status));
+      load();
+    } catch (err: any) { toast.error(err.message || 'Erro ao verificar status na Focus NFe'); }
+    finally { setVerificando(null); }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -363,6 +393,18 @@ export default function NfePage() {
           <AlertTriangle size={16}/> <strong>Ambiente de Homologação</strong> — NF-e geradas não têm valor fiscal. Altere para Produção nas configurações quando estiver pronto.
         </div>
       )}
+
+      {/* Status da emissão automática (Focus NFe) — informativo, ligado só
+          por SQL direto pelo Carlos. Nenhum campo aqui pra editar. */}
+      <div style={{ padding:'10px 16px', borderRadius:8, marginBottom:20, display:'flex', alignItems:'center', gap:8, fontSize:13,
+        background: config.emissao_automatica_ativa ? 'rgba(34,197,94,.1)' : 'rgba(148,163,184,.1)',
+        border: '1px solid ' + (config.emissao_automatica_ativa ? 'rgba(34,197,94,.3)' : 'rgba(148,163,184,.25)'),
+        color: config.emissao_automatica_ativa ? '#22c55e' : 'var(--text-muted)' }}>
+        <CheckCircle size={16}/>
+        {config.emissao_automatica_ativa
+          ? <span><strong>Emissão automática ativa</strong> — toda venda finalizada gera uma NFC-e automaticamente via Focus NFe.</span>
+          : <span>Emissão automática via Focus NFe ainda não está ativa nesta ótica. As notas abaixo continuam sendo criadas manualmente.</span>}
+      </div>
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border)' }}>
@@ -413,7 +455,7 @@ export default function NfePage() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Nº NF-e</th><th>Data</th><th>Cliente</th><th>Total</th><th>Status</th><th>Ações</th></tr>
+                  <tr><th>Nº NF-e</th><th>Origem</th><th>Data</th><th>Cliente</th><th>Total</th><th>Status</th><th>Ações</th></tr>
                 </thead>
                 <tbody>
                   {filtered.map(nfe => {
@@ -421,27 +463,46 @@ export default function NfePage() {
                     return (
                       <tr key={nfe.id}>
                         <td style={{ fontWeight:700, color:'#6366f1' }}>#{String(nfe.numero).padStart(9,'0')}</td>
+                        <td>
+                          <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20, background: nfe.origem==='automatica' ? 'rgba(99,102,241,.12)' : 'rgba(148,163,184,.15)', color: nfe.origem==='automatica' ? '#6366f1' : 'var(--text-muted)' }}>
+                            {nfe.origem === 'automatica' ? '🤖 Focus NFe' : 'Manual'}
+                          </span>
+                        </td>
                         <td style={{ fontSize:13 }}>{new Date(nfe.data_emissao+'T00:00:00').toLocaleDateString('pt-BR')}</td>
                         <td style={{ fontWeight:500 }}>{nfe.cliente_nome}</td>
                         <td style={{ fontWeight:700, color:'#22c55e' }}>{formatBRL(nfe.total_nota)}</td>
                         <td>
-                          <span style={{ fontSize:12, fontWeight:600, padding:'3px 10px', borderRadius:20, background:st.bg, color:st.color }}>
+                          <span style={{ fontSize:12, fontWeight:600, padding:'3px 10px', borderRadius:20, background:st.bg, color:st.color }} title={nfe.erro_mensagem || ''}>
                             {st.label}
                           </span>
                         </td>
                         <td>
                           <div style={{ display:'flex', gap:5 }}>
+                            {nfe.danfe_url && (
+                              <button onClick={() => window.open(nfe.danfe_url, '_blank')} title="Ver DANFE (Focus NFe)"
+                                style={{ padding:'5px 8px', borderRadius:7, border:'none', cursor:'pointer', background:'rgba(34,197,94,.12)', color:'#22c55e', display:'flex', alignItems:'center' }}>
+                                <Download size={14}/>
+                              </button>
+                            )}
                             {nfe.xml_gerado && (
                               <button onClick={() => downloadXML(nfe)} title="Baixar XML"
                                 style={{ padding:'5px 8px', borderRadius:7, border:'none', cursor:'pointer', background:'rgba(99,102,241,.12)', color:'#6366f1', display:'flex', alignItems:'center' }}>
                                 <Download size={14}/>
                               </button>
                             )}
-                            <button onClick={() => setShowXml(nfe)} title="Ver XML"
-                              style={{ padding:'5px 8px', borderRadius:7, border:'none', cursor:'pointer', background:'rgba(255,255,255,.06)', color:'var(--text-muted)', display:'flex', alignItems:'center' }}>
-                              <Eye size={14}/>
-                            </button>
-                            {nfe.status === 'gerado' && (
+                            {nfe.xml_gerado && (
+                              <button onClick={() => setShowXml(nfe)} title="Ver XML"
+                                style={{ padding:'5px 8px', borderRadius:7, border:'none', cursor:'pointer', background:'rgba(255,255,255,.06)', color:'var(--text-muted)', display:'flex', alignItems:'center' }}>
+                                <Eye size={14}/>
+                              </button>
+                            )}
+                            {nfe.origem === 'automatica' && (nfe.status === 'gerado') && (
+                              <button onClick={() => verificarStatus(nfe)} title="Verificar status na Focus NFe" disabled={verificando === nfe.id}
+                                style={{ padding:'5px 8px', borderRadius:7, border:'none', cursor:'pointer', background:'rgba(245,158,11,.12)', color:'#f59e0b', display:'flex', alignItems:'center' }}>
+                                <Clock size={14}/>
+                              </button>
+                            )}
+                            {nfe.origem !== 'automatica' && nfe.status === 'gerado' && (
                               <button onClick={() => updateStatus(nfe,'autorizado')} title="Marcar como Autorizado"
                                 style={{ padding:'5px 8px', borderRadius:7, border:'none', cursor:'pointer', background:'rgba(34,197,94,.12)', color:'#22c55e', display:'flex', alignItems:'center' }}>
                                 <CheckCircle size={14}/>

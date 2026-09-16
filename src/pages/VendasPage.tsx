@@ -441,6 +441,33 @@ export default function VendasPage() {
         toast.error('⚠ Venda #' + saleData.sale_number + ' registrada, mas houve um erro inesperado ao lançar no Financeiro. Avise o suporte para corrigir.', { duration: 12000 });
       }
       toast.success('✅ Venda #' + saleData.sale_number + ' finalizada!');
+
+      // Emissão automática de NFC-e (Focus NFe), se esta ótica já estiver no
+      // canal automático (fiscal_config.emissao_automatica_ativa = true,
+      // ligado só por SQL direto pelo Carlos — ver migration_focus_nfe.sql).
+      // Roda depois do toast de sucesso da venda e nunca desfaz nem trava a
+      // venda: se a ótica ainda não estiver configurada, a função devolve
+      // "skipped" e nada é mostrado; se der erro na emissão em si, a venda já
+      // está salva — só avisamos pra emitir manualmente depois em Nota Fiscal.
+      try {
+        const { data: nfceData, error: nfceError } = await supabase.functions.invoke('emitir-nfce', {
+          body: { action: 'emitir', sale_id: saleData.id },
+        });
+        if (!nfceError && nfceData && !nfceData.skipped) {
+          if (nfceData.success) {
+            toast.success(
+              nfceData.status === 'autorizado'
+                ? '📄 NFC-e emitida automaticamente!'
+                : '📄 NFC-e enviada para autorização — confira o status em Nota Fiscal.'
+            );
+          } else {
+            toast.error('⚠ Venda #' + saleData.sale_number + ' finalizada, mas a NFC-e automática falhou (' + (nfceData.error || 'erro desconhecido') + '). Emita manualmente em Nota Fiscal.', { duration: 10000 });
+          }
+        }
+      } catch (nfceErr: any) {
+        console.error('Falha ao chamar emitir-nfce para a venda #' + saleData.sale_number + ':', nfceErr);
+      }
+
       clearCart(); setTab('lista'); load();
     } catch (err: any) { toast.error(err.message || 'Erro ao finalizar venda'); }
     finally { setSaving(false); }
