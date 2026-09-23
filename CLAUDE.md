@@ -628,3 +628,10 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   focus_nfe_token para o token de Producao, conferir CSOSN (400) e NCM (90049000) com o contador.
 - ATENCAO seguranca: NfePage.tsx carrega fiscal_config com select('*'), o que manda o focus_nfe_token
   para o navegador (mesmo problema que ja foi corrigido no token da Meta). Pendente corrigir.
+- 23/09 (fim do dia): NFC-e de teste AUTORIZADA (Homologacao, venda #27630, nota 1 serie 1), DANFE abre e
+  imprime. Codigo do produto na nota = products.code (ou numero do item). Carlos vai levar ao contador
+  (resposta prevista 24/09): regime (Simples x MEI/CRT 4), CSOSN 400 x 102, CFOP 5102/5101, NCM por tipo
+  (hoje tudo 9004.90.00), CST PIS/COFINS (hoje 07), IBS/CBS 2026 (CST 000/000001, 0,9%/0,1%), percentual
+  Lei 12.741, numeracao da NFC-e em Producao, endereco (nota sai com CNPJ de Manaus mas a loja fica em
+  Careiro Castanho - pode exigir filial), crediario como "05 Credito Loja" com entrada em dinheiro,
+  CPF sempre ou so quando o cliente pede. Depois: ajustar emitir-nfce e trocar ambiente/token p/ Producao.
