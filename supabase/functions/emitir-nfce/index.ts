@@ -33,6 +33,7 @@ type ItemFocus = {
   cfop: string;
   codigo_ncm: string;
   valor_desconto?: string;
+  [campoIbsCbs: string]: unknown;
   unidade_comercial: string;
   quantidade_comercial: string;
   valor_unitario_comercial: string;
@@ -80,6 +81,36 @@ function formaPagamentoFocus(codigo: string, valor: number, descricaoOutros: str
 // do destinatario (senao rejeita a nota).
 const TEXTO_HOMOLOGACAO = "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL";
 const NOME_HOMOLOGACAO = "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL";
+
+// Reforma Tributaria (IBS/CBS). Em 2026 e ano de teste: os valores sao so
+// informativos na nota (nao geram pagamento), com CBS 0,9% e IBS estadual
+// 0,1% (IBS municipal 0%). A SEFAZ-AM rejeitou a nota de teste de 23/09/2026
+// com "Rejeicao: IBS/CBS nao informado", por isso o grupo vai sempre.
+// CST 000 + cClassTrib 000001 = tributacao integral (venda comum).
+// Ao virar o ano (2027+) as aliquotas mudam: revisar com o contador.
+const IBS_CBS_CST = "000";
+const IBS_CBS_CLASSIFICACAO = "000001";
+const CBS_ALIQUOTA = 0.9;
+const IBS_UF_ALIQUOTA = 0.1;
+const IBS_MUN_ALIQUOTA = 0;
+
+function camposIbsCbs(base: number): Record<string, string> {
+  const r2 = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
+  const ibsUf = base * IBS_UF_ALIQUOTA / 100;
+  const ibsMun = base * IBS_MUN_ALIQUOTA / 100;
+  return {
+    ibs_cbs_situacao_tributaria: IBS_CBS_CST,
+    ibs_cbs_classificacao_tributaria: IBS_CBS_CLASSIFICACAO,
+    ibs_cbs_base_calculo: r2(base),
+    cbs_aliquota: CBS_ALIQUOTA.toFixed(2),
+    cbs_valor: r2(base * CBS_ALIQUOTA / 100),
+    ibs_uf_aliquota: IBS_UF_ALIQUOTA.toFixed(2),
+    ibs_uf_valor: r2(ibsUf),
+    ibs_mun_aliquota: IBS_MUN_ALIQUOTA.toFixed(2),
+    ibs_mun_valor: r2(ibsMun),
+    ibs_valor_total: r2(Math.round(ibsUf * 100) / 100 + Math.round(ibsMun * 100) / 100),
+  };
+}
 
 function cpfValido(cpf: string): boolean {
   if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false;
@@ -268,6 +299,7 @@ serve(async (req) => {
           cofins_situacao_tributaria: "07",
         };
         if (descItem > 0) it.valor_desconto = descItem.toFixed(2);
+        Object.assign(it, camposIbsCbs(bruto - descItem));
         return it;
       });
 
