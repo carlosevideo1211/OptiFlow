@@ -118,6 +118,9 @@ export default function VendasPage() {
     if (nota?.status === 'autorizado' && nota.danfe_url) { window.open(nota.danfe_url, '_blank'); return; }
     const acao = nota?.status === 'gerado' ? 'status' : 'emitir';
     if (acao === 'emitir' && !confirm(`Emitir NFC-e da venda #${String(v.sale_number).padStart(4, '0')} (${formatBRL(v.total)}) para ${v.customer_name || 'Consumidor'}?`)) return;
+    // A aba da nota precisa ser aberta ja no clique: depois do "await" o
+    // navegador trata como pop-up e bloqueia. Se a emissao falhar, fecha.
+    const abaNota = acao === 'emitir' ? window.open('', '_blank') : null;
     setEmitindoNota(v.id);
     try {
       const { data, error } = await supabase.functions.invoke('emitir-nfce', {
@@ -128,11 +131,14 @@ export default function VendasPage() {
         toast(data?.status === 'autorizado' ? '✅ NFC-e autorizada!' : data?.erro_mensagem ? '⚠ ' + data.erro_mensagem : '⏳ Ainda em processamento na SEFAZ.');
       } else if (data?.success) {
         toast.success(data.status === 'autorizado' ? '📄 NFC-e emitida!' : '📄 NFC-e enviada para autorização.');
-        if (data.status === 'autorizado' && data.danfe_url) window.open(data.danfe_url, '_blank');
+        if (data.status === 'autorizado' && data.danfe_url && abaNota) abaNota.location.href = data.danfe_url;
+        else abaNota?.close();
       } else {
+        abaNota?.close();
         toast.error('⚠ NFC-e não emitida: ' + (data?.error || 'erro desconhecido'), { duration: 12000 });
       }
     } catch (err: any) {
+      abaNota?.close();
       toast.error('Erro ao emitir NFC-e: ' + (err?.message || 'erro desconhecido'));
     } finally {
       setEmitindoNota(null);

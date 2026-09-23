@@ -15,6 +15,16 @@ function focusBaseUrl(ambiente: string | undefined): string {
   return ambiente === "1" ? "https://api.focusnfe.com.br/v2" : "https://homologacao.focusnfe.com.br/v2";
 }
 
+// A Focus devolve os caminhos do DANFE/XML sem o dominio (ex.:
+// "/notas_fiscais_consumidor/NFe...html"); sem o dominio o navegador abria o
+// link dentro do proprio OptiFlow.
+function urlCompletaFocus(caminho: string | null | undefined, ambiente: string | undefined): string | null {
+  if (!caminho) return null;
+  if (/^https?:\/\//.test(caminho)) return caminho;
+  const host = ambiente === "1" ? "https://api.focusnfe.com.br" : "https://homologacao.focusnfe.com.br";
+  return host + (caminho.startsWith("/") ? caminho : "/" + caminho);
+}
+
 // Autenticacao da Focus NFe: HTTP Basic Auth, token da EMPRESA (gerado no
 // painel da Focus NFe pra aquele CNPJ especifico) como usuario, senha em
 // branco. Confirmado em doc.focusnfe.com.br/reference/autenticacao.
@@ -390,8 +400,8 @@ serve(async (req) => {
             focus_ref: ref,
             focus_status: statusFocus,
             chave_nfe: data?.chave_nfe || null,
-            danfe_url: data?.caminho_danfe || data?.url_danfe || null,
-            xml_url: data?.caminho_xml_nota_fiscal || null,
+            danfe_url: urlCompletaFocus(data?.caminho_danfe || data?.url_danfe, config.ambiente),
+            xml_url: urlCompletaFocus(data?.caminho_xml_nota_fiscal, config.ambiente),
             erro_mensagem: mensagemErro,
           },
         ]),
@@ -442,13 +452,13 @@ serve(async (req) => {
           status: statusInterno,
           focus_status: statusFocus,
           chave_nfe: data?.chave_nfe || nota.chave_nfe,
-          danfe_url: data?.caminho_danfe || data?.url_danfe || nota.danfe_url,
+          danfe_url: urlCompletaFocus(data?.caminho_danfe || data?.url_danfe, config.ambiente) || nota.danfe_url,
           numero: Number(data?.numero) || nota.numero,
           erro_mensagem: mensagemErro,
         }),
       });
 
-      return json({ status: statusInterno, focus_status: statusFocus, danfe_url: data?.caminho_danfe || data?.url_danfe || nota.danfe_url, erro_mensagem: mensagemErro });
+      return json({ status: statusInterno, focus_status: statusFocus, danfe_url: urlCompletaFocus(data?.caminho_danfe || data?.url_danfe, config.ambiente) || nota.danfe_url, erro_mensagem: mensagemErro });
     }
 
     return json({ error: "ação desconhecida" }, 400);
