@@ -588,8 +588,43 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   (ver Claude outputs/ESTADO_ATUAL_OPTIFLOW.md). Em 23/09 o codigo publicado foi baixado com
   "npx supabase functions download" e copiado para supabase/functions/ - antes disso o repositorio
   tinha a versao antiga so-Evolution (publicar dela apagaria o canal Meta).
-- PENDENTE: a conta do WhatsApp na Meta esta sem forma de pagamento valida ("Nenhuma forma de
-  pagamento valida" em Gerenciador do WhatsApp -> Visao geral). Sem isso os modelos (mensagens
-  automaticas) nao sao entregues. O Carlos precisa cadastrar o cartao.
+- Forma de pagamento cadastrada em 23/09/2026 na conta do WhatsApp (Visa final 9754, padrao),
+  faturamento em nome de CARLOS E DOS S VIDEO, CNPJ 51.426.084/0001-60, moeda BRL. Alerta de
+  "Nenhuma forma de pagamento valida" sumiu.
+- Testes de envio em 23/09 (Graph API Explorer, para o celular do Carlos 5592992779106, wa_id
+  559292779106): 1) modelo hello_world logo apos cadastrar o cartao -> "accepted" mas NAO
+  entregue; 2) texto livre depois do Carlos mandar "Oi" -> entregue; 3) hello_world de novo
+  (com a janela de 24h aberta) -> entregue. Falta confirmar entrega de modelo FORA da janela de
+  24h (caso real das mensagens automaticas) - repetir o hello_world em 24/09+ sem mandar "Oi" antes.
+- A conta da Meta NAO tem webhook configurado: quando uma mensagem falha, o motivo nao chega a
+  lugar nenhum. Se houver falhas de entrega, configurar webhook (campo "messages") para ver os
+  status/erros.
+- ATENCAO: o CNPJ correto da Otica e 51.426.084/0001-60 (digitos verificadores conferidos). Em
+  23/09 a tela Configuracao -> Dados da Loja da Castanho mostrava 51.428.084/0001-60 (invalido),
+  que sai impresso em carnes/comprovantes - pedido ao Carlos para corrigir.
 - Numero de chip novo (qualquer sistema): NUNCA instalar o app WhatsApp nele; cadastrar na Meta,
   confirmar por SMS, criar PIN em Mais -> Verificacao em duas etapas, e fazer o /register.
+- DECISAO 23/09/2026 (Carlos): cada inquilino no plano Meta deve conectar o PROPRIO numero (self-service,
+  nome da otica como remetente, coexistencia com o app WhatsApp Business no celular) e TODO custo da Meta
+  e pago pelo OptiFlow (embutido na mensalidade) - os inquilinos vieram do SSOtica, que funciona assim;
+  pedir cartao ao inquilino esta fora de questao. Caminho: OptiFlow vira Tech Provider na Meta + parceria
+  (Multi-Partner Solution) com um Solution Partner/BSP que compartilha linha de credito (Infobip, 360dialog,
+  Gupshup, Twilio...) e fatura o OptiFlow. Em andamento: comparativo de BSPs e pedido de propostas.
+  Solar/Povo/Autazes continuam como estao ate o botao "Conectar WhatsApp oficial" existir.
+
+## Sessao 23/Set/2026 - NFC-e pela Focus NFe (Castanho)
+- Focus NFe: empresa CARLOS E DOS S.VIDEO / OTICA EVANGELISTA (CNPJ 51.426.084/0001-60, IE 054583578)
+  com certificado A1 valido ate 26/02/2027, NFC-e ligada, CSC ID 000001 (Homologacao e Producao),
+  serie 1 / proximo numero 1 nos dois ambientes (confirmar numeracao de Producao com o contador).
+- fiscal_config da Castanho criada pela tela NF-e -> Configuracao Fiscal (endereco do CNPJ em Manaus,
+  cod. IBGE 1302603, Simples Nacional, ambiente '2' Homologacao) + focus_nfe_token de Homologacao.
+- DECISAO do Carlos: a NFC-e NAO e automatica. Cada venda tem o botao "Emitir NFC-e" em Vendas/PDV
+  (vira "NFC-e ✓" com link do DANFE quando autorizada). fiscal_config.emissao_automatica_ativa hoje
+  significa "integracao Focus ligada" (so mostra o botao).
+- emitir-nfce agora versionada em supabase/functions/emitir-nfce. Deploy:
+  npx supabase functions deploy emitir-nfce --project-ref fkwamdnstrbvgheosalz
+- 1o teste (venda #27630) deu "Erro na validacao do Schema XML" porque o NCM ia em "ncm" (certo:
+  "codigo_ncm"). Corrigido em 23/09, falta repetir o teste. Para Producao: trocar ambiente para '1' e o
+  focus_nfe_token para o token de Producao, conferir CSOSN (400) e NCM (90049000) com o contador.
+- ATENCAO seguranca: NfePage.tsx carrega fiscal_config com select('*'), o que manda o focus_nfe_token
+  para o navegador (mesmo problema que ja foi corrigido no token da Meta). Pendente corrigir.
