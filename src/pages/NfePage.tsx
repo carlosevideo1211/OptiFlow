@@ -402,8 +402,8 @@ export default function NfePage() {
         color: config.emissao_automatica_ativa ? '#22c55e' : 'var(--text-muted)' }}>
         <CheckCircle size={16}/>
         {config.emissao_automatica_ativa
-          ? <span><strong>Emissão automática ativa</strong> — toda venda finalizada gera uma NFC-e automaticamente via Focus NFe.</span>
-          : <span>Emissão automática via Focus NFe ainda não está ativa nesta ótica. As notas abaixo continuam sendo criadas manualmente.</span>}
+          ? <span><strong>NFC-e pela Focus NFe ativa</strong> — para emitir, use o botão "Emitir NFC-e" da venda em Vendas / PDV.</span>
+          : <span>Emissão de NFC-e pela Focus NFe ainda não está ativa nesta ótica. As notas abaixo continuam sendo criadas manualmente.</span>}
       </div>
 
       {/* Tabs */}

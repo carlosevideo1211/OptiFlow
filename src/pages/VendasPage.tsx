@@ -47,6 +47,12 @@ export default function VendasPage() {
   const [dateFrom, setDateFrom]   = useState(toLocalDateStr());
   const [dateTo, setDateTo]       = useState(toLocalDateStr());
   const [viewSale, setViewSale]   = useState<Sale | null>(null);
+  // NFC-e via Focus NFe: so aparece o botao se a integracao estiver ligada na
+  // otica (fiscal_config.emissao_automatica_ativa). notasPorVenda guarda a
+  // tentativa mais recente de cada venda.
+  const [focusAtivo, setFocusAtivo] = useState(false);
+  const [notasPorVenda, setNotasPorVenda] = useState<Record<string, { id: string; status: string; danfe_url?: string | null; erro_mensagem?: string | null }>>({});
+  const [emitindoNota, setEmitindoNota] = useState<string | null>(null);
 
   // PDV
   const [cartItems, setCartItems]               = useState<SaleItem[]>([]);
@@ -92,7 +98,49 @@ export default function VendasPage() {
     setLoading(false);
   };
 
-  useEffect(() => { if (tenantId) load(); }, [tenantId]);
+  const loadNotas = async () => {
+    if (!tenantId) return;
+    const { data: cfg } = await supabase.from('fiscal_config').select('emissao_automatica_ativa').eq('tenant_id', tenantId).maybeSingle();
+    const ativo = !!cfg?.emissao_automatica_ativa;
+    setFocusAtivo(ativo);
+    if (!ativo) { setNotasPorVenda({}); return; }
+    const notas = await fetchAllRows<any>((from, to) =>
+      supabase.from('nfe').select('id,sale_id,status,danfe_url,erro_mensagem,created_at')
+        .eq('tenant_id', tenantId).eq('origem', 'automatica').not('sale_id', 'is', null)
+        .order('created_at', { ascending: true }).range(from, to));
+    const mapa: Record<string, any> = {};
+    for (const n of notas) mapa[n.sale_id] = n; // ordem crescente: fica a mais recente
+    setNotasPorVenda(mapa);
+  };
+
+  const emitirNota = async (v: Sale) => {
+    const nota = notasPorVenda[v.id];
+    if (nota?.status === 'autorizado' && nota.danfe_url) { window.open(nota.danfe_url, '_blank'); return; }
+    const acao = nota?.status === 'gerado' ? 'status' : 'emitir';
+    if (acao === 'emitir' && !confirm(`Emitir NFC-e da venda #${String(v.sale_number).padStart(4, '0')} (${formatBRL(v.total)}) para ${v.customer_name || 'Consumidor'}?`)) return;
+    setEmitindoNota(v.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('emitir-nfce', {
+        body: acao === 'status' ? { action: 'status', nfe_id: nota!.id } : { action: 'emitir', sale_id: v.id },
+      });
+      if (error) throw error;
+      if (acao === 'status') {
+        toast(data?.status === 'autorizado' ? '✅ NFC-e autorizada!' : data?.erro_mensagem ? '⚠ ' + data.erro_mensagem : '⏳ Ainda em processamento na SEFAZ.');
+      } else if (data?.success) {
+        toast.success(data.status === 'autorizado' ? '📄 NFC-e emitida!' : '📄 NFC-e enviada para autorização.');
+        if (data.status === 'autorizado' && data.danfe_url) window.open(data.danfe_url, '_blank');
+      } else {
+        toast.error('⚠ NFC-e não emitida: ' + (data?.error || 'erro desconhecido'), { duration: 12000 });
+      }
+    } catch (err: any) {
+      toast.error('Erro ao emitir NFC-e: ' + (err?.message || 'erro desconhecido'));
+    } finally {
+      setEmitindoNota(null);
+      loadNotas();
+    }
+  };
+
+  useEffect(() => { if (tenantId) { load(); loadNotas(); } }, [tenantId]);
   useEffect(() => {
     if (!tenantId) return;
     supabase.from('funcionarios').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name')
@@ -441,33 +489,8 @@ export default function VendasPage() {
         toast.error('⚠ Venda #' + saleData.sale_number + ' registrada, mas houve um erro inesperado ao lançar no Financeiro. Avise o suporte para corrigir.', { duration: 12000 });
       }
       toast.success('✅ Venda #' + saleData.sale_number + ' finalizada!');
-
-      // Emissão automática de NFC-e (Focus NFe), se esta ótica já estiver no
-      // canal automático (fiscal_config.emissao_automatica_ativa = true,
-      // ligado só por SQL direto pelo Carlos — ver migration_focus_nfe.sql).
-      // Roda depois do toast de sucesso da venda e nunca desfaz nem trava a
-      // venda: se a ótica ainda não estiver configurada, a função devolve
-      // "skipped" e nada é mostrado; se der erro na emissão em si, a venda já
-      // está salva — só avisamos pra emitir manualmente depois em Nota Fiscal.
-      try {
-        const { data: nfceData, error: nfceError } = await supabase.functions.invoke('emitir-nfce', {
-          body: { action: 'emitir', sale_id: saleData.id },
-        });
-        if (!nfceError && nfceData && !nfceData.skipped) {
-          if (nfceData.success) {
-            toast.success(
-              nfceData.status === 'autorizado'
-                ? '📄 NFC-e emitida automaticamente!'
-                : '📄 NFC-e enviada para autorização — confira o status em Nota Fiscal.'
-            );
-          } else {
-            toast.error('⚠ Venda #' + saleData.sale_number + ' finalizada, mas a NFC-e automática falhou (' + (nfceData.error || 'erro desconhecido') + '). Emita manualmente em Nota Fiscal.', { duration: 10000 });
-          }
-        }
-      } catch (nfceErr: any) {
-        console.error('Falha ao chamar emitir-nfce para a venda #' + saleData.sale_number + ':', nfceErr);
-      }
-
+      // A NFC-e NAO e emitida sozinha ao finalizar (nem toda venda leva nota):
+      // o operador usa o botao "Emitir NFC-e" da venda na lista.
       clearCart(); setTab('lista'); load();
     } catch (err: any) { toast.error(err.message || 'Erro ao finalizar venda'); }
     finally { setSaving(false); }
@@ -599,6 +622,22 @@ export default function VendasPage() {
                                 <IconBtn onClick={() => imprimirInstrumentoDivida(v)} title="Instrumento de dívida" color="#a855f7"><Save size={14} /></IconBtn>
                                 <IconBtn onClick={() => imprimirQuitacao(v)} title="Comprovante de quitação" color="#22c55e"><FileText size={14} /></IconBtn>
                                 <IconBtn onClick={() => imprimirComprovante(v)} title="Imprimir" color="#6366f1"><Printer size={14} /></IconBtn>
+                                {focusAtivo && v.status !== 'cancelada' && (() => {
+                                  const nota = notasPorVenda[v.id];
+                                  const ocupado = emitindoNota === v.id;
+                                  const cfg = nota?.status === 'autorizado'
+                                    ? { cor: '#22c55e', texto: 'NFC-e ✓', dica: 'NFC-e autorizada — clique para abrir a nota (DANFE)' }
+                                    : nota?.status === 'gerado'
+                                    ? { cor: '#f59e0b', texto: 'NFC-e ⏳', dica: 'NFC-e em processamento — clique para verificar' }
+                                    : nota?.status === 'erro'
+                                    ? { cor: '#f87171', texto: 'NFC-e ↻', dica: 'Última tentativa falhou: ' + (nota.erro_mensagem || '') + ' — clique para tentar de novo' }
+                                    : { cor: '#10b981', texto: 'Emitir NFC-e', dica: 'Emitir nota fiscal (NFC-e) desta venda' };
+                                  return (
+                                    <IconBtn onClick={() => !ocupado && emitirNota(v)} title={cfg.dica} color={cfg.cor}>
+                                      <span style={{ fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{ocupado ? 'Emitindo…' : cfg.texto}</span>
+                                    </IconBtn>
+                                  );
+                                })()}
                                 <IconBtn onClick={() => excluirVenda(v)} title="Excluir venda" color="#f87171"><Trash2 size={14} /></IconBtn>
                               </div>
                             </td>
