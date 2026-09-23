@@ -574,3 +574,22 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
 ### Confirmado
 - Tela de Admin parou de piscar/redirecionar para planos apos as correcoes.
 - Trava de bloqueio de ativacao sem plano pago testada e funcionando.
+
+## Sessao 23/Set/2026 - WhatsApp oficial (Meta) ativado na Castanho
+- Numero +55 92 7400-6215 (WABA "Otica Evangelista Castanho" 2124840844909179, phone_number_id
+  1526138743916926, app Meta "OptiFlow", usuario do sistema "OptiFlow Integracao") ficou 2+ semanas
+  "Pendente" porque faltava o passo /register da Cloud API (PIN de 6 digitos da verificacao em duas
+  etapas). Registrado via Graph API Explorer em 23/09 -> status "Conectado".
+- Verificacao da empresa (CARLOS E DOS S.VIDEO) aprovada em 18/09/2026. Os 9 modelos estao Ativos.
+- Castanho: store_settings.wa_phone_id = 1526138743916926 e tenants.whatsapp_canal = 'meta'
+  (confirmado no banco em 23/09). As outras oticas continuam em 'evolution'.
+- Secret META_WHATSAPP_TOKEN configurado no Supabase em 11/09.
+- As Edge Functions whatsapp-manage e send-whatsapp-triggers publicadas sao a versao dual-canal
+  (ver Claude outputs/ESTADO_ATUAL_OPTIFLOW.md). Em 23/09 o codigo publicado foi baixado com
+  "npx supabase functions download" e copiado para supabase/functions/ - antes disso o repositorio
+  tinha a versao antiga so-Evolution (publicar dela apagaria o canal Meta).
+- PENDENTE: a conta do WhatsApp na Meta esta sem forma de pagamento valida ("Nenhuma forma de
+  pagamento valida" em Gerenciador do WhatsApp -> Visao geral). Sem isso os modelos (mensagens
+  automaticas) nao sao entregues. O Carlos precisa cadastrar o cartao.
+- Numero de chip novo (qualquer sistema): NUNCA instalar o app WhatsApp nele; cadastrar na Meta,
+  confirmar por SMS, criar PIN em Mais -> Verificacao em duas etapas, e fazer o /register.
