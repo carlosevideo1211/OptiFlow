@@ -264,6 +264,16 @@ serve(async (req) => {
         if (!cpfValido(clienteCpf)) clienteCpf = "";
       }
 
+      // Codigo do produto na nota: o "codigo" cadastrado em Produtos. Sem ele
+      // (ou item sem produto, ex. vindo de OS), usa o numero do item — o id
+      // interno (UUID) saia enorme e ilegivel no DANFE.
+      const idsProdutos = [...new Set(itens.map((it: any) => it.product_id).filter(Boolean))];
+      const codigoPorProduto: Record<string, string> = {};
+      if (idsProdutos.length) {
+        const prods = await supabaseFetch(`products?id=in.(${idsProdutos.join(",")})&select=id,code`);
+        if (Array.isArray(prods)) for (const p of prods) if (p.code) codigoPorProduto[p.id] = String(p.code).trim();
+      }
+
       // Valores da nota: soma dos itens menos o desconto da venda. NAO usar
       // sale.total direto — nesta base ele e o SALDO DEVEDOR (ja sem desconto
       // e sem entrada), ver CLAUDE.md "Layout - Aba Vendas e OS".
@@ -287,7 +297,7 @@ serve(async (req) => {
         const unit = qtd > 0 ? bruto / qtd : bruto;
         const it: ItemFocus = {
           numero_item: i + 1,
-          codigo_produto: String(item.product_id || `ITEM${i + 1}`).slice(0, 60),
+          codigo_produto: (codigoPorProduto[item.product_id] || String(i + 1)).slice(0, 60),
           descricao: homologacao && i === 0 ? TEXTO_HOMOLOGACAO : String(item.description || "Produto").slice(0, 120),
           cfop: "5102",
           // NCM padrao de artigos de optica (armacoes/lentes/oculos). Se a
