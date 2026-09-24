@@ -626,8 +626,8 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
 - 1o teste (venda #27630) deu "Erro na validacao do Schema XML" porque o NCM ia em "ncm" (certo:
   "codigo_ncm"). Corrigido em 23/09, falta repetir o teste. Para Producao: trocar ambiente para '1' e o
   focus_nfe_token para o token de Producao, conferir CSOSN (400) e NCM (90049000) com o contador.
-- ATENCAO seguranca: NfePage.tsx carrega fiscal_config com select('*'), o que manda o focus_nfe_token
-  para o navegador (mesmo problema que ja foi corrigido no token da Meta). Pendente corrigir.
+- Seguranca (corrigido 24/09): NfePage.tsx carrega fiscal_config por lista explicita de colunas (sem
+  focus_nfe_token/certificado_*) e o Salvar nao grava esses campos.
 - 23/09 (fim do dia): NFC-e de teste AUTORIZADA (Homologacao, venda #27630, nota 1 serie 1), DANFE abre e
   imprime. Codigo do produto na nota = products.code (ou numero do item). Carlos vai levar ao contador
   (resposta prevista 24/09): regime (Simples x MEI/CRT 4), CSOSN 400 x 102, CFOP 5102/5101, NCM por tipo
@@ -650,3 +650,5 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   proximo numero 84 (ultima emitida 83 em 04/05/2026); ligado "(NFe, NFCe) Discrimina impostos" na aba
   Configuracoes da empresa (Lei 12.741 - "Tributos Totais Incidentes" saia em branco). Falta: 1 venda de
   teste p/ conferir os tributos no DANFE e trocar para Producao (ambiente '1' + token de Producao).
+- 24/09 ~19h: Castanho virou PRODUCAO (fiscal_config.ambiente='1' + token de Producao via SQL). Proxima
+  nota real = nº 84. Nota de teste nº 3 confirmou "Tributos Totais Incidentes" (IBPT) preenchido.
