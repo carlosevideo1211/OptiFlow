@@ -84,6 +84,8 @@ const REGIMES = [
   { value: '3', label: 'Regime Normal' },
 ];
 
+const COLUNAS_FISCAL_TELA = 'id,tenant_id,razao_social,cnpj,inscricao_estadual,inscricao_municipal,regime_tributario,endereco,numero,complemento,bairro,municipio,uf,cep,codigo_municipio,ambiente,serie_nfe,ultimo_numero,ativo,emissao_automatica_ativa,tipo_documento';
+
 export default function NfePage() {
   const { tenantId } = useAuth();
   const [tab, setTab] = useState<'nfes'|'config'>('nfes');
@@ -110,7 +112,10 @@ export default function NfePage() {
     setLoading(true);
     const [{ data: n }, { data: fc }, { data: s }] = await Promise.all([
       supabase.from('nfe').select('*').eq('tenant_id', tenantId).order('numero', { ascending: false }),
-      supabase.from('fiscal_config').select('*').eq('tenant_id', tenantId).single(),
+      // Sem select('*'): o token da Focus NFe e os dados do certificado nao
+      // podem chegar ao navegador (qualquer usuario veria no F12) e, se
+      // viessem, o Salvar desta tela gravava de volta um token antigo.
+      supabase.from('fiscal_config').select(COLUNAS_FISCAL_TELA).eq('tenant_id', tenantId).maybeSingle(),
       supabase.from('sales').select('id,sale_number,customer_name,total,created_at,payment_method').eq('tenant_id', tenantId).eq('status','concluida').order('created_at', { ascending: false }).limit(50),
     ]);
     setNfes((n as Nfe[]) || []);
@@ -133,9 +138,11 @@ export default function NfePage() {
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
+      // Ligar a Focus NFe e o token continuam so por SQL: esta tela nunca grava esses campos.
+      const { focus_nfe_token: _t, emissao_automatica_ativa: _a, certificado_a1: _c, certificado_senha: _s, ...dados } = config as any;
       const { error } = config.id
-        ? await supabase.from('fiscal_config').update(config).eq('id', config.id)
-        : await supabase.from('fiscal_config').insert([{...config, tenant_id: tenantId}]);
+        ? await supabase.from('fiscal_config').update(dados).eq('id', config.id)
+        : await supabase.from('fiscal_config').insert([{...dados, tenant_id: tenantId}]);
       if (error) throw error;
       toast.success('Configuração fiscal salva!');
       load();
