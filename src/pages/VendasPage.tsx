@@ -113,18 +113,38 @@ export default function VendasPage() {
     setNotasPorVenda(mapa);
   };
 
-  const emitirNota = async (v: Sale) => {
+  // Janela "Emitir NFC-e": o contador pediu CPF na nota so quando o cliente
+  // pede, e a forma de pagamento real de cada venda (a entrada do crediario
+  // nao fica gravada na venda, entao o operador informa aqui).
+  const [notaParaEmitir, setNotaParaEmitir] = useState<Sale | null>(null);
+  const [cpfClienteNota, setCpfClienteNota] = useState('');
+  const [incluirCpf, setIncluirCpf] = useState(false);
+  const [formaEntrada, setFormaEntrada] = useState('dinheiro');
+
+  const abrirEmissao = async (v: Sale) => {
+    setIncluirCpf(false);
+    setFormaEntrada('dinheiro');
+    setCpfClienteNota('');
+    setNotaParaEmitir(v);
+    if (v.customer_id) {
+      const { data } = await supabase.from('customers').select('cpf').eq('id', v.customer_id).eq('tenant_id', tenantId).maybeSingle();
+      setCpfClienteNota(data?.cpf || '');
+    }
+  };
+
+  const emitirNota = async (v: Sale, opcoes?: { incluir_cpf: boolean; forma_entrada: string }) => {
     const nota = notasPorVenda[v.id];
     if (nota?.status === 'autorizado' && nota.danfe_url) { window.open(nota.danfe_url, '_blank'); return; }
     const acao = nota?.status === 'gerado' ? 'status' : 'emitir';
-    if (acao === 'emitir' && !confirm(`Emitir NFC-e da venda #${String(v.sale_number).padStart(4, '0')} (${formatBRL(v.total)}) para ${v.customer_name || 'Consumidor'}?`)) return;
+    if (acao === 'emitir' && !opcoes) { abrirEmissao(v); return; }
+    setNotaParaEmitir(null);
     // A aba da nota precisa ser aberta ja no clique: depois do "await" o
     // navegador trata como pop-up e bloqueia. Se a emissao falhar, fecha.
     const abaNota = acao === 'emitir' ? window.open('', '_blank') : null;
     setEmitindoNota(v.id);
     try {
       const { data, error } = await supabase.functions.invoke('emitir-nfce', {
-        body: acao === 'status' ? { action: 'status', nfe_id: nota!.id } : { action: 'emitir', sale_id: v.id },
+        body: acao === 'status' ? { action: 'status', nfe_id: nota!.id } : { action: 'emitir', sale_id: v.id, ...opcoes },
       });
       if (error) throw error;
       if (acao === 'status') {
@@ -969,6 +989,54 @@ export default function VendasPage() {
           </div>
         </div>
       )}
+
+      {notaParaEmitir && (() => {
+        const v = notaParaEmitir;
+        const entrada = v.entrada || 0;
+        const temEntrada = entrada > 0 && v.payment_method === 'crediario';
+        const pag = PAGAMENTOS.find(p => p.value === v.payment_method);
+        return (
+          <div className="modal-overlay">
+            <div className="modal" style={{ maxWidth: 440, width: '95%' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Emitir NFC-e — Venda #{String(v.sale_number).padStart(4, '0')}</h2>
+                <button onClick={() => setNotaParaEmitir(null)}><X size={18} /></button>
+              </div>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                  Cliente: <strong style={{ color: 'inherit' }}>{v.customer_name || 'Consumidor'}</strong><br />
+                  Pagamento: <strong style={{ color: 'inherit' }}>{pag?.label || v.payment_method}</strong>
+                </div>
+
+                <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: cpfClienteNota ? 'pointer' : 'default', fontSize: 14 }}>
+                  <input type="checkbox" checked={incluirCpf} disabled={!cpfClienteNota}
+                    onChange={e => setIncluirCpf(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span>
+                    O cliente pediu <strong>CPF na nota</strong>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {cpfClienteNota ? `CPF cadastrado: ${cpfClienteNota}` : 'Cliente sem CPF no cadastro — a nota sai sem CPF.'}
+                    </div>
+                  </span>
+                </label>
+
+                {temEntrada && (
+                  <div>
+                    <label className="form-label">A entrada de {formatBRL(entrada)} foi paga em</label>
+                    <select className="form-input" value={formaEntrada} onChange={e => setFormaEntrada(e.target.value)}>
+                      {PAGAMENTOS.filter(p => p.value !== 'crediario').map(p => <option key={p.value} value={p.value}>{p.icon} {p.label}</option>)}
+                    </select>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>O restante vai na nota como Crédito Loja (crediário).</div>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setNotaParaEmitir(null)}>Cancelar</button>
+                <button className="btn btn-primary" onClick={() => emitirNota(v, { incluir_cpf: incluirCpf, forma_entrada: formaEntrada })}>Emitir NFC-e</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

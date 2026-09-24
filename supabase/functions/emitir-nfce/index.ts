@@ -104,6 +104,31 @@ const CBS_ALIQUOTA = 0.9;
 const IBS_UF_ALIQUOTA = 0.1;
 const IBS_MUN_ALIQUOTA = 0;
 
+// NCM por produto (definido pelo contador em 24/09/2026). Ordem: NCM do
+// cadastro do produto -> padrao da categoria -> palavra na descricao -> oculos
+// para correcao. Manter igual a src/utils/ncm.ts.
+const NCM_PADRAO_POR_CATEGORIA: Record<string, string> = {
+  "Armação": "90031100",
+  "Lente de Grau": "90015000",
+  "Lente de Contato": "90013000",
+  "Lente Solar": "90041000",
+  "Estojo": "42023200",
+};
+
+function ncmDoItem(produto: any, descricao: string): string {
+  const cadastrado = String(produto?.ncm || "").replace(/\D/g, "");
+  if (cadastrado.length === 8) return cadastrado;
+  const daCategoria = NCM_PADRAO_POR_CATEGORIA[produto?.category || ""];
+  if (daCategoria) return daCategoria;
+  const d = descricao.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/contato/.test(d)) return "90013000";
+  if (/lente/.test(d)) return "90015000";
+  if (/armac/.test(d)) return "90031100";
+  if (/estojo/.test(d)) return "42023200";
+  if (/\bsol\b|solar/.test(d)) return "90041000";
+  return "90049010";
+}
+
 function camposIbsCbs(base: number): Record<string, string> {
   const r2 = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
   const ibsUf = base * IBS_UF_ALIQUOTA / 100;
@@ -263,15 +288,21 @@ serve(async (req) => {
         // a nota sai sem CPF (consumidor nao identificado), que e permitido na NFC-e.
         if (!cpfValido(clienteCpf)) clienteCpf = "";
       }
+      // Contador: CPF so vai na nota quando o cliente pede ("CPF na nota?").
+      if (body.incluir_cpf !== true) clienteCpf = "";
 
       // Codigo do produto na nota: o "codigo" cadastrado em Produtos. Sem ele
       // (ou item sem produto, ex. vindo de OS), usa o numero do item — o id
       // interno (UUID) saia enorme e ilegivel no DANFE.
       const idsProdutos = [...new Set(itens.map((it: any) => it.product_id).filter(Boolean))];
       const codigoPorProduto: Record<string, string> = {};
+      const produtoPorId: Record<string, any> = {};
       if (idsProdutos.length) {
-        const prods = await supabaseFetch(`products?id=in.(${idsProdutos.join(",")})&select=id,code`);
-        if (Array.isArray(prods)) for (const p of prods) if (p.code) codigoPorProduto[p.id] = String(p.code).trim();
+        const prods = await supabaseFetch(`products?id=in.(${idsProdutos.join(",")})&select=id,code,ncm,category`);
+        if (Array.isArray(prods)) for (const p of prods) {
+          produtoPorId[p.id] = p;
+          if (p.code) codigoPorProduto[p.id] = String(p.code).trim();
+        }
       }
 
       // Valores da nota: soma dos itens menos o desconto da venda. NAO usar
@@ -303,7 +334,7 @@ serve(async (req) => {
           // NCM padrao de artigos de optica (armacoes/lentes/oculos). Se a
           // otica vender outras categorias com NCM diferente, isso precisa
           // virar um campo por produto no futuro.
-          codigo_ncm: "90049000",
+          codigo_ncm: ncmDoItem(produtoPorId[item.product_id], String(item.description || "")),
           unidade_comercial: "UN",
           quantidade_comercial: qtd.toFixed(4),
           valor_unitario_comercial: unit.toFixed(10),
@@ -312,24 +343,33 @@ serve(async (req) => {
           quantidade_tributavel: qtd.toFixed(4),
           valor_unitario_tributavel: unit.toFixed(10),
           icms_origem: "0",
-          // CSOSN 400 = Simples Nacional, nao tributado pelo ICMS. Confirmar
-          // com o contador antes de ligar em Producao.
-          icms_situacao_tributaria: config.regime_tributario === "3" ? "40" : "400",
-          pis_situacao_tributaria: "07",
-          cofins_situacao_tributaria: "07",
+          // Contador (24/09/2026): Simples Nacional -> CSOSN 102 (tributada
+          // pelo Simples sem permissao de credito) e PIS/COFINS CST 99, com
+          // valores zerados (ja recolhidos dentro do DAS do Simples).
+          icms_situacao_tributaria: config.regime_tributario === "3" ? "40" : "102",
+          pis_situacao_tributaria: "99",
+          pis_base_calculo: "0.00",
+          pis_aliquota_porcentual: "0.00",
+          pis_valor: "0.00",
+          cofins_situacao_tributaria: "99",
+          cofins_base_calculo: "0.00",
+          cofins_aliquota_porcentual: "0.00",
+          cofins_valor: "0.00",
         };
         if (descItem > 0) it.valor_desconto = descItem.toFixed(2);
         Object.assign(it, camposIbsCbs(bruto - descItem));
         return it;
       });
 
-      // Pagamentos: no crediario com entrada, a entrada entra como dinheiro
-      // (a venda nao guarda a forma da entrada) e o restante como Credito Loja.
+      // Pagamentos (contador: "para cada venda informar a forma de pagamento").
+      // A venda nao guarda a forma da entrada, entao o operador informa na hora
+      // de emitir (forma_entrada); o restante vai na forma da venda.
       const codigoPrincipal = codigoFormaPagamento(sale.payment_method);
       const entrada = Math.min(Math.max(Number(sale.entrada || 0), 0), totalNota);
       const formas = [];
       if (entrada > 0 && entrada < totalNota) {
-        formas.push(formaPagamentoFocus("01", entrada, ""));
+        const formaEntrada = String(body.forma_entrada || "dinheiro");
+        formas.push(formaPagamentoFocus(codigoFormaPagamento(formaEntrada), entrada, formaEntrada));
         formas.push(formaPagamentoFocus(codigoPrincipal, Math.round((totalNota - entrada) * 100) / 100, sale.payment_method));
       } else {
         formas.push(formaPagamentoFocus(codigoPrincipal, totalNota, sale.payment_method));

@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
 import { norm } from '../utils/normalize';
+import { NCM_OPCOES, ncmPadrao, formatarNcm } from '../utils/ncm';
 
 const CATEGORIAS = ['Armação','Lente Solar','Lente de Grau','Lente de Contato','Acessório','Estojo','Cordão','Solução','Outro'];
 
@@ -17,11 +18,11 @@ interface Product {
   id: string; tenant_id: string; name: string; code?: string;
   category: string; brand?: string; description?: string;
   cost_price: number; sale_price: number; stock: number; min_stock: number; active: boolean;
-  photo_url?: string; refractive_index?: number; created_at: string;
+  photo_url?: string; refractive_index?: number; ncm?: string | null; created_at: string;
 }
 
 function emptyForm() {
-  return { name:'', code:'', category:'Armação', brand:'', description:'', cost_price:0, sale_price:0, stock:0, min_stock:5, active:true, photo_url:'', refractive_index:undefined as number|undefined };
+  return { name:'', code:'', category:'Armação', brand:'', description:'', cost_price:0, sale_price:0, stock:0, min_stock:5, active:true, photo_url:'', refractive_index:undefined as number|undefined, ncm: ncmPadrao('Armação') };
 }
 
 export default function ProdutosPage() {
@@ -34,6 +35,7 @@ export default function ProdutosPage() {
   const [editing, setEditing]   = useState<Product | null>(null);
   const [form, setForm]         = useState(emptyForm());
   const [saving, setSaving]     = useState(false);
+  const [ncmManual, setNcmManual] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -60,12 +62,14 @@ export default function ProdutosPage() {
     return list;
   }, [products, search, catFilter]);
 
-  const openNew  = () => { setEditing(null); setForm(emptyForm()); setShowModal(true); };
+  const openNew  = () => { setEditing(null); setForm(emptyForm()); setNcmManual(false); setShowModal(true); };
   const openEdit = (p: Product) => {
     setEditing(p);
+    setNcmManual(!!p.ncm && !NCM_OPCOES.some(o => o.ncm === p.ncm));
     setForm({ name:p.name, code:p.code||'', category:p.category, brand:p.brand||'',
               description:p.description||'', cost_price:p.cost_price, sale_price:p.sale_price,
-              stock:p.stock, min_stock:p.min_stock, active:p.active, photo_url:p.photo_url||'', refractive_index:p.refractive_index });
+              stock:p.stock, min_stock:p.min_stock, active:p.active, photo_url:p.photo_url||'', refractive_index:p.refractive_index,
+              ncm: p.ncm || ncmPadrao(p.category) });
     setShowModal(true);
   };
 
@@ -75,7 +79,9 @@ export default function ProdutosPage() {
       if (!form.name.trim()) { toast.error('Nome obrigatório'); return; }
     setSaving(true);
     try {
-      const payload = { ...form, tenant_id: tenantId };
+      const ncmLimpo = (form.ncm || '').replace(/\D/g, '');
+      if (ncmLimpo && ncmLimpo.length !== 8) { toast.error('O NCM precisa ter 8 números'); setSaving(false); return; }
+      const payload = { ...form, ncm: ncmLimpo || null, tenant_id: tenantId };
       if (editing) {
         const { error } = await supabase.from('products').update(payload).eq('id', editing.id);
         if (error) throw error; toast.success('Produto atualizado!');
@@ -341,7 +347,11 @@ export default function ProdutosPage() {
                   </div>
                   <div>
                     <label className="form-label">Categoria</label>
-                    <select className="form-input" value={form.category} onChange={e => set('category', e.target.value)}>
+                    <select className="form-input" value={form.category} onChange={e => {
+                      const nova = e.target.value;
+                      // Troca o NCM junto com a categoria so se ele ainda for o padrao da categoria anterior.
+                      setForm(f => ({ ...f, category: nova, ncm: (!f.ncm || f.ncm === ncmPadrao(f.category)) ? ncmPadrao(nova) : f.ncm }));
+                    }}>
                       {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
@@ -352,6 +362,22 @@ export default function ProdutosPage() {
                       value={form.refractive_index ?? ''} onChange={e => set('refractive_index', e.target.value ? parseFloat(e.target.value) : undefined)}/>
                   </div>
                   )}
+                  <div>
+                    <label className="form-label">NCM (nota fiscal)</label>
+                    <select className="form-input" value={ncmManual ? 'outro' : (form.ncm || '')}
+                      onChange={e => {
+                        if (e.target.value === 'outro') { setNcmManual(true); return; }
+                        setNcmManual(false); set('ncm', e.target.value);
+                      }}>
+                      <option value="">Selecione…</option>
+                      {NCM_OPCOES.map(o => <option key={o.ncm} value={o.ncm}>{formatarNcm(o.ncm)} — {o.label}</option>)}
+                      <option value="outro">Outro (digitar)</option>
+                    </select>
+                    {ncmManual && (
+                      <input className="form-input" style={{ marginTop: 6 }} placeholder="NCM com 8 números" value={form.ncm}
+                        onChange={e => set('ncm', e.target.value.replace(/\D/g, '').slice(0, 8))}/>
+                    )}
+                  </div>
                   <div>
                     <label className="form-label">Marca</label>
                     <input className="form-input" value={form.brand} onChange={e => set('brand', e.target.value)}/>
