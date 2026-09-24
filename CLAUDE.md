@@ -635,3 +635,14 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   Lei 12.741, numeracao da NFC-e em Producao, endereco (nota sai com CNPJ de Manaus mas a loja fica em
   Careiro Castanho - pode exigir filial), crediario como "05 Credito Loja" com entrada em dinheiro,
   CPF sempre ou so quando o cliente pede. Depois: ajustar emitir-nfce e trocar ambiente/token p/ Producao.
+- 24/09 RESPOSTAS DO CONTADOR (aplicadas no commit 8f251ae): ME-Simples Nacional (CRT 1); CSOSN 102;
+  CFOP 5102 (vende oculos montados p/ todo AM); NCM por produto (products.ncm, campo novo no cadastro,
+  padrao por categoria em src/utils/ncm.ts e no emitir-nfce: armacao 90031100 plastico / 90031910 metal /
+  90031990 outros; lente vidro 90014000 / outros materiais 90015000; contato 90013000; sol 90041000;
+  oculos correcao 90049010; estojo plastico 42023200); oculos completo: discriminar lente e armacao
+  como itens separados; PIS/COFINS CST 99; IBS/CBS CST 000 + cClassTrib 000001 corretos, parametrizar
+  de verdade p/ Simples a partir de 01/2027; Lei 12.741 pela tabela IBPT (a Focus calcula sozinha pelo
+  NCM - conferir se aparece no DANFE); ULTIMA NFC-e EMITIDA = 83 em 04/05/2026 -> em Producao o
+  proximo numero e 84 (confirmar a serie); emitir com o CNPJ de Manaus as vendas originadas do endereco
+  Padre Francisco 4276 (filial em Castanho e decisao do Carlos); forma de pagamento real de cada venda;
+  CPF so quando o cliente pede (janela de emissao pergunta).
