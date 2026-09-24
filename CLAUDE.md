@@ -652,3 +652,7 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   teste p/ conferir os tributos no DANFE e trocar para Producao (ambiente '1' + token de Producao).
 - 24/09 ~19h: Castanho virou PRODUCAO (fiscal_config.ambiente='1' + token de Producao via SQL). Proxima
   nota real = nº 84. Nota de teste nº 3 confirmou "Tributos Totais Incidentes" (IBPT) preenchido.
+- 24/09 18:33: PRIMEIRA NFC-e REAL AUTORIZADA em Producao - nº 84 serie 1, venda #27627 (Daniel Ribeiro de
+  Brito, "Vs Foto Ar" R$ 680,00, Credito Loja, tributos IBPT R$ 227,40). Integracao NFC-e da Castanho
+  CONCLUIDA. (Na 1a tentativa o SQL foi rodado com o texto de exemplo no lugar do token -> "Access token
+  invalido"; conferir sempre com length(focus_nfe_token)=32 e sem 'COLE%'.)
