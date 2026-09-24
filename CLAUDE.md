@@ -646,3 +646,7 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   proximo numero e 84 (confirmar a serie); emitir com o CNPJ de Manaus as vendas originadas do endereco
   Padre Francisco 4276 (filial em Castanho e decisao do Carlos); forma de pagamento real de cada venda;
   CPF so quando o cliente pede (janela de emissao pergunta).
+- 24/09: nota de teste nº 2 autorizada com CSOSN 102/CST 99/CPF opcional. Na Focus: Producao NFC-e serie 1,
+  proximo numero 84 (ultima emitida 83 em 04/05/2026); ligado "(NFe, NFCe) Discrimina impostos" na aba
+  Configuracoes da empresa (Lei 12.741 - "Tributos Totais Incidentes" saia em branco). Falta: 1 venda de
+  teste p/ conferir os tributos no DANFE e trocar para Producao (ambiente '1' + token de Producao).
