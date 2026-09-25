@@ -692,7 +692,14 @@ export default function CrediarioPage() {
           status: 'pendente',
         });
       }
-      const { data: novasParcelasInseridas } = await supabase.from('crediario_parcelas').insert(novasParcelas).select('id, installment_number');
+      const { data: novasParcelasInseridas, error: parcErr } = await supabase.from('crediario_parcelas').insert(novasParcelas).select('id, installment_number');
+      // Sem parcelas, o carne novo ficaria vazio e o original seria
+      // cancelado/quitado logo abaixo — a divida sumiria. Desfaz e avisa.
+      if (parcErr || !novasParcelasInseridas || novasParcelasInseridas.length === 0) {
+        await supabase.from('crediario').delete().eq('id', novoCred.id);
+        toast.error('Não foi possível criar as parcelas da renegociação (' + (parcErr?.message || 'erro desconhecido') + '). Nada foi alterado no carnê original.', { duration: 12000 });
+        return;
+      }
 
       // Corrigido 06/09/2026: o carne renegociado nunca era lancado em
       // Financeiro > Contas a Receber (so o carne original aparecia por la, e

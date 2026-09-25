@@ -76,6 +76,24 @@ export default function VendasPage() {
     const resto=Math.round((saldoVal-vBase*n)*100)/100;
     return Array.from({length:n},(_,i)=>{const d=new Date(base);d.setMonth(d.getMonth()+i);return{amount:i===0?vBase+resto:vBase,due_date:toLocalDateStr(d)};});
   };
+  // Devolve o motivo (texto para o operador) se a lista de parcelas do
+  // crediário tiver algo que o banco recusaria ou que geraria um carnê errado;
+  // null se estiver tudo certo.
+  const problemaNasParcelas = (lista: { amount: number; due_date: string }[], saldoVal: number): string | null => {
+    for (let i = 0; i < lista.length; i++) {
+      const { amount, due_date } = lista[i];
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(due_date || '');
+      const ano = m ? parseInt(m[1]) : 0;
+      if (!m || isNaN(new Date(due_date + 'T12:00:00').getTime()) || ano < 2020 || ano > 2100)
+        return 'a data de vencimento da parcela ' + (i+1) + ' está vazia ou incompleta.';
+      if (!isFinite(amount) || amount <= 0)
+        return 'o valor da parcela ' + (i+1) + ' está zerado ou inválido.';
+    }
+    const soma = lista.reduce((s, p) => s + p.amount, 0);
+    if (Math.abs(soma - saldoVal) > 0.05)
+      return 'a soma das parcelas (' + formatBRL(soma) + ') não bate com o saldo a pagar (' + formatBRL(saldoVal) + '). Escolha de novo o número de parcelas para recalcular.';
+    return null;
+  };
   const [received, setReceived]     = useState(0);
   const [funcionario, setFuncionario] = useState('');
   const [osVinculada, setOsVinculada] = useState<OS | null>(null);
@@ -389,6 +407,24 @@ export default function VendasPage() {
     if (cartItems.length === 0) { toast.error('Carrinho vazio!'); return; }
     if (!customerName.trim()) { toast.error('Informe o cliente'); return; }
     if (!osVinculada) { toast.error('⚠ Obrigatório vincular uma Ordem de Serviço!', { duration: 5000 }); return; }
+    // Corrigido 25/09/2026 (3ª reclamação da Larissa, Ótica Solar — vendas
+    // #27459 e #27480 ficaram com o carnê criado mas SEM nenhuma parcela, e
+    // sem as parcelas no Financeiro também): a lista de parcelas só era
+    // montada DEPOIS de a venda e o carnê já estarem gravados, e qualquer dado
+    // inválido nela (ex: uma data de vencimento apagada ou digitada pela
+    // metade na lista editável, que o <input type="date"> devolve como "")
+    // fazia o insert das parcelas falhar no banco, deixando um carnê vazio.
+    // Agora a lista é montada e conferida ANTES de gravar qualquer coisa: se
+    // algo estiver errado, a venda nem é salva e o operador vê o motivo.
+    const totalDevedor = Math.max(0, subtotal - (discount||0) - (entrada||0));
+    let parcelasPlanejadas: { amount: number; due_date: string }[] = [];
+    if (payment === 'crediario') {
+      if (!selectedCustomer) { toast.error('Para vender no crediário, selecione o cliente na lista (o carnê precisa estar ligado ao cadastro do cliente).', { duration: 8000 }); return; }
+      if (!installments || installments < 1) { toast.error('Informe o número de parcelas do crediário.'); return; }
+      parcelasPlanejadas = parcelasEdit.length === installments ? parcelasEdit : gerarParcelasEdit(installments, totalDevedor, dueDate);
+      const problema = problemaNasParcelas(parcelasPlanejadas, totalDevedor);
+      if (problema) { toast.error('⚠ Confira as parcelas do crediário: ' + problema + ' A venda ainda não foi salva.', { duration: 10000 }); return; }
+    }
     setSaving(true);
     try {
       const { data: saleData, error: saleErr } = await supabase.from('sales').insert([{
@@ -442,12 +478,14 @@ export default function VendasPage() {
           console.error('Falha ao criar crediário para a venda #' + saleData.sale_number + ':', credErr);
           toast.error('⚠ A venda #' + saleData.sale_number + ' foi registrada, mas houve uma falha ao criar o crediário. Avise o suporte para corrigir — o cliente não vai aparecer na relação de crediário até isso ser resolvido.', { duration: 12000 });
         } else {
-          const totalDevedor = Math.max(0, subtotal - (discount||0) - (entrada||0));
-          const parcelas = parcelasEdit.length === installments ? parcelasEdit : Array.from({ length: installments }, (_, i) => { const due = dueDate ? new Date(dueDate + 'T12:00:00') : new Date(); due.setMonth(due.getMonth() + i); return { amount: totalDevedor/installments, due_date: toLocalDateStr(due) }; });
-          const { data: parcelasInseridas, error: parcErr } = await supabase.from('crediario_parcelas').insert(parcelas.map((p, i) => ({ crediario_id: credData.id, tenant_id: tenantId, installment_number: i+1, due_date: p.due_date, amount: p.amount, status: 'pendente' }))).select('id, installment_number');
+          const parcelas = parcelasPlanejadas;
+          const linhasParcelas = parcelas.map((p, i) => ({ crediario_id: credData.id, tenant_id: tenantId, installment_number: i+1, due_date: p.due_date, amount: Math.round(p.amount * 100) / 100, status: 'pendente' }));
+          let { data: parcelasInseridas, error: parcErr } = await supabase.from('crediario_parcelas').insert(linhasParcelas).select('id, installment_number');
+          // Uma segunda tentativa cobre falhas passageiras (rede/conexão).
+          if (parcErr) ({ data: parcelasInseridas, error: parcErr } = await supabase.from('crediario_parcelas').insert(linhasParcelas).select('id, installment_number'));
           if (parcErr) {
             console.error('Falha ao criar parcelas do crediário (crediario_id=' + credData.id + ') para a venda #' + saleData.sale_number + ':', parcErr);
-            toast.error('⚠ Venda #' + saleData.sale_number + ' registrada e crediário criado, mas as parcelas não foram salvas. Avise o suporte para corrigir.', { duration: 12000 });
+            toast.error('⚠ Venda #' + saleData.sale_number + ' registrada e crediário criado, mas as parcelas não foram salvas (' + (parcErr.message || 'erro desconhecido') + '). Tire um print desta mensagem e avise o suporte.', { duration: 20000 });
           } else {
             parcelasCrediarioCriadas = parcelas;
             crediarioParcelaIds = (parcelasInseridas || [])
@@ -495,7 +533,7 @@ export default function VendasPage() {
         const usarParcelasVinculadas = crediarioParcelaIds.length > 0 && crediarioParcelaIds.length === parcelasCrediarioCriadas.length;
         const parcelasFinanceiro = usarParcelasVinculadas
           ? parcelasCrediarioCriadas
-          : (parcelasEdit.length > 0 ? parcelasEdit : Array.from({length: installments||1}, (_,i) => { const due = dueDate ? new Date(dueDate+'T12:00:00') : new Date(); due.setMonth(due.getMonth()+i); return {amount: Math.max(0,total-(discount||0)-(entrada||0))/(installments||1), due_date: toLocalDateStr(due)}; }));
+          : parcelasPlanejadas;
         if (payment === 'crediario' && parcelasFinanceiro.length > 0) {
           const parcelasTransactions = parcelasFinanceiro.map((p: any, i: number) => ({
             tenant_id: tenantId, type: 'receita',
