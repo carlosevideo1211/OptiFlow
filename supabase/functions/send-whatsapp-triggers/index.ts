@@ -85,6 +85,22 @@ async function sendWhatsAppMessageEvolution(instanceName: string, phone: string,
   }
 }
 
+// Confere se o WhatsApp da loja esta conectado no Evolution (QR Code lido e
+// celular online). Loja desconectada e pulada nesta rodada, em vez de gerar
+// erro em cada mensagem da fila.
+async function evolutionConectado(instanceName: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${EVOLUTION_BASE_URL}/instance/connectionState/${instanceName}`, {
+      headers: { apikey: EVOLUTION_API_KEY },
+    });
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => ({}));
+    return (data?.instance?.state || data?.state) === "open";
+  } catch {
+    return false;
+  }
+}
+
 // Manda uma mensagem de MODELO (template) pela Meta Cloud API. Diferente do
 // Evolution/Baileys, a Meta NAO deixa mandar texto livre quando e a loja que
 // inicia a conversa — so mensagens de template pre-aprovadas. "params"
@@ -307,6 +323,10 @@ serve(async (req) => {
       }
       if (!canalInfo) {
         resultado.tenants_sem_credencial.push(tenant.id);
+        continue;
+      }
+      if (canalInfo.canal === "evolution" && !(await evolutionConectado(canalInfo.instance))) {
+        resultado.tenants_sem_credencial.push(tenant.id + ":evolution_desconectado");
         continue;
       }
 
