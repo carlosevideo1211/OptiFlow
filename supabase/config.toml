@@ -27,3 +27,12 @@ verify_jwt = false
 entrypoint = "./functions/asaas-subscription-webhook/index.ts"
 # Chamada direta pela Asaas (sem login de usuario) - autenticacao propria via
 # header asaas-access-token conferido dentro da function, por isso verify_jwt=false.
+
+[functions.send-whatsapp-triggers]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-whatsapp-triggers/index.ts"
+# Chamada pelo pg_cron (job whatsapp-triggers-diario) sem login de usuario - autenticacao
+# propria via header x-cron-secret conferido dentro da function, por isso verify_jwt=false.
+# Publicada com verify_jwt=true em set/2026 -> todas as chamadas davam 401 e nenhuma mensagem
+# automatica saia de 06/09 a 29/09/2026.

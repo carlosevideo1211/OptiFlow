@@ -39,6 +39,12 @@ interface Tenant {
   state?: string;
   created_at: string;
   boleto_habilitado?: boolean;
+  // WhatsApp automatico (send-whatsapp-triggers): so envia quando ligado aqui,
+  // pelo canal do plano contratado. Pedido do Carlos (29/09/2026): quem paga
+  // Meta usa Meta, quem paga Evolution usa Evolution.
+  whatsapp_auto_ativo?: boolean;
+  whatsapp_canal?: string | null;
+  whatsapp_instance_name?: string | null;
   // Guarda o valor anterior de next_billing logo antes da ultima confirmacao
   // de pagamento manual — mantido por compatibilidade com tenants que so
   // tem esse campo preenchido (de antes do historico existir). Fica
@@ -289,6 +295,24 @@ export default function AdminPanelPage() {
     setTenants(prev => prev.map(t => t.id===id ? {...t, ...updates} : t));
     setUpdating(null);
     toast.success('Atualizado!');
+  };
+
+  // Liga/desliga o WhatsApp automatico da loja e escolhe o canal (Meta oficial
+  // ou Evolution). Desligado = o robo de mensagens ignora a loja.
+  const alterarWhatsappAuto = async (t: Tenant, opcao: string) => {
+    const updates: any = opcao === 'off'
+      ? { whatsapp_auto_ativo: false }
+      : { whatsapp_auto_ativo: true, whatsapp_canal: opcao };
+    if (opcao !== 'off' && !confirm('Ligar o WhatsApp automatico de ' + t.company_name + ' pelo canal ' +
+        (opcao === 'meta' ? 'Meta (oficial)' : 'Evolution') + '? Os clientes da loja passam a receber avisos automaticos (aniversario, parcelas, cobranca, pos-venda).')) return;
+    setUpdating(t.id);
+    const { error } = await supabase.from('tenants').update(updates).eq('id', t.id);
+    setUpdating(null);
+    if (error) { toast.error('Nao foi possivel alterar: ' + error.message); return; }
+    setTenants(prev => prev.map(x => x.id===t.id ? {...x, ...updates} : x));
+    if (opcao === 'evolution' && !t.whatsapp_instance_name) toast('Atencao: esta loja ainda nao conectou o WhatsApp (QR Code) em Configuracao > Integracoes.', { icon: '⚠️', duration: 6000 });
+    else if (opcao === 'meta') toast('Lembrete: a loja precisa ter o Phone ID da Meta em Configuracao > Integracoes (numero proprio cadastrado na Meta).', { icon: 'ℹ️', duration: 6000 });
+    else toast.success(opcao === 'off' ? 'WhatsApp automatico desligado' : 'WhatsApp automatico ligado');
   };
 
   const estenderTrial = async (t: Tenant, dias: number) => {
@@ -816,6 +840,17 @@ export default function AdminPanelPage() {
                         }}>
                         Boleto: {t.boleto_habilitado ? 'On' : 'Off'}
                       </button>
+                      <select value={t.whatsapp_auto_ativo ? (t.whatsapp_canal === 'meta' ? 'meta' : 'evolution') : 'off'}
+                        onChange={e=>alterarWhatsappAuto(t, e.target.value)} disabled={updating===t.id}
+                        title="WhatsApp automatico (aniversario, parcelas, cobranca, pos-venda) conforme o plano contratado"
+                        style={{ fontSize:11, fontWeight:700, padding:'4px 6px', borderRadius:6, marginRight:4, cursor:'pointer', outline:'none',
+                          border:'1px solid ' + (t.whatsapp_auto_ativo ? 'rgba(34,197,94,.35)' : 'var(--border)'),
+                          background: t.whatsapp_auto_ativo ? 'rgba(34,197,94,.1)' : 'transparent',
+                          color: t.whatsapp_auto_ativo ? '#22c55e' : '#64748b' }}>
+                        <option value="off">WhatsApp auto: Off</option>
+                        <option value="meta">WhatsApp auto: Meta</option>
+                        <option value="evolution">WhatsApp auto: Evolution</option>
+                      </select>
                       {(t.status==='ativo' || t.status==='inadimplente') && (
                         <button onClick={()=>confirmarPagamentoManual(t)} title="Confirmar pagamento (Pix manual) e liberar por mais 30 dias"
                           disabled={updating===t.id}

@@ -274,7 +274,7 @@ serve(async (req) => {
     // Busca todos os tenants com o canal escolhido, mais o mapa de Phone IDs
     // (store_settings, usado so pelos tenants no canal 'meta' — o Token e
     // sempre o secret global META_WHATSAPP_TOKEN).
-    const tenants = await supabaseFetch(`tenants?select=id,company_name,whatsapp_instance_name,spc_serasa_ativo,whatsapp_canal`);
+    const tenants = await supabaseFetch(`tenants?select=id,company_name,whatsapp_instance_name,spc_serasa_ativo,whatsapp_canal,whatsapp_auto_ativo`);
     const settingsRows = await supabaseFetch(`store_settings?select=tenant_id,wa_phone_id`);
     const phoneIdPorTenant: Record<string, string> = {};
     if (Array.isArray(settingsRows)) {
@@ -288,6 +288,11 @@ serve(async (req) => {
         resultado.limite_global_atingido = true;
         break;
       }
+
+      // So envia para lojas com o WhatsApp automatico LIGADO no Painel Admin
+      // (tenants.whatsapp_auto_ativo, conforme o plano contratado: Meta ou
+      // Evolution). Ter uma instancia Evolution configurada nao basta.
+      if (!tenant.whatsapp_auto_ativo) continue;
 
       // Resolve o canal deste tenant. 'evolution' e o padrao (compatibilidade
       // com tenants existentes, coluna adicionada com DEFAULT 'evolution').
