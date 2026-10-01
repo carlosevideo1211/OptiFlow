@@ -702,3 +702,8 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   Corrigido em 01/10 copiando o segredo do job 2 via cron.alter_job. A funcao virou ALERTA PARA O CARLOS: um e-mail por
   dia (Resend, onboarding@resend.dev -> carlosevideo28@gmail.com) so quando ha loja com status E plan = 'trial'
   vencendo em ate 3 dias. Avisar a propria loja exige dominio proprio no Resend (nao feito).
+- 01/10/2026: lembrete de parcela ANTES do vencimento passou de 5 dias para 1 DIA antes (pedido da Larissa/Solar e
+  decisao do Carlos, vale para todas as lojas e os dois canais). send-whatsapp-triggers: DIAS_ANTES_LEMBRETE = 1
+  (o texto e o modelo da Meta dizem so "vence em <data>", nao precisou de modelo novo). Sequencia atual: 1 dia antes,
+  no dia, 5 dias depois, 30+ dias. Tela Crediario: filtro "Vence amanha". Datas do Alberto e da Abigail (Otica do
+  Povo) corrigidas via SQL para 2026/2027.

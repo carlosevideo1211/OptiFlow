@@ -228,7 +228,8 @@ export default function CrediarioPage() {
   // parcela vencendo hoje sumia da relacao/filtros durante a noite. Ver
   // toLocalDateStr() em crediarioTypes.ts.
   const hoje = toLocalDateStr();
-  const em5dias = toLocalDateStr(new Date(Date.now() + 5 * 86400000));
+  // Lembrete automatico antes do vencimento: 1 dia antes (era 5 ate 01/10/2026).
+  const amanha = toLocalDateStr(new Date(Date.now() + 1 * 86400000));
   const menos5dias = toLocalDateStr(new Date(Date.now() - 5 * 86400000));
 
   const filtered = useMemo(() => {
@@ -244,7 +245,7 @@ export default function CrediarioPage() {
       if (statusFilter === 'vencida' && (p.status === 'pago' || !p.due_date || p.due_date >= hoje)) return false;
       if (statusFilter === 'aberta' && p.status !== 'pendente') return false;
       if (statusFilter === 'pago' && p.status !== 'pago') return false;
-      if (janelaFilter === 'antes5' && (p.status === 'pago' || p.due_date !== em5dias)) return false;
+      if (janelaFilter === 'antes5' && (p.status === 'pago' || p.due_date !== amanha)) return false;
       if (janelaFilter === 'hoje' && (p.status === 'pago' || p.due_date !== hoje)) return false;
       if (janelaFilter === 'atraso5' && (p.status === 'pago' || p.due_date !== menos5dias)) return false;
       if (janelaFilter === 'vencidas' && (p.status === 'pago' || !p.due_date || p.due_date >= hoje)) return false;
@@ -252,7 +253,7 @@ export default function CrediarioPage() {
       if (dateTo && p.due_date > dateTo) return false;
       return true;
     });
-  }, [parcelas, search, statusFilter, janelaFilter, dateFrom, dateTo, hoje, em5dias, menos5dias]);
+  }, [parcelas, search, statusFilter, janelaFilter, dateFrom, dateTo, hoje, amanha, menos5dias]);
 
   // Crediarios com todas as parcelas pagas (status 'quitado', atualizado pelo
   // proprio handleConfirmPay/renegociacao) — usado pra so mostrar o botao de
@@ -829,7 +830,7 @@ export default function CrediarioPage() {
       <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
         {[
           { v:'', label:'Todas as janelas' },
-          { v:'antes5', label:'Vence em 5 dias' },
+          { v:'antes5', label:'Vence amanha' },
           { v:'hoje', label:'Vence hoje' },
           { v:'atraso5', label:'Venceu ha 5 dias' },
           { v:'vencidas', label:'Todas vencidas' },

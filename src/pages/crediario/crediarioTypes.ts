@@ -53,7 +53,7 @@ export interface CobrancaLog {
 }
 
 export const JANELA_LABELS: Record<string, string> = {
-  vencimento: 'Automatica (-5 dias)',
+  vencimento: 'Automatica (antes do vencimento)',
   vencimento_dia: 'Automatica (dia do vencimento)',
   vencimento_atraso5: 'Automatica (+5 dias)',
   cobranca_atraso: 'Automatica (atraso 30+ dias)',

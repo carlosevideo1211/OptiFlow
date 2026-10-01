@@ -239,7 +239,10 @@ serve(async (req) => {
   const MANAUS_OFFSET_MS = 4 * 60 * 60 * 1000;
   const hoje = new Date(Date.now() - MANAUS_OFFSET_MS);
   const hojeStr = hoje.toISOString().split("T")[0];
-  const em5dias = new Date(Date.now() + 5 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
+  // Lembrete ANTES do vencimento: 1 dia antes (era 5; mudado em 01/10/2026 a
+  // pedido das lojas - 5 dias antes soava insistente). Vale para os dois canais.
+  const DIAS_ANTES_LEMBRETE = 1;
+  const diaLembrete = new Date(Date.now() + DIAS_ANTES_LEMBRETE * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
   const menos5dias = new Date(Date.now() - 5 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
   const menos7dias = new Date(Date.now() - 7 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
   const menos15dias = new Date(Date.now() - 15 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
@@ -388,10 +391,10 @@ serve(async (req) => {
         await delayAleatorio(canalInfo.canal);
       }
 
-      // ---------- 2) VENCIMENTO DE PARCELA (5 dias antes) ----------
+      // ---------- 2) VENCIMENTO DE PARCELA (1 dia antes) ----------
       if (podeEnviarMais()) {
         const parcelas = await supabaseFetch(
-          `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=eq.${em5dias}&status=eq.pendente&select=id,crediario_id,due_date,amount`
+          `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=eq.${diaLembrete}&status=eq.pendente&select=id,crediario_id,due_date,amount`
         );
         if (Array.isArray(parcelas) && parcelas.length > 0) {
           const credIds = [...new Set(parcelas.map((p: any) => p.crediario_id))].join(",");
