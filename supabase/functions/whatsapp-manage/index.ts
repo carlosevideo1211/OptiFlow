@@ -395,6 +395,51 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    // ---------- RESPONDER (tela Mensagens) ----------
+    // Texto livre para o cliente. No canal oficial (Meta) so e aceito ate 24h
+    // depois da ultima mensagem que o CLIENTE mandou; fora disso a Meta recusa.
+    if (action === "send_reply") {
+      const numero = String(body.phone || "").replace(/\D/g, "");
+      const textoResp = String(body.text || "").trim();
+      if (!numero || !textoResp) return json({ ok: false, error: "informe o número e a mensagem" }, 400);
+      const para = numero.startsWith("55") ? numero : `55${numero}`;
+      let metaId: string | null = null;
+      let erroEnvio: string | null = null;
+
+      if (usaMeta) {
+        const cred = await credenciaisMeta(tenant.id);
+        if (!cred) return json({ ok: false, error: "WhatsApp Business API não configurado nesta ótica" }, 400);
+        const res = await fetch(`${META_GRAPH_BASE}/${cred.phoneId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${cred.token}` },
+          body: JSON.stringify({ messaging_product: "whatsapp", to: para, type: "text", text: { preview_url: false, body: textoResp.slice(0, 4000) } }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) metaId = data?.messages?.[0]?.id || null;
+        else {
+          const cod = data?.error?.code;
+          erroEnvio = cod === 131047 || cod === 131026
+            ? "A Meta só permite resposta livre até 24h depois da última mensagem do cliente. Depois disso, só as mensagens automáticas (modelos)."
+            : (data?.error?.message || `HTTP ${res.status}`);
+        }
+      } else {
+        if (!tenant.whatsapp_instance_name) return json({ ok: false, error: "WhatsApp nao conectado nesta ótica" }, 400);
+        const r = await sendWhatsAppMessageEvolution(tenant.whatsapp_instance_name, para, textoResp);
+        if (!r.ok) erroEnvio = r.error || "falha ao enviar";
+      }
+
+      await supabaseFetch("whatsapp_mensagens", {
+        method: "POST",
+        body: JSON.stringify({
+          tenant_id: tenant.id, phone: para, direcao: "out", tipo: "text", texto: textoResp.slice(0, 4000),
+          meta_message_id: metaId, status: erroEnvio ? "failed" : "sent", erro: erroEnvio,
+          enviado_por: profile.full_name || null, lida: true,
+        }),
+      });
+      if (erroEnvio) return json({ ok: false, error: erroEnvio }, 400);
+      return json({ ok: true });
+    }
+
     if (action === "log_manual_local") {
       // Registra que o usuario clicou no botao de abrir o WhatsApp Web/app
       // manualmente (nao via robo). Identico nos dois canais — nao depende

@@ -36,3 +36,15 @@ entrypoint = "./functions/send-whatsapp-triggers/index.ts"
 # propria via header x-cron-secret conferido dentro da function, por isso verify_jwt=false.
 # Publicada com verify_jwt=true em set/2026 -> todas as chamadas davam 401 e nenhuma mensagem
 # automatica saia de 06/09 a 29/09/2026.
+
+[functions.whatsapp-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/whatsapp-webhook/index.ts"
+# Chamado pela Meta (webhook do WhatsApp oficial): sem JWT; confere o token de
+# verificacao (GET) e a assinatura X-Hub-Signature-256 (POST, com META_APP_SECRET).
+
+[functions.meta-modelos-pix]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/meta-modelos-pix/index.ts"

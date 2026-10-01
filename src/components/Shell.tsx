@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Eye, ClipboardList, ShoppingCart, Calendar,
   Package, Boxes, CreditCard, TrendingUp, BarChart3, FileText,
-  BookUser, Settings, LogOut, Menu, X, Bell, Upload, ChevronRight, Receipt
+  BookUser, Settings, LogOut, Menu, X, Bell, Upload, ChevronRight, Receipt, MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -36,6 +36,8 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { to: '/agenda',     label: 'Agenda',           icon: Calendar,        sub: false, roles: [], requiresModule: 'consultas' },
       { to: '/os',         label: 'Ordem de Serviço', icon: ClipboardList,   sub: false, roles: [], requiresModule: 'otica' },
       { to: '/vendas',     label: 'Vendas / PDV',     icon: ShoppingCart,    sub: false, roles: [], requiresModule: 'otica' },
+      // So aparece para lojas no WhatsApp oficial (Meta): respostas dos clientes.
+      { to: '/mensagens',  label: 'Mensagens',        icon: MessageCircle,   sub: false, roles: [], requiresModule: 'whatsapp_meta' },
     ]
   },
   {
@@ -77,7 +79,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const [isMobile, setIsMobile] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < 768
   );
-  const [badges, setBadges]         = useState({ os: 0, parcelas: 0 });
+  const [badges, setBadges]         = useState({ os: 0, parcelas: 0, mensagens: 0 });
+  const [whatsappMeta, setWhatsappMeta] = useState<boolean>(false);
   const [trialDays, setTrialDays]   = useState<number | null>(null);
   const [tooltip, setTooltip]       = useState<{ label: string; y: number } | null>(null);
   const [moduloConsultasAtivo, setModuloConsultasAtivo] = useState<boolean>(false);
@@ -91,7 +94,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       (item.roles.length === 0 || isMaster || item.roles.includes(userRole)) &&
       (!item.requiresModule ||
         (item.requiresModule === 'consultas' && moduloConsultasAtivo) ||
-        (item.requiresModule === 'otica' && moduloOticaAtivo))
+        (item.requiresModule === 'otica' && moduloOticaAtivo) ||
+        (item.requiresModule === 'whatsapp_meta' && whatsappMeta))
     )
   })).filter(section => section.items.length > 0);
 
@@ -113,7 +117,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         .neq('status', 'cancelado');
       const { data: tenant } = await supabase
         .from('tenants')
-        .select('trial_end_date, status, plan, modulo_consultas_ativo, modulo_otica_ativo')
+        .select('trial_end_date, status, plan, modulo_consultas_ativo, modulo_otica_ativo, whatsapp_canal')
         .eq('id', tenantId)
         .single();
       if (tenant?.trial_end_date && tenant.status === 'trial') {
@@ -127,7 +131,19 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       // motivo vier null/undefined (tenant muito antigo antes da coluna existir),
       // mantém ligado — não pode esconder Ótica de quem sempre usou.
       setModuloOticaAtivo(tenant?.modulo_otica_ativo !== false);
-      setBadges({ os: osCount || 0, parcelas: parcCount || 0 });
+      const usaMeta = (tenant as any)?.whatsapp_canal === 'meta';
+      setWhatsappMeta(usaMeta);
+      let msgCount = 0;
+      if (usaMeta) {
+        const { count } = await supabase
+          .from('whatsapp_mensagens')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .eq('direcao', 'in')
+          .eq('lida', false);
+        msgCount = count || 0;
+      }
+      setBadges({ os: osCount || 0, parcelas: parcCount || 0, mensagens: msgCount });
     };
     loadData();
     const interval = setInterval(loadData, 60000);
@@ -157,6 +173,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const badgeFor = (to: string) => {
     if (to === '/os')        return badges.os;
     if (to === '/crediario') return badges.parcelas;
+    if (to === '/mensagens') return badges.mensagens;
     return 0;
   };
 

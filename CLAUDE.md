@@ -728,3 +728,22 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   ?teste_meta_pix=<numero>&tenant=<tenant_id>. O botao manual (whatsapp-manage) no canal Meta ainda usa o modelo sem Pix.
   Esses modelos servem para qualquer loja que entrar no canal Meta DENTRO da mesma WABA; em outra WABA precisam ser
   criados de novo (rodar a function com META_WABA_ID da outra conta).
+- 01/10/2026 (noite): TELA "MENSAGENS" (caixa de entrada do WhatsApp oficial). Pedido do Carlos: ler as respostas dos
+  clientes no canal Meta.
+  - Tabela whatsapp_mensagens (migrations/20261001_whatsapp_mensagens.sql): in/out, phone (digitos com 55), texto,
+    meta_message_id unico, status, lida. RLS: select/update por tenant; insert so pelo servidor.
+  - Edge Function whatsapp-webhook (verify_jwt=false): GET confere META_WEBHOOK_VERIFY_TOKEN; POST grava as mensagens
+    recebidas (acha a loja por store_settings.wa_phone_id) e atualiza entregue/lida/falhou das respostas enviadas.
+    Se META_APP_SECRET estiver configurado, confere a assinatura X-Hub-Signature-256 (sem ele aceita qualquer POST -
+    CONFIGURAR). URL: https://fkwamdnstrbvgheosalz.supabase.co/functions/v1/whatsapp-webhook
+  - whatsapp-manage action "send_reply" {phone, text}: texto livre (Meta: so ate 24h apos a ultima mensagem do
+    cliente; erro 131047 vira aviso amigavel) e grava a resposta na tabela.
+  - Frontend: src/pages/MensagensPage.tsx (rota /mensagens), menu "Mensagens" so para tenants com
+    whatsapp_canal='meta', com contador de nao lidas (Shell.tsx). Atualiza a cada 20s.
+  - App Meta "OptiFlow" (id 952549707891083) ja inscrito na WABA da Castanho (subscribed_apps, via
+    meta-modelos-pix?acao=webhook). FALTA o Carlos: no developers.facebook.com > app OptiFlow > WhatsApp >
+    Configuracao, cadastrar a URL acima + token de verificacao e assinar o campo "messages"; e setar os secrets
+    META_WEBHOOK_VERIFY_TOKEN e META_APP_SECRET.
+  - Teste de 01/10: POST simulado gravou a mensagem na Castanho (apagada depois). Tela so conferida por build.
+  - Teste Evolution com Pix para o numero do Carlos: OK (imagem + copia e cola). O Evolution as vezes leva ~60s e
+    falha ao subir midia (stream error 503 do WhatsApp) - por isso o limite de 25s com volta para o texto.

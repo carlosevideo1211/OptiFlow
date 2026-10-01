@@ -70,6 +70,14 @@ serve(async (req) => {
   const acao = url.searchParams.get("acao") || "status";
   const comBotao = url.searchParams.get("botao") !== "0";
 
+  // ?acao=webhook -> inscreve o app nos eventos desta conta (necessario para as
+  // respostas dos clientes chegarem no whatsapp-webhook) e mostra a inscricao.
+  if (acao === "webhook") {
+    const ins = await gj(`${G}/${WABA_ID}/subscribed_apps`, { method: "POST", headers: { Authorization: `Bearer ${TOKEN}` } });
+    const ver = await gj(`${G}/${WABA_ID}/subscribed_apps?access_token=${TOKEN}`);
+    return new Response(JSON.stringify({ inscricao: ins.d, inscritos: ver.d }), { headers: { "Content-Type": "application/json" } });
+  }
+
   const lista = await gj(`${G}/${WABA_ID}/message_templates?fields=name,status,category,language,rejected_reason,components&limit=100&access_token=${TOKEN}`);
   const existentes: any[] = lista.d?.data || [];
   const resumo = (t: any) => ({
