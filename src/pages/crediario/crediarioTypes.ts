@@ -23,6 +23,18 @@ export interface Parcela {
   customer_name?: string; customer_id?: string; whatsapp?: string;
   total_installments?: number; sale_id?: string; payment_method?: string;
   arquivado?: boolean;
+  // Nome gravado no carne na hora da venda, quando difere do nome atual do
+  // cadastro do cliente (cadastro renomeado depois). A busca aceita os dois.
+  nome_no_carne?: string;
+}
+
+// Vencimento valido: AAAA-MM-DD entre 2020 e 2100. Barra ano digitado errado
+// no campo de data (ex.: "0026" ou "2202"), que fazia a parcela sumir da
+// relacao (caia no Arquivo 5+ anos) ou nunca vencer.
+export function dataVencimentoValida(d?: string | null): boolean {
+  if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const ano = parseInt(d.slice(0, 4), 10);
+  return ano >= 2020 && ano <= 2100 && !isNaN(new Date(d + 'T00:00:00').getTime());
 }
 
 export interface CrediarioResumo {

@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
 import { computeTier, TIER_STYLES, type Tier, type ParcelaRanking } from '../utils/clienteRanking';
 import {
-  CINCO_ANOS_MS, hashPassword, JANELA_LABELS, calcJuros, toLocalDateStr, PRAZO_NEGATIVACAO_DIAS,
+  CINCO_ANOS_MS, hashPassword, JANELA_LABELS, calcJuros, toLocalDateStr, PRAZO_NEGATIVACAO_DIAS, dataVencimentoValida,
   type Parcela, type CrediarioResumo, type CobrancaLog,
 } from './crediario/crediarioTypes';
 import {
@@ -86,7 +86,7 @@ export default function CrediarioPage() {
 
   const custs = await fetchAllRows<any>((from, to) => supabase
       .from('customers')
-      .select('id, whatsapp, phone')
+      .select('id, name, whatsapp, phone')
       .eq('tenant_id', tenantId)
       .range(from, to));
     const custMap: Record<string, any> = {};
@@ -112,13 +112,20 @@ export default function CrediarioPage() {
     (creds || []).forEach((cr: any) => {
       const nP = cr.installments || 1;
       const parcelasCr = cr.parcelas || [];
-      const vencimentos = parcelasCr.map((p: any) => p.due_date).filter(Boolean).sort();
+      // So datas validas entram na conta do "Arquivo (5+ anos)": um ano digitado
+      // errado (ex.: 0026) fazia o carne inteiro sumir da relacao de parcelas.
+      const vencimentos = parcelasCr.map((p: any) => p.due_date).filter((d: any) => dataVencimentoValida(d)).sort();
       const ultimaParcelaVencimento = vencimentos.length > 0 ? vencimentos[vencimentos.length - 1] : null;
+      // Nome atual do cadastro do cliente (o do carne fica congelado na venda e
+      // pode ter ficado antigo se o cadastro foi renomeado depois).
+      const nomeAtual = (custMap[cr.customer_id]?.name || '').trim() || cr.customer_name;
+      const nomeNoCarne = (cr.customer_name || '').trim();
+      const nomeMudou = !!nomeNoCarne && nomeNoCarne.toLowerCase() !== (nomeAtual || '').trim().toLowerCase();
       const arquivado = !!ultimaParcelaVencimento && (hojeMs - new Date(ultimaParcelaVencimento + 'T00:00:00').getTime()) > CINCO_ANOS_MS;
 
       const emAtraso = parcelasCr.filter((p: any) => p.status !== 'pago' && p.due_date && new Date(p.due_date + 'T00:00:00').getTime() < hojeMs);
       resumoCreds.push({
-        id: cr.id, customer_id: cr.customer_id, customer_name: cr.customer_name,
+        id: cr.id, customer_id: cr.customer_id, customer_name: nomeAtual,
         total_amount: cr.total_amount, negativado: !!cr.negativado, negativado_em: cr.negativado_em,
         valorEmAtraso: emAtraso.reduce((s: number, p: any) => s + p.amount, 0),
         qtdEmAtraso: emAtraso.length, ultimaParcelaVencimento,
@@ -130,7 +137,8 @@ export default function CrediarioPage() {
       parcelasCr.forEach((p: any) => {
         lista.push({
           ...p,
-          customer_name: cr.customer_name,
+          customer_name: nomeAtual,
+          nome_no_carne: nomeMudou ? nomeNoCarne : undefined,
           customer_id: cr.customer_id,
           whatsapp: custMap[cr.customer_id]?.whatsapp || custMap[cr.customer_id]?.phone || '',
           total_installments: nP,
@@ -226,7 +234,13 @@ export default function CrediarioPage() {
   const filtered = useMemo(() => {
     return parcelas.filter(p => {
       if (p.arquivado) return false; // carnes com 5+ anos ficam so na aba "Arquivo"
-      if (search.trim() && !p.customer_name?.toLowerCase().includes(search.toLowerCase())) return false;
+      if (search.trim()) {
+        // Sem acento/maiuscula e ignorando espacos sobrando; procura no nome
+        // atual do cliente E no nome antigo gravado no carne.
+        const n = (t?: string) => (t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+        const s = n(search);
+        if (!n(p.customer_name).includes(s) && !n(p.nome_no_carne).includes(s)) return false;
+      }
       if (statusFilter === 'vencida' && (p.status === 'pago' || !p.due_date || p.due_date >= hoje)) return false;
       if (statusFilter === 'aberta' && p.status !== 'pendente') return false;
       if (statusFilter === 'pago' && p.status !== 'pago') return false;
@@ -280,6 +294,7 @@ export default function CrediarioPage() {
     const pago = payForm.is_partial ? parseFloat(payForm.paid_amount.replace(',','.')) : total;
     if (payForm.is_partial && (!pago || pago <= 0 || pago >= total)) { toast.error('Valor parcial invalido'); return; }
     if (payForm.is_partial && !payForm.partial_due_date) { toast.error('Informe o vencimento do saldo'); return; }
+    if (payForm.is_partial && !dataVencimentoValida(payForm.partial_due_date)) { toast.error('Vencimento do saldo invalido. Confira o ano (4 digitos, ex.: 2026).'); return; }
     setPayingSaving(true);
     try {
       const saldo = payForm.is_partial ? Math.round((total - pago) * 100) / 100 : 0;
@@ -606,6 +621,7 @@ export default function CrediarioPage() {
   const handleSaveDate = async (parcelaId: string) => {
     if (parcelaActionRef.current) return;
     if (!newDate) { toast.error('Informe a nova data'); return; }
+    if (!dataVencimentoValida(newDate)) { toast.error('Data invalida. Confira o ano (4 digitos, ex.: 2026).'); return; }
     parcelaActionRef.current = true;
     try {
       const { error } = await supabase.from('crediario_parcelas').update({ due_date: newDate }).eq('id', parcelaId);
@@ -660,6 +676,7 @@ export default function CrediarioPage() {
     if (!novoValor || novoValor <= 0) { toast.error('Informe o novo valor total'); return; }
     if (!numP || numP <= 0) { toast.error('Informe o numero de parcelas'); return; }
     if (!renego.dataInicio) { toast.error('Informe a data da primeira parcela'); return; }
+    if (!dataVencimentoValida(renego.dataInicio)) { toast.error('Data da primeira parcela invalida. Confira o ano (4 digitos, ex.: 2026).'); return; }
     const valorParcela = novoValor / numP;
 
     setRenegoSaving(true);
@@ -867,6 +884,7 @@ export default function CrediarioPage() {
                 <td style={{ textAlign:'center' }}>{podeCobrarAuto && (<input type="checkbox" checked={selecionadas.has(p.id)} onChange={()=>toggleSelecionada(p.id)} />)}</td>
                         <td>
                           <div style={{ fontWeight:600 }}>{p.customer_name}</div>
+                          {p.nome_no_carne && <div style={{ fontSize:11, color:'var(--text-muted)' }}>no carnê: {p.nome_no_carne}</div>}
                         </td>
                         <td style={{ textAlign:'center', fontWeight:700, color:'#6366f1' }}>
                           {p.installment_number}/{p.total_installments}

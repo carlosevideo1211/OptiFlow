@@ -260,6 +260,14 @@ export default function WhatsAppAutomatico() {
 
       {/* ---------- Canal Evolution (não-oficial): fluxo de QR Code, igual
           a antes — nada muda aqui pras óticas que continuam nesse canal. ---------- */}
+      {isMaster && status?.canal !== 'meta' && (
+        <div style={{ fontSize: 12, lineHeight: 1.5, padding: '10px 12px', borderRadius: 8, marginBottom: 12,
+          background: 'rgba(245,158,11,.10)', border: '1px solid rgba(245,158,11,.35)' }}>
+          <strong>⚠️ Importante:</strong> este canal usa o WhatsApp Web (não-oficial). O WhatsApp pode restringir ou
+          bloquear números que enviam mensagens automáticas. Use um <strong>número exclusivo da loja</strong>, não o seu
+          número pessoal. O sistema envia no máximo 30 mensagens por dia, espaçadas, para reduzir esse risco.
+        </div>
+      )}
       {isMaster && status?.canal !== 'meta' && !status?.connected && !qrcode && (
         <button type="button" onClick={conectar} disabled={connecting}
           style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: '#25D366',
