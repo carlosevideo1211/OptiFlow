@@ -163,9 +163,14 @@ async function sendCobrancaComPixEvolution(
     const dataUrl: string = await QRCode.toDataURL(codigo, { errorCorrectionLevel: "M", margin: 2, width: 480 });
     const media = dataUrl.replace(/^data:image\/png;base64,/, "");
     const caption = `${texto}\n\n💠 Para pagar por Pix: aponte a câmera para o QR Code acima ou copie o código da próxima mensagem.`;
-    const r = await evolutionFetch(`/message/sendMedia/${instanceName}`, "POST", {
-      number, mediatype: "image", mimetype: "image/png", fileName: "pix.png", caption, media,
+    // Limite de 25s (ver send-whatsapp-triggers): se a imagem nao subir, vai so o texto.
+    const resM = await fetch(`${EVOLUTION_BASE_URL}/message/sendMedia/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+      body: JSON.stringify({ number, mediatype: "image", mimetype: "image/png", fileName: "pix.png", caption, media }),
+      signal: AbortSignal.timeout(25000),
     });
+    const r = { ok: resM.ok, status: resM.status, data: await resM.json().catch(() => ({})) };
     if (!r.ok) {
       console.error("sendMedia (Pix) falhou, enviando so o texto:", r.status, JSON.stringify(r.data).slice(0, 300));
       return sendWhatsAppMessageEvolution(instanceName, phone, texto);

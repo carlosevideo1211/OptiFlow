@@ -330,10 +330,13 @@ async function sendCobrancaComPixEvolution(
     const media = await qrCodePngBase64(codigo);
     const caption = `${texto}\n\n💠 Para pagar por Pix: aponte a câmera para o QR Code acima ou copie o código da próxima mensagem.`;
 
+    // Limite de 25s: quando o WhatsApp falha ao receber a imagem, o Evolution
+    // fica ~60s tentando; nao deixamos o robo preso nisso (cai no texto simples).
     const res = await fetch(`${EVOLUTION_BASE_URL}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
       body: JSON.stringify({ number, mediatype: "image", mimetype: "image/png", fileName: "pix.png", caption, media }),
+      signal: AbortSignal.timeout(25000),
     });
     if (!res.ok) {
       console.error("sendMedia (Pix) falhou, enviando so o texto:", res.status, (await res.text()).slice(0, 300));
@@ -436,6 +439,25 @@ serve(async (req) => {
       ["Carlos (teste)", "R$ 1,00", st.name || "Loja", new Date().toLocaleDateString("pt-BR")],
       { chave: String(st.pix_key).trim(), nome: st.name || "Loja", valor: 1 });
     return new Response(JSON.stringify(r), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // Teste do canal Evolution: ?teste_evo_pix=<numero>&tenant=<id> manda UMA cobranca
+  // de exemplo (R$ 1,00) com QR Code + copia e cola pelo WhatsApp conectado da loja.
+  const numEvo = new URL(req.url).searchParams.get("teste_evo_pix");
+  if (numEvo) {
+    const tid = new URL(req.url).searchParams.get("tenant") || "";
+    const tn = await supabaseFetch(`tenants?id=eq.${tid}&select=whatsapp_instance_name,company_name`);
+    const ss = await supabaseFetch(`store_settings?tenant_id=eq.${tid}&select=pix_key,name`);
+    const t0 = Array.isArray(tn) ? tn[0] : null;
+    const st = Array.isArray(ss) ? ss[0] : null;
+    if (!t0?.whatsapp_instance_name || !st?.pix_key) return new Response(JSON.stringify({ ok: false, error: "loja sem instancia ou sem chave Pix" }), { status: 400 });
+    const conectado = await evolutionConectado(t0.whatsapp_instance_name);
+    const r = conectado
+      ? await sendCobrancaComPixEvolution(t0.whatsapp_instance_name, numEvo,
+          `Olá, Carlos (teste)! Sua parcela de R$ 1,00 do crediário na ${st.name || t0.company_name} vence hoje. Esta é uma mensagem de TESTE do sistema.`,
+          { chave: String(st.pix_key).trim(), nome: st.name || t0.company_name || "Loja", valor: 1 })
+      : { ok: false, error: "WhatsApp da loja desconectado no Evolution" };
+    return new Response(JSON.stringify({ conectado, ...r }), { headers: { "Content-Type": "application/json" } });
   }
 
   // Teste rapido (nao envia nada): gera o Pix e o QR Code de exemplo.
