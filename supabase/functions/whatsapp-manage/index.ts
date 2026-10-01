@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import QRCode from "npm:qrcode@1.5.4";
 
 const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
@@ -110,12 +111,73 @@ async function sendWhatsAppTemplateMeta(
 async function enviarMensagem(
   canalInfo: CanalInfo,
   telefone: string,
-  opts: { texto: string; templateName: string; templateParams: string[] }
+  opts: { texto: string; templateName: string; templateParams: string[]; pix?: PixCobranca }
 ): Promise<{ ok: boolean; error?: string }> {
   if (canalInfo.canal === "meta") {
     return sendWhatsAppTemplateMeta(canalInfo.phoneId, canalInfo.token, telefone, opts.templateName, opts.templateParams);
   }
+  if (opts.pix && opts.pix.chave && opts.pix.valor > 0) {
+    return sendCobrancaComPixEvolution(canalInfo.instance, telefone, opts.texto, opts.pix);
+  }
   return sendWhatsAppMessageEvolution(canalInfo.instance, telefone, opts.texto);
+}
+
+// ---------- PIX NA COBRANCA (mesmo QR Code do carne) ----------
+// Igual ao que o robo faz em send-whatsapp-triggers/index.ts: manter os dois
+// em sincronia. pixEMV e copia fiel de src/utils/pix.ts.
+type PixCobranca = { chave: string; nome: string; valor: number };
+
+function pixEMV(chave: string, valor: number, nome: string): string {
+  const f = (id: string, vv: string) => id + String(vv.length).padStart(2, "0") + vv;
+  const mai = f("00", "BR.GOV.BCB.PIX") + f("01", chave);
+  const amt = valor > 0 ? valor.toFixed(2) : "";
+  const p =
+    f("00", "01") +
+    f("26", mai) +
+    f("52", "0000") +
+    f("53", "986") +
+    (amt ? f("54", amt) : "") +
+    f("58", "BR") +
+    f("59", nome.substring(0, 25).replace(/[^A-Za-z0-9 ]/g, "")) +
+    f("60", "SAO PAULO") +
+    f("62", f("05", "***")) +
+    "6304";
+  let crc = 0xffff;
+  for (let i = 0; i < p.length; i++) {
+    crc ^= p.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+  }
+  return p + (crc & 0xffff).toString(16).toUpperCase().padStart(4, "0");
+}
+
+async function sendCobrancaComPixEvolution(
+  instanceName: string,
+  phone: string,
+  texto: string,
+  pix: PixCobranca
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, "");
+    const number = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+    const codigo = pixEMV(pix.chave, pix.valor, pix.nome);
+    const dataUrl: string = await QRCode.toDataURL(codigo, { errorCorrectionLevel: "M", margin: 2, width: 480 });
+    const media = dataUrl.replace(/^data:image\/png;base64,/, "");
+    const caption = `${texto}\n\n💠 Para pagar por Pix: aponte a câmera para o QR Code acima ou copie o código da próxima mensagem.`;
+    const r = await evolutionFetch(`/message/sendMedia/${instanceName}`, "POST", {
+      number, mediatype: "image", mimetype: "image/png", fileName: "pix.png", caption, media,
+    });
+    if (!r.ok) {
+      console.error("sendMedia (Pix) falhou, enviando so o texto:", r.status, JSON.stringify(r.data).slice(0, 300));
+      return sendWhatsAppMessageEvolution(instanceName, phone, texto);
+    }
+    await new Promise((res) => setTimeout(res, 1500));
+    const r2 = await sendWhatsAppMessageEvolution(instanceName, phone, codigo);
+    if (!r2.ok) console.error("codigo Pix copia e cola nao enviado:", r2.error);
+    return { ok: true };
+  } catch (err) {
+    console.error("cobranca com Pix falhou, enviando so o texto:", String(err));
+    return sendWhatsAppMessageEvolution(instanceName, phone, texto);
+  }
 }
 
 // Confere se quem esta chamando e um usuario realmente autenticado no Supabase
@@ -288,7 +350,18 @@ serve(async (req) => {
       }
 
       const numeroCompleto = numero.startsWith("55") ? numero : `55${numero}`;
-      const r = await enviarMensagem(canalInfo, numeroCompleto, { texto, templateName, templateParams });
+      // Pix da parcela (QR Code + copia e cola), igual ao carne: so para a
+      // cobranca de UMA parcela (debito antigo consolidado e negociado a parte)
+      // e quando a loja tem chave Pix em Configuracao > Dados da Loja.
+      let pix: PixCobranca | undefined;
+      if (!dividaAntiga && canalInfo.canal === "evolution" && Number(body.amount || 0) > 0) {
+        const ss = await supabaseFetch(`store_settings?tenant_id=eq.${tenant.id}&select=pix_key,name`);
+        const st = Array.isArray(ss) ? ss[0] : null;
+        if (st?.pix_key && String(st.pix_key).trim()) {
+          pix = { chave: String(st.pix_key).trim(), nome: st.name || loja, valor: Number(body.amount) };
+        }
+      }
+      const r = await enviarMensagem(canalInfo, numeroCompleto, { texto, templateName, templateParams, pix });
 
       // Registra no mesmo log das cobrancas automaticas, marcado como manual,
       // para a tela de controle mostrar um historico unico por parcela. Usa

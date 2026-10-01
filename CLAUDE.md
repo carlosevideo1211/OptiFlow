@@ -707,3 +707,15 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   (o texto e o modelo da Meta dizem so "vence em <data>", nao precisou de modelo novo). Sequencia atual: 1 dia antes,
   no dia, 5 dias depois, 30+ dias. Tela Crediario: filtro "Vence amanha". Datas do Alberto e da Abigail (Otica do
   Povo) corrigidas via SQL para 2026/2027.
+- 01/10/2026 (tarde): PIX NA COBRANCA do WhatsApp (pedido do Carlos: "QR Code junto, como no carne"). Usa a chave Pix
+  da loja (store_settings.pix_key, Configuracao > Dados da Loja) e o mesmo pixEMV do carne.
+  - Canal EVOLUTION (robo send-whatsapp-triggers e botao "cobrar" do sistema em whatsapp-manage/send_collection):
+    manda 1) imagem do QR Code (gerada na propria function com npm:qrcode, endpoint /message/sendMedia) com o texto da
+    cobranca na legenda e 2) o codigo "copia e cola" sozinho numa segunda mensagem. Vale para as mensagens de PARCELA:
+    1 dia antes, no dia, 5 dias depois e atraso 30+ dias. Sem chave Pix cadastrada, ou se a imagem falhar, segue so o
+    texto como antes. Divida de mais de 1 ano (negociacao/negativacao) NAO leva Pix.
+  - Botao que abre o WhatsApp manualmente (wa.me, CrediarioPage.abrirWhatsApp): acrescenta o copia e cola no texto.
+  - Canal META (Castanho): AINDA NAO - modelo aprovado e fixo; precisa criar/aprovar modelos novos com imagem.
+  - Teste sem enviar: POST .../send-whatsapp-triggers?teste_qr=1 com o x-cron-secret (devolve o codigo e o tamanho do PNG).
+  - Em 01/10 tinham chave Pix: Castanho, Solar, Povo, Altazes, Mallu, Black Coringa, Laboratorio, Teste. Souza e as
+    demais NAO (sem chave = cobranca vai sem Pix).

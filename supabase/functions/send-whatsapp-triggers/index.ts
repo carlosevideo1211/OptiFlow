@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import QRCode from "npm:qrcode@1.5.4";
 
 const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -146,12 +147,90 @@ async function sendWhatsAppTemplateMeta(
 async function enviarMensagem(
   canalInfo: CanalInfo,
   telefone: string,
-  opts: { texto: string; templateName: string; templateParams: string[] }
+  opts: { texto: string; templateName: string; templateParams: string[]; pix?: PixCobranca }
 ): Promise<{ ok: boolean; error?: string }> {
   if (canalInfo.canal === "meta") {
+    // No canal oficial a mensagem e um modelo fixo aprovado pela Meta; o QR
+    // Code do Pix so entra quando houver modelos novos (com imagem) aprovados.
     return sendWhatsAppTemplateMeta(canalInfo.phoneId, canalInfo.token, telefone, opts.templateName, opts.templateParams);
   }
+  if (opts.pix && opts.pix.chave && opts.pix.valor > 0) {
+    return sendCobrancaComPixEvolution(canalInfo.instance, telefone, opts.texto, opts.pix);
+  }
   return sendWhatsAppMessageEvolution(canalInfo.instance, telefone, opts.texto);
+}
+
+// ---------- PIX NA COBRANCA (mesmo QR Code do carne) ----------
+// Dados para montar o Pix "copia e cola" da parcela: chave e nome da loja
+// (store_settings.pix_key / name) + valor da parcela.
+type PixCobranca = { chave: string; nome: string; valor: number };
+
+// Mesmo payload Pix estatico (BR Code/EMV) do carne - copia fiel de pixEMV em
+// src/utils/pix.ts, para o QR da mensagem ser identico ao impresso.
+function pixEMV(chave: string, valor: number, nome: string): string {
+  const f = (id: string, vv: string) => id + String(vv.length).padStart(2, "0") + vv;
+  const mai = f("00", "BR.GOV.BCB.PIX") + f("01", chave);
+  const amt = valor > 0 ? valor.toFixed(2) : "";
+  const p =
+    f("00", "01") +
+    f("26", mai) +
+    f("52", "0000") +
+    f("53", "986") +
+    (amt ? f("54", amt) : "") +
+    f("58", "BR") +
+    f("59", nome.substring(0, 25).replace(/[^A-Za-z0-9 ]/g, "")) +
+    f("60", "SAO PAULO") +
+    f("62", f("05", "***")) +
+    "6304";
+  let crc = 0xffff;
+  for (let i = 0; i < p.length; i++) {
+    crc ^= p.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+  }
+  return p + (crc & 0xffff).toString(16).toUpperCase().padStart(4, "0");
+}
+
+// QR Code do Pix em PNG (base64, sem o prefixo data:), gerado aqui mesmo -
+// o codigo do Pix do cliente nao passa por nenhum servico de terceiros.
+async function qrCodePngBase64(texto: string): Promise<string> {
+  const dataUrl: string = await QRCode.toDataURL(texto, { errorCorrectionLevel: "M", margin: 2, width: 480 });
+  return dataUrl.replace(/^data:image\/png;base64,/, "");
+}
+
+// Cobranca pelo Evolution com Pix: 1) imagem do QR Code com o texto da
+// cobranca na legenda; 2) o codigo "copia e cola" sozinho numa segunda
+// mensagem (assim o cliente copia so o codigo). Se a imagem falhar por
+// qualquer motivo, a cobranca segue como texto simples, como era antes.
+async function sendCobrancaComPixEvolution(
+  instanceName: string,
+  phone: string,
+  texto: string,
+  pix: PixCobranca
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, "");
+    const number = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+    const codigo = pixEMV(pix.chave, pix.valor, pix.nome);
+    const media = await qrCodePngBase64(codigo);
+    const caption = `${texto}\n\n💠 Para pagar por Pix: aponte a câmera para o QR Code acima ou copie o código da próxima mensagem.`;
+
+    const res = await fetch(`${EVOLUTION_BASE_URL}/message/sendMedia/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+      body: JSON.stringify({ number, mediatype: "image", mimetype: "image/png", fileName: "pix.png", caption, media }),
+    });
+    if (!res.ok) {
+      console.error("sendMedia (Pix) falhou, enviando so o texto:", res.status, (await res.text()).slice(0, 300));
+      return sendWhatsAppMessageEvolution(instanceName, phone, texto);
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+    const r2 = await sendWhatsAppMessageEvolution(instanceName, phone, codigo);
+    if (!r2.ok) console.error("codigo Pix copia e cola nao enviado:", r2.error);
+    return { ok: true };
+  } catch (err) {
+    console.error("cobranca com Pix falhou, enviando so o texto:", String(err));
+    return sendWhatsAppMessageEvolution(instanceName, phone, texto);
+  }
 }
 
 async function supabaseFetch(path: string) {
@@ -229,6 +308,15 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
   }
 
+  // Teste rapido (nao envia nada): gera o Pix e o QR Code de exemplo.
+  if (new URL(req.url).searchParams.get("teste_qr") === "1") {
+    const codigo = pixEMV("00000000000", 1.23, "Loja Teste");
+    const png = await qrCodePngBase64(codigo);
+    return new Response(JSON.stringify({ ok: true, codigo, png_base64_tamanho: png.length, png_inicio: png.slice(0, 12) }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // Achado 1 da auditoria: este servidor roda em UTC, entao "new Date()"
   // direto adianta a data (e, perto da virada do ano, ate o ano) a partir de
   // ~20h no horario de Manaus (UTC-4, sem horario de verao desde 2019) — o
@@ -294,11 +382,17 @@ serve(async (req) => {
     // (store_settings, usado so pelos tenants no canal 'meta' — o Token e
     // sempre o secret global META_WHATSAPP_TOKEN).
     const tenants = await supabaseFetch(`tenants?select=id,company_name,whatsapp_instance_name,spc_serasa_ativo,whatsapp_canal,whatsapp_auto_ativo`);
-    const settingsRows = await supabaseFetch(`store_settings?select=tenant_id,wa_phone_id`);
+    const settingsRows = await supabaseFetch(`store_settings?select=tenant_id,wa_phone_id,pix_key,name`);
     const phoneIdPorTenant: Record<string, string> = {};
+    // Chave Pix da loja (Configuracao > Dados da Loja), para mandar o QR Code
+    // junto com as cobrancas de parcela - o mesmo do carne.
+    const pixPorTenant: Record<string, { chave: string; nome: string }> = {};
     if (Array.isArray(settingsRows)) {
       for (const s of settingsRows) {
         if (s.wa_phone_id) phoneIdPorTenant[s.tenant_id] = s.wa_phone_id;
+        if (s.pix_key && String(s.pix_key).trim()) {
+          pixPorTenant[s.tenant_id] = { chave: String(s.pix_key).trim(), nome: s.name || "" };
+        }
       }
     }
 
@@ -334,6 +428,9 @@ serve(async (req) => {
       }
 
       const loja = tenant.company_name || "sua ótica";
+      const pixLoja = pixPorTenant[tenant.id]
+        ? { chave: pixPorTenant[tenant.id].chave, nome: pixPorTenant[tenant.id].nome || loja }
+        : null;
 
       // Checa o limite diario deste tenant ANTES de comecar a processar seus
       // gatilhos — protege mesmo quando o cron ja rodou varias vezes hoje.
@@ -427,6 +524,7 @@ serve(async (req) => {
               texto,
               templateName: TEMPLATE_VENCIMENTO_PROXIMO,
               templateParams: [cred.customer_name, valor, loja, data],
+              pix: pixLoja ? { ...pixLoja, valor: Number(p.amount || 0) } : undefined,
             });
             await logTrigger(tenant.id, "vencimento", refId, cred.customer_id, telefone, r.ok, r.error);
             registrarEnvio();
@@ -472,6 +570,7 @@ serve(async (req) => {
               texto,
               templateName: TEMPLATE_VENCIMENTO_HOJE,
               templateParams: [cred.customer_name, valor, loja, data],
+              pix: pixLoja ? { ...pixLoja, valor: Number(p.amount || 0) } : undefined,
             });
             await logTrigger(tenant.id, "vencimento_dia", refId, cred.customer_id, telefone, r.ok, r.error);
             registrarEnvio();
@@ -517,6 +616,7 @@ serve(async (req) => {
               texto,
               templateName: TEMPLATE_VENCIMENTO_ATRASO5,
               templateParams: [cred.customer_name, valor, loja, data],
+              pix: pixLoja ? { ...pixLoja, valor: Number(p.amount || 0) } : undefined,
             });
             await logTrigger(tenant.id, "vencimento_atraso5", refId, cred.customer_id, telefone, r.ok, r.error);
             registrarEnvio();
@@ -616,6 +716,7 @@ serve(async (req) => {
               texto,
               templateName: TEMPLATE_COBRANCA_ATRASO,
               templateParams: [cred.customer_name, loja, valor, data],
+              pix: pixLoja ? { ...pixLoja, valor: Number(p.amount || 0) } : undefined,
             });
             await logTrigger(tenant.id, "cobranca_atraso", refId, cred.customer_id, telefone, r.ok, r.error);
             registrarEnvio();

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
+import { pixEMV } from '../utils/pix';
 import { computeTier, TIER_STYLES, type Tier, type ParcelaRanking } from '../utils/clienteRanking';
 import {
   CINCO_ANOS_MS, hashPassword, JANELA_LABELS, calcJuros, toLocalDateStr, PRAZO_NEGATIVACAO_DIAS, dataVencimentoValida,
@@ -364,12 +365,13 @@ export default function CrediarioPage() {
     // impressos deste arquivo), para nao depender de um carregamento previo que
     // poderia nao terminar a tempo e cair no texto de reserva.
     let nomeLoja = 'nossa ótica';
+    let pixLoja = '';
     // Corrigido 06/09/2026 (Achados 3 e 7 da auditoria): .single() lanca erro
     // pra tenant sem store_settings salvo ainda; .maybeSingle() so retorna
     // null. Catch agora loga em vez de engolir qualquer outro erro real.
     try {
       const { data: ss } = await supabase.from('store_settings').select('*').eq('tenant_id', tenantId).maybeSingle();
-      if (ss) nomeLoja = ss.name || ss.company_name || nomeLoja;
+      if (ss) { nomeLoja = ss.name || ss.company_name || nomeLoja; pixLoja = (ss.pix_key || '').trim(); }
     } catch (e) { console.error('CrediarioPage: falha ao buscar store_settings', e); }
 
     // Debito com mais de 1 ano (365 dias): em vez da mensagem de uma parcela
@@ -412,6 +414,11 @@ export default function CrediarioPage() {
           ' no valor de R$ ' + total.toFixed(2).replace('.',',') +
           (juros > 0 ? ' (incluindo R$ ' + juros.toFixed(2).replace('.',',') + ' de juros)' : '') +
           ' que vai vencer em ' + venc + '. Qualquer duvida estamos a disposicao!';
+      // Pix da parcela (mesmo codigo do carne). Pelo link do WhatsApp nao da
+      // pra anexar a imagem do QR Code, entao vai o "copia e cola" no texto.
+      if (pixLoja && total > 0) {
+        msgTexto += '\n\nPara pagar por Pix, copie o codigo abaixo e cole no app do seu banco (Pix copia e cola):\n\n' + pixEMV(pixLoja, total, nomeLoja);
+      }
     }
 
     window.open('https://wa.me/55' + num + '?text=' + encodeURIComponent(msgTexto), '_blank');
