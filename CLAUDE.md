@@ -612,6 +612,25 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   Gupshup, Twilio...) e fatura o OptiFlow. Em andamento: comparativo de BSPs e pedido de propostas.
   Solar/Povo/Autazes continuam como estao ate o botao "Conectar WhatsApp oficial" existir.
 
+## Sessao 25/Set/2026 - Carne sem parcelas (Larissa, Otica Solar)
+- Sintoma: venda no crediario com carne criado mas SEM parcelas (Crediario nao mostra o cliente; imprimir
+  carne diz "nao foi possivel carregar as parcelas"). Casos: #27459 Maria da Conceicao Kato Medeiros e
+  #27480 Mikaele Souza da Silva (ago/2026). Nos dois, as parcelas do Financeiro tambem falharam -> dado
+  invalido na lista de parcelas (provavel data apagada/incompleta na lista editavel, que o input date
+  devolve como "").
+- Correcao (commit 42dfa0a, VendasPage.tsx): finalizeSale monta e confere as parcelas ANTES de gravar
+  (problemaNasParcelas: data AAAA-MM-DD valida entre 2020-2100, valor > 0, soma = saldo +-0,05); crediario
+  exige cliente selecionado; 2a tentativa no insert; toast mostra o erro real. Financeiro usa a MESMA lista
+  (antes o fallback descontava o desconto 2x). CrediarioPage: renegociacao desfaz o carne novo se as
+  parcelas falharem (antes cancelava o original e a divida sumia).
+- Dados: parcelas das 2 vendas recriadas via SQL (mesmo dia da venda nos meses seguintes, 160,00 x6 e
+  148,35 + 5x148,33), com lancamentos em financial_transactions vinculados por crediario_parcela_id e nota
+  no carne pedindo confirmacao das datas com o cliente.
+- Pendente: 61 carnes vazios duplicados (cliente ja tem outro carne com parcelas); o apagamento em massa
+  foi bloqueado pela protecao do Claude Code e fica a criterio do Carlos. Outros 12 vazios sem carne
+  substituto ficam para analise. Altazes (vendas 97-113 de 15/06): Financeiro tem
+  parcelas "pendentes" desses carnes vazios alem das do carne refeito -> possivel Contas a Receber em dobro.
+
 ## Sessao 23/Set/2026 - NFC-e pela Focus NFe (Castanho)
 - Focus NFe: empresa CARLOS E DOS S.VIDEO / OTICA EVANGELISTA (CNPJ 51.426.084/0001-60, IE 054583578)
   com certificado A1 valido ate 26/02/2027, NFC-e ligada, CSC ID 000001 (Homologacao e Producao),
@@ -656,3 +675,30 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   Brito, "Vs Foto Ar" R$ 680,00, Credito Loja, tributos IBPT R$ 227,40). Integracao NFC-e da Castanho
   CONCLUIDA. (Na 1a tentativa o SQL foi rodado com o texto de exemplo no lugar do token -> "Access token
   invalido"; conferir sempre com length(focus_nfe_token)=32 e sem 'COLE%'.)
+
+## Sessao 29/Set-01/Out/2026 - WhatsApp automatico religado, canal por loja, crediario (busca/datas) e check-trial
+- WhatsApp automatico ficou PARADO de 06/09 a 29/09: send-whatsapp-triggers tinha sido publicada com verify_jwt=true e o
+  cron (pg_cron job 2, */15 12-23 UTC, header x-cron-secret) recebia 401. Corrigido: [functions.send-whatsapp-triggers]
+  verify_jwt=false no supabase/config.toml e deploy SEMPRE com:
+  npx supabase functions deploy send-whatsapp-triggers --project-ref fkwamdnstrbvgheosalz --no-verify-jwt
+- Nova coluna tenants.whatsapp_auto_ativo (default true). Painel Admin tem o seletor "WhatsApp auto: Off/Meta/Evolution"
+  por loja. DECISAO do Carlos: quem paga Meta usa Meta, quem paga Evolution usa Evolution. Castanho = Meta; as demais
+  = Evolution (ligadas; so enviam quando o QR Code estiver conectado - o robo confere connectionState e pula as
+  desconectadas). Conectadas em 29/09: Castanho (teste-otica1) e Solar; Souza ficou em "connecting" (refazer o QR).
+- Sem webhook da Meta: "success" no log = aceito pela Meta, nao necessariamente entregue.
+- Aviso de risco de bloqueio (numero exclusivo da loja, max 30 msg/dia) na tela Integracoes > WhatsApp Automatico
+  para lojas no canal Evolution (WhatsAppAutomatico.tsx).
+- Material em Documents\OptiFlow - WhatsApp\: mensagem para as lojas conectarem o QR e guia Tech Provider + BSP
+  (360dialog, Gupshup, Infobip, Twilio, Zenvia, Blip, Sinch) com rascunhos de e-mail (nada enviado).
+- Crediario (pedido da Valeria, Otica do Povo, 01/10): cliente aparecia em Clientes > Crediario mas nao na tela
+  Crediario. Duas causas: (1) ano digitado errado no vencimento (0026 / 2202) - o carne com ano 0026 caia no
+  "Arquivo (5+ anos)"; (2) crediario.customer_name fica congelado na venda - se o cadastro do cliente e renomeado
+  depois, a busca pelo nome novo nao achava. Correcao (commit c309a8e): CrediarioPage mostra/busca pelo nome ATUAL do
+  cadastro e tambem pelo nome antigo do carne (mostra "no carne: ..."), busca sem acento; dataVencimentoValida()
+  (crediarioTypes.ts, ano 2020-2100) no editar data, renegociacao e saldo de pagamento parcial; data invalida nao
+  arquiva mais o carne. Varredura 01/10: 2 carnes com ano errado (ambos Otica do Povo: Alberto Vieira 0026/0027 e
+  Abigail Damares 2202) e 18 carnes com nome diferente do cadastro (7 Castanho, 5 Solar, 4 Povo, 1 Altazes, 1 Teste).
+- check-trial (pg_cron job 3, 13h UTC): estava com o header placeholder '<valor do CRON_SECRET aqui>' (401 todo dia).
+  Corrigido em 01/10 copiando o segredo do job 2 via cron.alter_job. A funcao virou ALERTA PARA O CARLOS: um e-mail por
+  dia (Resend, onboarding@resend.dev -> carlosevideo28@gmail.com) so quando ha loja com status E plan = 'trial'
+  vencendo em ate 3 dias. Avisar a propria loja exige dominio proprio no Resend (nao feito).
