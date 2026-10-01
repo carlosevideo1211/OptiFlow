@@ -719,3 +719,12 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   - Teste sem enviar: POST .../send-whatsapp-triggers?teste_qr=1 com o x-cron-secret (devolve o codigo e o tamanho do PNG).
   - Em 01/10 tinham chave Pix: Castanho, Solar, Povo, Altazes, Mallu, Black Coringa, Laboratorio, Teste. Souza e as
     demais NAO (sem chave = cobranca vai sem Pix).
+- 01/10/2026 (fim da tarde): PIX NO CANAL META. Criados via API (function administrativa meta-modelos-pix, so com o
+  x-cron-secret: ?acao=status | ?acao=criar) 4 modelos na WABA da Castanho, categoria UTILITY, cabecalho IMAGEM +
+  corpo + botao ORDER_DETAILS (o texto do botao TEM que ser "Copy Pix code"): vencimento_proximo_pix,
+  vencimento_hoje_pix, vencimento_atraso5_pix, cobranca_atraso_pix - status PENDING em 01/10. O robo ja tenta
+  "<modelo>_pix" quando a loja tem chave Pix (sobe o PNG do QR em /{phone_id}/media e manda order_details com
+  pix_dynamic_code); se nao estiver aprovado ou falhar, cai no modelo de texto de sempre. Teste (manda de verdade):
+  ?teste_meta_pix=<numero>&tenant=<tenant_id>. O botao manual (whatsapp-manage) no canal Meta ainda usa o modelo sem Pix.
+  Esses modelos servem para qualquer loja que entrar no canal Meta DENTRO da mesma WABA; em outra WABA precisam ser
+  criados de novo (rodar a function com META_WABA_ID da outra conta).

@@ -150,8 +150,16 @@ async function enviarMensagem(
   opts: { texto: string; templateName: string; templateParams: string[]; pix?: PixCobranca }
 ): Promise<{ ok: boolean; error?: string }> {
   if (canalInfo.canal === "meta") {
-    // No canal oficial a mensagem e um modelo fixo aprovado pela Meta; o QR
-    // Code do Pix so entra quando houver modelos novos (com imagem) aprovados.
+    // Canal oficial: se a cobranca tem Pix, tenta o modelo "<nome>_pix" (imagem
+    // do QR Code + botao de copiar o codigo). Se esse modelo ainda nao foi
+    // aprovado pela Meta, ou der qualquer erro, cai no modelo de texto de sempre.
+    if (opts.pix && opts.pix.chave && opts.pix.valor > 0) {
+      const rPix = await sendWhatsAppTemplatePixMeta(
+        canalInfo.phoneId, canalInfo.token, telefone, opts.templateName + "_pix", opts.templateParams, opts.pix
+      );
+      if (rPix.ok) return rPix;
+      console.error(`modelo ${opts.templateName}_pix falhou, usando o modelo sem Pix:`, rPix.error);
+    }
     return sendWhatsAppTemplateMeta(canalInfo.phoneId, canalInfo.token, telefone, opts.templateName, opts.templateParams);
   }
   if (opts.pix && opts.pix.chave && opts.pix.valor > 0) {
@@ -195,6 +203,114 @@ function pixEMV(chave: string, valor: number, nome: string): string {
 async function qrCodePngBase64(texto: string): Promise<string> {
   const dataUrl: string = await QRCode.toDataURL(texto, { errorCorrectionLevel: "M", margin: 2, width: 480 });
   return dataUrl.replace(/^data:image\/png;base64,/, "");
+}
+
+// Tipo da chave Pix, exigido pela Meta no botao "Copy Pix code".
+function tipoChavePix(chave: string): string {
+  const c = chave.trim();
+  if (c.includes("@")) return "EMAIL";
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c)) return "EVP";
+  if (c.startsWith("+")) return "PHONE";
+  const d = c.replace(/\D/g, "");
+  if (d.length === 14) return "CNPJ";
+  if (d.length === 11) {
+    // CPF valido (digitos verificadores) -> CPF; senao, celular com DDD.
+    const dv = (n: number) => {
+      let soma = 0;
+      for (let i = 0; i < n; i++) soma += Number(d[i]) * (n + 1 - i);
+      const r = (soma * 10) % 11;
+      return r === 10 ? 0 : r;
+    };
+    return dv(9) === Number(d[9]) && dv(10) === Number(d[10]) ? "CPF" : "PHONE";
+  }
+  return "EVP";
+}
+
+// Cobranca pelo canal oficial (Meta) com Pix: sobe a imagem do QR Code para a
+// Meta e manda o modelo "<nome>_pix" com a imagem no cabecalho e o botao
+// "Copy Pix code" (order_details / pix_dynamic_code) com o codigo copia e cola.
+async function sendWhatsAppTemplatePixMeta(
+  phoneId: string,
+  metaToken: string,
+  phone: string,
+  templateName: string,
+  params: string[],
+  pix: PixCobranca
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, "");
+    const to = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+    const codigo = pixEMV(pix.chave, pix.valor, pix.nome);
+    const centavos = Math.round(pix.valor * 100);
+
+    const png = Uint8Array.from(atob(await qrCodePngBase64(codigo)), (c) => c.charCodeAt(0));
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", "image/png");
+    form.append("file", new Blob([png], { type: "image/png" }), "pix.png");
+    const up = await fetch(`${META_GRAPH_BASE}/${phoneId}/media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${metaToken}` },
+      body: form,
+    });
+    const upData = await up.json().catch(() => ({}));
+    if (!up.ok || !upData?.id) return { ok: false, error: "upload da imagem: " + (upData?.error?.message || `HTTP ${up.status}`) };
+
+    const tipo = tipoChavePix(pix.chave);
+    const chave = tipo === "PHONE" && !pix.chave.trim().startsWith("+")
+      ? "+55" + pix.chave.replace(/\D/g, "")
+      : (tipo === "CPF" || tipo === "CNPJ" ? pix.chave.replace(/\D/g, "") : pix.chave.trim());
+    const valorObj = { value: centavos, offset: 100 };
+    const res = await fetch(`${META_GRAPH_BASE}/${phoneId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${metaToken}` },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: "pt_BR" },
+          components: [
+            { type: "header", parameters: [{ type: "image", image: { id: upData.id } }] },
+            { type: "body", parameters: params.map((x) => ({ type: "text", text: x })) },
+            {
+              type: "button",
+              sub_type: "order_details",
+              index: 0,
+              parameters: [{
+                type: "action",
+                action: {
+                  order_details: {
+                    reference_id: `parc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+                    type: "digital-goods",
+                    payment_type: "br",
+                    payment_settings: [{
+                      type: "pix_dynamic_code",
+                      pix_dynamic_code: { code: codigo, merchant_name: pix.nome.substring(0, 25) || "Loja", key: chave, key_type: tipo },
+                    }],
+                    currency: "BRL",
+                    total_amount: valorObj,
+                    order: {
+                      status: "pending",
+                      tax: { value: 0, offset: 100, description: "Sem acrescimos" },
+                      items: [{ retailer_id: "parcela", name: "Parcela do crediario", amount: valorObj, quantity: 1 }],
+                      subtotal: valorObj,
+                    },
+                  },
+                },
+              }],
+            },
+          ],
+        },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data?.error?.message + (data?.error?.error_data?.details ? " - " + data.error.error_data.details : "") || `HTTP ${res.status}` };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
 }
 
 // Cobranca pelo Evolution com Pix: 1) imagem do QR Code com o texto da
@@ -306,6 +422,20 @@ serve(async (req) => {
   const secret = req.headers.get("x-cron-secret");
   if (secret !== CRON_SECRET) {
     return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+  }
+
+  // Teste do canal oficial: ?teste_meta_pix=<numero>&tenant=<id> manda UMA cobranca
+  // de exemplo (R$ 1,00) com o modelo vencimento_hoje_pix para o numero dado.
+  const numTeste = new URL(req.url).searchParams.get("teste_meta_pix");
+  if (numTeste) {
+    const tid = new URL(req.url).searchParams.get("tenant") || "";
+    const ss = await supabaseFetch(`store_settings?tenant_id=eq.${tid}&select=wa_phone_id,pix_key,name`);
+    const st = Array.isArray(ss) ? ss[0] : null;
+    if (!st?.wa_phone_id || !st?.pix_key) return new Response(JSON.stringify({ ok: false, error: "loja sem phone id ou sem chave Pix" }), { status: 400 });
+    const r = await sendWhatsAppTemplatePixMeta(st.wa_phone_id, META_WHATSAPP_TOKEN, numTeste, TEMPLATE_VENCIMENTO_HOJE + "_pix",
+      ["Carlos (teste)", "R$ 1,00", st.name || "Loja", new Date().toLocaleDateString("pt-BR")],
+      { chave: String(st.pix_key).trim(), nome: st.name || "Loja", valor: 1 });
+    return new Response(JSON.stringify(r), { headers: { "Content-Type": "application/json" } });
   }
 
   // Teste rapido (nao envia nada): gera o Pix e o QR Code de exemplo.
