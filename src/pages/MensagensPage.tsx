@@ -47,6 +47,18 @@ export default function MensagensPage() {
   // Audios/imagens ja baixados nesta sessao: id da mensagem -> endereco local do arquivo.
   const [midias, setMidias] = useState<Record<string, { url: string; mime: string }>>({});
   const [baixando, setBaixando] = useState<string | null>(null);
+  // Numero que recebe o aviso no WhatsApp quando um cliente responde (store_settings.wa_alerta_numero).
+  const [alerta, setAlerta] = useState('');
+  const [alertaSalvo, setAlertaSalvo] = useState('');
+
+  const salvarAlerta = async () => {
+    const num = alerta.replace(/\D/g, '');
+    if (num && num.length < 10) { toast.error('Informe o número com DDD (ex.: 92 99999-9999)'); return; }
+    const { error } = await supabase.from('store_settings').update({ wa_alerta_numero: num || null }).eq('tenant_id', tenantId);
+    if (error) { toast.error('Não foi possível salvar: ' + error.message); return; }
+    setAlertaSalvo(num);
+    toast.success(num ? 'Aviso ligado para este número' : 'Aviso desligado');
+  };
 
   const abrirMidia = async (m: Msg) => {
     if (midias[m.id] || baixando) return;
@@ -93,6 +105,9 @@ export default function MensagensPage() {
           [c.whatsapp, c.phone].forEach((t: string) => { const k = so8(t); if (k.length === 8 && !m[k]) m[k] = c.name; });
         });
         setNomes(m);
+        const { data: ss } = await supabase.from('store_settings').select('wa_alerta_numero').eq('tenant_id', tenantId).maybeSingle();
+        const n = ((ss as any)?.wa_alerta_numero || '') as string;
+        setAlerta(n.replace(/^55/, '')); setAlertaSalvo(n);
       }
     } catch (e) {
       console.error('MensagensPage: falha ao carregar', e);
@@ -172,7 +187,15 @@ export default function MensagensPage() {
           </h1>
           <p className="page-sub">Respostas dos clientes às mensagens do WhatsApp{totalNaoLidas > 0 ? ` — ${totalNaoLidas} não lida(s)` : ''}</p>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, color: 'var(--text3)' }}>🔔 Avisar no WhatsApp:</span>
+          <input className="form-input" style={{ width: 170 }} inputMode="tel" placeholder="(92) 99999-9999" value={alerta} onChange={e => setAlerta(e.target.value)} />
+          <button className="btn btn-secondary" onClick={salvarAlerta} disabled={alerta.replace(/\D/g, '') === alertaSalvo.replace(/^55/, '')}>Salvar</button>
+        </div>
       </div>
+      <p style={{ fontSize: 12, color: 'var(--text3)', margin: '-8px 0 14px' }}>
+        Quando um cliente responder, o sistema manda um aviso para o número acima, pelo WhatsApp da loja conectado por QR Code (no máximo um aviso por cliente a cada 10 minutos). Deixe em branco para desligar.
+      </p>
 
       {loading ? <div className="empty-state"><p>Carregando...</p></div> : conversas.length === 0 && !busca ? (
         <div className="empty-state">

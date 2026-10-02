@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import InstalarApp from './InstalarApp';
 
 // Cargos com acesso restrito (nao veem financeiro/relatorios/config)
 const CARGOS_RESTRITOS = ['Vendedor(a)', 'Atendente', 'Caixa', 'Recepcionista', 'Estoquista', 'Profissional de Saúde'];
@@ -336,6 +337,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           )}
+          <InstalarApp compacto={effCollapsed} />
           <button onClick={handleSignOut}
             style={{ width:'100%', display:'flex', alignItems:'center', justifyContent: effCollapsed?'center':'flex-start',
               gap:8, padding:'8px', borderRadius:8, border:'none', background:'rgba(248,113,113,.1)',

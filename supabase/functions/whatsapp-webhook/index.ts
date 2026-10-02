@@ -15,6 +15,9 @@ const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const VERIFY_TOKEN = Deno.env.get("META_WEBHOOK_VERIFY_TOKEN") || "";
 const APP_SECRET = Deno.env.get("META_APP_SECRET") || "";
+const EVOLUTION_BASE_URL = Deno.env.get("EVOLUTION_BASE_URL") || "https://evolution.visionproerp.com.br";
+const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
+const SITE = "https://app.visionproerp.com.br";
 
 async function db(path: string, init?: RequestInit) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -36,6 +39,54 @@ async function assinaturaOk(corpo: string, cabecalho: string | null): Promise<bo
   const mac = await crypto.subtle.sign("HMAC", chave, new TextEncoder().encode(corpo));
   const hex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
   return hex === cabecalho.slice(7);
+}
+
+const so8 = (t?: string | null) => (t || "").replace(/\D/g, "").slice(-8);
+
+// Aviso no celular: quando um cliente responde no WhatsApp oficial, manda um
+// alerta para o numero configurado na tela Mensagens (store_settings.
+// wa_alerta_numero), saindo pelo WhatsApp da loja conectado por QR Code
+// (Evolution). No maximo um aviso por cliente a cada 10 minutos.
+async function avisarLoja(tenantId: string, de: string, nomeContato: string, texto: string, msgId: string | null) {
+  try {
+    if (!EVOLUTION_API_KEY) return;
+    const ss = await db(`store_settings?tenant_id=eq.${tenantId}&select=wa_alerta_numero&limit=1`);
+    const alvo = String(ss?.[0]?.wa_alerta_numero || "").replace(/\D/g, "");
+    if (alvo.length < 10 || so8(alvo) === so8(de)) return; // sem numero, ou e o proprio numero de aviso escrevendo
+    const tn = await db(`tenants?id=eq.${tenantId}&select=whatsapp_instance_name&limit=1`);
+    const instancia = tn?.[0]?.whatsapp_instance_name;
+    if (!instancia) return;
+
+    const dezMin = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const recentes = await db(`whatsapp_mensagens?tenant_id=eq.${tenantId}&phone=eq.${de}&direcao=eq.in&created_at=gte.${dezMin}&select=meta_message_id&limit=5`);
+    if (Array.isArray(recentes) && recentes.some((r: any) => r.meta_message_id !== msgId)) return; // ja avisou ha pouco
+
+    // Nome do cadastro de clientes, se o telefone bater (compara os 8 ultimos digitos).
+    let nome = nomeContato || "";
+    const fim4 = de.slice(-4);
+    const cs = await db(`customers?tenant_id=eq.${tenantId}&or=(phone.ilike.*${fim4},whatsapp.ilike.*${fim4})&select=name,phone,whatsapp&limit=50`);
+    const achou = Array.isArray(cs) ? cs.find((c: any) => so8(c.whatsapp) === so8(de) || so8(c.phone) === so8(de)) : null;
+    if (achou?.name) nome = achou.name;
+
+    const d = de.replace(/^55/, "");
+    const fone = d.length >= 10 ? `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}` : de;
+    const aviso = `🔔 *OptiFlow* — nova mensagem no WhatsApp oficial
+
+*${nome || fone}*${nome ? ` (${fone})` : ""}:
+${(texto || "").slice(0, 300)}
+
+Abra para responder: ${SITE}/mensagens`;
+    const numero = alvo.startsWith("55") ? alvo : `55${alvo}`;
+    const r = await fetch(`${EVOLUTION_BASE_URL}/message/sendText/${instancia}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+      body: JSON.stringify({ number: numero, text: aviso }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) console.error("aviso para a loja falhou:", r.status, (await r.text()).slice(0, 200));
+  } catch (e) {
+    console.error("aviso para a loja falhou:", String(e));
+  }
 }
 
 // Texto que aparece na tela para cada tipo de mensagem recebida.
@@ -111,6 +162,9 @@ serve(async (req) => {
               created_at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString(),
             }),
           });
+          if (tipo !== "reaction") {
+            await avisarLoja(tenantId, String(m.from || "").replace(/\D/g, ""), nomes[m.from] || "", texto, m.id || null);
+          }
         }
 
         // Situacao das mensagens que a loja enviou pela tela (entregue/lida/falhou).

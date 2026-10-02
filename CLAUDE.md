@@ -760,3 +760,13 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   "Ouvir audio / Ver imagem" via whatsapp-manage action get_media (baixa da Meta com o token e devolve base64; a Meta
   guarda a midia ~30 dias; limite 12 MB). Mensagens de midia recebidas ANTES de 02/10 ~10h nao tem media_id (nao da
   para recuperar). A tela funciona tambem no navegador do celular.
+- 02/10/2026 (tarde): AVISO NO CELULAR + APP INSTALAVEL.
+  - Aviso: quando um cliente responde no WhatsApp oficial, o whatsapp-webhook manda um alerta (texto com nome, trecho
+    e link /mensagens) para store_settings.wa_alerta_numero, saindo pelo WhatsApp da loja no Evolution
+    (tenants.whatsapp_instance_name). Max. 1 aviso por cliente a cada 10 min; nao avisa se quem escreveu e o proprio
+    numero de aviso. Campo "Avisar no WhatsApp" no topo da tela Mensagens. Castanho: configurado com o numero do
+    Carlos (92 99277-9106). So funciona em loja que tem os DOIS canais (Meta + Evolution conectado), como a Castanho.
+  - PWA: public/manifest.webmanifest, public/sw.js (sem cache, so para permitir instalar), icones em public/icons
+    (olho branco em fundo indigo/azul, gerados com PIL), tags no index.html, registro do SW em main.tsx (so producao),
+    botao "Instalar no celular" (src/components/InstalarApp.tsx) no rodape do menu lateral - usa beforeinstallprompt
+    no Android/desktop e mostra o passo a passo no iPhone; some quando ja esta instalado.
