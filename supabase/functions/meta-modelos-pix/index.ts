@@ -70,6 +70,41 @@ serve(async (req) => {
   const acao = url.searchParams.get("acao") || "status";
   const comBotao = url.searchParams.get("botao") !== "0";
 
+  // ?acao=assinaturas -> mostra o webhook cadastrado no app (URL, ativo, campos assinados).
+  if (acao === "assinaturas") {
+    const seg = Deno.env.get("META_APP_SECRET") || "";
+    const app = await gj(`${G}/app?access_token=${TOKEN}`);
+    const sub = await gj(`${G}/${app.d?.id}/subscriptions?access_token=${app.d?.id}|${encodeURIComponent(seg)}`);
+    const lista = (sub.d?.data || []).map((x: any) => ({ objeto: x.object, url: x.callback_url, ativo: x.active, campos: (x.fields || []).map((f: any) => f.name) }));
+    return new Response(JSON.stringify({ ok: sub.ok, erro: sub.ok ? undefined : sub.d?.error?.message, webhooks: lista }), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // ?acao=assinar_messages -> assina o campo "messages" do webhook do app (mantem a URL ja cadastrada).
+  if (acao === "assinar_messages") {
+    const seg = Deno.env.get("META_APP_SECRET") || "";
+    const vt = Deno.env.get("META_WEBHOOK_VERIFY_TOKEN") || "";
+    const app = await gj(`${G}/app?access_token=${TOKEN}`);
+    const corpo = new URLSearchParams({
+      object: "whatsapp_business_account",
+      callback_url: "https://fkwamdnstrbvgheosalz.supabase.co/functions/v1/whatsapp-webhook",
+      verify_token: vt, fields: "messages", access_token: `${app.d?.id}|${seg}`,
+    });
+    const r = await gj(`${G}/${app.d?.id}/subscriptions`, { method: "POST", body: corpo });
+    return new Response(JSON.stringify({ ok: r.ok, resposta: r.d }), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // ?acao=segredo -> confere (sem mostrar) se o META_APP_SECRET guardado vale na Meta
+  // e se o token de verificacao do webhook ja foi configurado.
+  if (acao === "segredo") {
+    const seg = Deno.env.get("META_APP_SECRET") || "";
+    const app = await gj(`${G}/app?access_token=${TOKEN}`);
+    const chk = seg && app.d?.id ? await gj(`${G}/${app.d.id}?fields=name&access_token=${app.d.id}|${encodeURIComponent(seg)}`) : null;
+    return new Response(JSON.stringify({
+      app_secret_tamanho: seg.length, app_secret_valido: !!chk?.ok, erro: chk && !chk.ok ? chk.d?.error?.message : undefined,
+      verify_token_configurado: !!(Deno.env.get("META_WEBHOOK_VERIFY_TOKEN") || ""),
+    }), { headers: { "Content-Type": "application/json" } });
+  }
+
   // ?acao=webhook -> inscreve o app nos eventos desta conta (necessario para as
   // respostas dos clientes chegarem no whatsapp-webhook) e mostra a inscricao.
   if (acao === "webhook") {

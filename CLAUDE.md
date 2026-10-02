@@ -747,3 +747,10 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   - Teste de 01/10: POST simulado gravou a mensagem na Castanho (apagada depois). Tela so conferida por build.
   - Teste Evolution com Pix para o numero do Carlos: OK (imagem + copia e cola). O Evolution as vezes leva ~60s e
     falha ao subir midia (stream error 503 do WhatsApp) - por isso o limite de 25s com volta para o texto.
+- 02/10/2026: webhook da Meta CONFIGURADO. Secrets META_APP_SECRET (conferido valido na Meta) e
+  META_WEBHOOK_VERIFY_TOKEN setados pelo Carlos; URL cadastrada no app OptiFlow (Casos de uso > WhatsApp > Etapa 2 >
+  Configurar webhooks) e campo "messages" assinado via API (meta-modelos-pix?acao=assinar_messages; conferir com
+  ?acao=assinaturas e ?acao=segredo). ATENCAO: o app esta "Nao publicado" - nesse modo a Meta so entrega webhooks
+  de teste/administradores; para receber respostas de clientes reais e preciso PUBLICAR o app (decisao do Carlos).
+  Dica: Read-Host -MaskInput nao aceitou Ctrl+V (gravou so o caractere 0x16); para colar segredo use Get-Clipboard
+  (colar o comando ANTES de copiar o segredo). Depois de trocar secret, redeployar a function para ela enxergar.
