@@ -15,6 +15,7 @@ type Msg = {
   id: string; phone: string; nome_contato?: string | null; direcao: 'in' | 'out';
   tipo: string; texto?: string | null; status?: string | null; erro?: string | null;
   lida: boolean; enviado_por?: string | null; created_at: string;
+  media_id?: string | null; media_mime?: string | null;
 };
 
 const VINTE_QUATRO_H = 24 * 60 * 60 * 1000;
@@ -43,6 +44,30 @@ export default function MensagensPage() {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const fimRef = useRef<HTMLDivElement>(null);
+  // Audios/imagens ja baixados nesta sessao: id da mensagem -> endereco local do arquivo.
+  const [midias, setMidias] = useState<Record<string, { url: string; mime: string }>>({});
+  const [baixando, setBaixando] = useState<string | null>(null);
+
+  const abrirMidia = async (m: Msg) => {
+    if (midias[m.id] || baixando) return;
+    setBaixando(m.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'get_media', id: m.id } });
+      let msgErro = (data as any)?.error || '';
+      if (error && !msgErro) { try { msgErro = (await (error as any).context?.json())?.error || error.message; } catch { msgErro = error.message; } }
+      if (msgErro || !(data as any)?.base64) { toast.error(msgErro || 'Não foi possível abrir o arquivo'); return; }
+      const bin = atob((data as any).base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const mime = (data as any).mime || m.media_mime || 'application/octet-stream';
+      const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+      setMidias(x => ({ ...x, [m.id]: { url, mime } }));
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao abrir o arquivo');
+    } finally {
+      setBaixando(null);
+    }
+  };
 
   const carregar = async (primeira = false) => {
     if (!tenantId) return;
@@ -50,7 +75,7 @@ export default function MensagensPage() {
       const desde = new Date(Date.now() - 90 * 86400000).toISOString();
       const lista = await fetchAllRows<Msg>((from, to) => supabase
         .from('whatsapp_mensagens')
-        .select('id, phone, nome_contato, direcao, tipo, texto, status, erro, lida, enviado_por, created_at')
+        .select('id, phone, nome_contato, direcao, tipo, texto, status, erro, lida, enviado_por, created_at, media_id, media_mime')
         .eq('tenant_id', tenantId)
         .gte('created_at', desde)
         .order('created_at', { ascending: true })
@@ -210,6 +235,20 @@ export default function MensagensPage() {
                         <div style={{ padding: '8px 12px', borderRadius: 12, fontSize: 14, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                           background: m.direcao === 'out' ? 'rgba(37,211,102,.18)' : 'var(--bg3)', border: '1px solid var(--border)' }}>
                           {m.texto || `[${m.tipo}]`}
+                          {m.media_id && (midias[m.id] ? (
+                            midias[m.id].mime.startsWith('audio') ? <audio controls autoPlay src={midias[m.id].url} style={{ display: 'block', marginTop: 6, maxWidth: '100%' }} />
+                            : midias[m.id].mime.startsWith('image') ? <a href={midias[m.id].url} target="_blank" rel="noreferrer"><img src={midias[m.id].url} alt="imagem recebida" style={{ display: 'block', marginTop: 6, maxWidth: 260, borderRadius: 8 }} /></a>
+                            : midias[m.id].mime.startsWith('video') ? <video controls src={midias[m.id].url} style={{ display: 'block', marginTop: 6, maxWidth: 280, borderRadius: 8 }} />
+                            : <a href={midias[m.id].url} target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: 6, color: '#6366f1', fontWeight: 600 }}>Abrir arquivo</a>
+                          ) : (
+                            <button onClick={() => abrirMidia(m)} disabled={baixando === m.id}
+                              style={{ display: 'block', marginTop: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                              {baixando === m.id ? 'Abrindo...' : m.tipo === 'audio' ? '▶ Ouvir áudio' : m.tipo === 'image' || m.tipo === 'sticker' ? 'Ver imagem' : m.tipo === 'video' ? '▶ Ver vídeo' : 'Abrir arquivo'}
+                            </button>
+                          ))}
+                          {!m.media_id && m.direcao === 'in' && ['audio', 'image', 'video', 'document'].includes(m.tipo) && (
+                            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Recebido antes de o sistema guardar arquivos — peça ao cliente para reenviar.</div>
+                          )}
                         </div>
                         <div style={{ fontSize: 11, color: m.status === 'failed' ? '#ef4444' : 'var(--text3)', marginTop: 2, textAlign: m.direcao === 'out' ? 'right' : 'left' }}>
                           {fmtHora(m.created_at)}

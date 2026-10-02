@@ -105,6 +105,8 @@ serve(async (req) => {
               direcao: "in",
               tipo,
               texto: (texto || "").slice(0, 4000),
+              media_id: m[tipo]?.id && ["audio", "image", "video", "document", "sticker"].includes(tipo) ? m[tipo].id : null,
+              media_mime: m[tipo]?.mime_type || null,
               meta_message_id: m.id || null,
               created_at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString(),
             }),

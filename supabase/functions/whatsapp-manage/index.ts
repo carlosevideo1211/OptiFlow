@@ -395,6 +395,27 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    // ---------- MIDIA (tela Mensagens): baixa audio/imagem recebida ----------
+    // A Meta so entrega a midia para quem tem o token; a tela pede por aqui e
+    // recebe o arquivo em base64 (so de mensagens da propria loja).
+    if (action === "get_media") {
+      const linhas = await supabaseFetch(`whatsapp_mensagens?id=eq.${encodeURIComponent(String(body.id || ""))}&tenant_id=eq.${tenant.id}&select=media_id,media_mime`);
+      const linha = Array.isArray(linhas) ? linhas[0] : null;
+      if (!linha?.media_id) return json({ ok: false, error: "mensagem sem mídia" }, 404);
+      const cred = await credenciaisMeta(tenant.id);
+      if (!cred) return json({ ok: false, error: "WhatsApp Business API não configurado nesta ótica" }, 400);
+      const info = await fetch(`${META_GRAPH_BASE}/${linha.media_id}`, { headers: { Authorization: `Bearer ${cred.token}` } });
+      const infoData = await info.json().catch(() => ({}));
+      if (!info.ok || !infoData?.url) return json({ ok: false, error: "A mídia não está mais disponível na Meta (ela guarda por cerca de 30 dias)." }, 404);
+      if (Number(infoData.file_size || 0) > 12 * 1024 * 1024) return json({ ok: false, error: "Arquivo grande demais para abrir aqui." }, 400);
+      const arq = await fetch(infoData.url, { headers: { Authorization: `Bearer ${cred.token}`, "User-Agent": "Mozilla/5.0 (OptiFlow)" } });
+      if (!arq.ok) return json({ ok: false, error: `Falha ao baixar a mídia (HTTP ${arq.status})` }, 502);
+      const bytes = new Uint8Array(await arq.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return json({ ok: true, mime: (infoData.mime_type || linha.media_mime || "application/octet-stream").split(";")[0], base64: btoa(bin) });
+    }
+
     // ---------- RESPONDER (tela Mensagens) ----------
     // Texto livre para o cliente. No canal oficial (Meta) so e aceito ate 24h
     // depois da ultima mensagem que o CLIENTE mandou; fora disso a Meta recusa.

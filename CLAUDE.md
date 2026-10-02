@@ -754,3 +754,9 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   de teste/administradores; para receber respostas de clientes reais e preciso PUBLICAR o app (decisao do Carlos).
   Dica: Read-Host -MaskInput nao aceitou Ctrl+V (gravou so o caractere 0x16); para colar segredo use Get-Clipboard
   (colar o comando ANTES de copiar o segredo). Depois de trocar secret, redeployar a function para ela enxergar.
+- 02/10/2026: tela Mensagens testada pelo Carlos (ida e volta OK; chegou tambem audio de cliente real). Corrigido erro
+  falso "Unexpected end of JSON input" no send_reply (insert sem Prefer return=representation). MIDIA: colunas
+  whatsapp_mensagens.media_id/media_mime (migrations/20261002...), o webhook guarda o id da midia e a tela tem
+  "Ouvir audio / Ver imagem" via whatsapp-manage action get_media (baixa da Meta com o token e devolve base64; a Meta
+  guarda a midia ~30 dias; limite 12 MB). Mensagens de midia recebidas ANTES de 02/10 ~10h nao tem media_id (nao da
+  para recuperar). A tela funciona tambem no navegador do celular.
