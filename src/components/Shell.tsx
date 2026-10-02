@@ -147,7 +147,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     };
     loadData();
     const interval = setInterval(loadData, 60000);
-    return () => clearInterval(interval);
+    // A tela Mensagens avisa quando o usuario le uma conversa, para o contador do menu atualizar na hora.
+    window.addEventListener('optiflow:mensagens-lidas', loadData);
+    return () => { clearInterval(interval); window.removeEventListener('optiflow:mensagens-lidas', loadData); };
   }, [tenantId]);
 
   // Mantém isMobile em dia se a tela girar/redimensionar, e fecha a gaveta

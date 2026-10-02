@@ -109,7 +109,7 @@ export default function MensagensPage() {
     if (conversa.naoLidas > 0) {
       supabase.from('whatsapp_mensagens').update({ lida: true })
         .eq('tenant_id', tenantId).eq('phone', conversa.phone).eq('direcao', 'in').eq('lida', false)
-        .then(() => setMsgs(l => l.map(m => m.phone === conversa.phone ? { ...m, lida: true } : m)));
+        .then(() => { setMsgs(l => l.map(m => m.phone === conversa.phone ? { ...m, lida: true } : m)); window.dispatchEvent(new Event('optiflow:mensagens-lidas')); });
     }
     setTimeout(() => fimRef.current?.scrollIntoView({ block: 'end' }), 50);
   }, [sel, conversa?.lista.length]);

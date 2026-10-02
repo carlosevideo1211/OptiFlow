@@ -428,8 +428,11 @@ serve(async (req) => {
         if (!r.ok) erroEnvio = r.error || "falha ao enviar";
       }
 
+      // return=representation: sem isso o banco responde sem corpo e o
+      // supabaseFetch (que le JSON) quebrava DEPOIS de a mensagem ja ter sido enviada.
       await supabaseFetch("whatsapp_mensagens", {
         method: "POST",
+        headers: { Prefer: "return=representation" },
         body: JSON.stringify({
           tenant_id: tenant.id, phone: para, direcao: "out", tipo: "text", texto: textoResp.slice(0, 4000),
           meta_message_id: metaId, status: erroEnvio ? "failed" : "sent", erro: erroEnvio,
