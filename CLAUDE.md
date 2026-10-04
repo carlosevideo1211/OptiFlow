@@ -770,3 +770,17 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
     (olho branco em fundo indigo/azul, gerados com PIL), tags no index.html, registro do SW em main.tsx (so producao),
     botao "Instalar no celular" (src/components/InstalarApp.tsx) no rodape do menu lateral - usa beforeinstallprompt
     no Android/desktop e mostra o passo a passo no iPhone; some quando ja esta instalado.
+
+## Sessao 04/10/2026 - Integracao com o Centofin e Castanho como loja do dono
+- Castanho (2ca58112-...) virou a LOJA DO CARLOS, sem cobranca: status ativo, next_billing 2099-12-31, mrr_value 0,
+  valor_mensal_customizado null (antes: mrr 199.99, personalizado 199.96, next_billing 2026-10-07). Nao conta no MRR.
+- INTEGRACAO OPTIFLOW -> CENTOFIN (mao unica): Edge Function centofin-sync (verify_jwt=false, x-cron-secret; pg_cron
+  job 4 "centofin-sync", 7,22,37,52 * * * *). Para cada loja com store_settings.centofin_ativo e centofin_chave
+  (colunas novas: centofin_ativo/chave/desde/url/ultimo_envio/ultimo_status - migrations/20261004_centofin_integracao.sql)
+  manda desde centofin_desde (padrao dia 1 do mes, horario de Manaus): financial_transactions PAGAS sem
+  crediario_parcela_id (ext "ft:<id>"), cada crediario_parcelas paga no periodo (ext "parcpg:<id>", "Parcela n/N · Cliente")
+  e as parcelas dos carnes criados no periodo (recebiveis no Centofin, com baixa). O Centofin
+  (/api/integracao/optiflow/sync, chave "cfn_..." gerada em Centofin > Integracoes, guardada so como hash) faz upsert
+  pelo id e apaga o que sumiu. Itens do OptiFlow ficam travados no Centofin. Teste sem enviar:
+  centofin-sync?simular=1&tenant=<id>. Tela: Configuracao > Integracoes > Centofin (src/components/CentofinIntegracao.tsx;
+  a chave salva nunca volta para a tela). Simulacao de out/2026 da Castanho: 35 lancamentos (R$ 8.987,33) + 1 carne (4 parcelas).
