@@ -73,7 +73,7 @@ async function montar(tenant: string, desde: string) {
     lancamentos.push({
       ext_id: `parcpg:${p.id}`, tipo: "entrada", valor, data: diaManaus(p.paid_at),
       descricao: `Parcela ${p.installment_number}/${c.installments || "?"} · ${c.customer_name || "Cliente"}`,
-      categoria: "Vendas", forma: p.payment_method || "",
+      categoria: "Pagamento de carnê", forma: p.payment_method || "",
     });
   }
   const parcelas: any[] = [];
