@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import WhatsAppAutomatico from '../components/WhatsAppAutomatico';
+import CentofinIntegracao from '../components/CentofinIntegracao';
 
 interface StoreSettings {
   id?: string; tenant_id: string; name: string; cnpj: string;
@@ -340,6 +341,9 @@ export default function ConfiguracaoPage() {
 
           {/* WhatsApp Automático (Evolution API) */}
           <WhatsAppAutomatico />
+
+          {/* Centofin (MEI / Empresas) */}
+          <CentofinIntegracao />
 
           {/* Asaas */}
           <div className="card" style={{ padding:24, gridColumn:'1/-1' }}>

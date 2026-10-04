@@ -48,3 +48,9 @@ entrypoint = "./functions/whatsapp-webhook/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/meta-modelos-pix/index.ts"
+
+[functions.centofin-sync]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/centofin-sync/index.ts"
+# Chamada pelo pg_cron (x-cron-secret): manda vendas, despesas e carne de cada loja para o Centofin.
