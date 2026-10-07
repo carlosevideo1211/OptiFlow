@@ -44,13 +44,13 @@ async function montar(tenant: string, desde: string) {
       `&tenant_id=eq.${tenant}&status=eq.pago&crediario_parcela_id=is.null` +
       `&or=(paid_at.gte.${desdeUTC},and(paid_at.is.null,due_date.gte.${desde}))`,
   );
-  const CARNE = `crediario(id,customer_id,customer_name,installments,status,customers(phone,whatsapp))`;
+  const CARNE = `crediario(id,customer_id,customer_name,installments,status,created_at,customers(phone,whatsapp))`;
   const pagas = await todas(
     `crediario_parcelas?select=id,installment_number,amount,paid_amount,paid_at,due_date,payment_method,status,` +
       `${CARNE}&tenant_id=eq.${tenant}&paid_at=gte.${desdeUTC}`,
   );
   const carnes = await todas(
-    `crediario?select=id,customer_id,customer_name,installments,status,customers(phone,whatsapp),` +
+    `crediario?select=id,customer_id,customer_name,installments,status,created_at,customers(phone,whatsapp),` +
       `crediario_parcelas(id,installment_number,amount,due_date,paid_at,status)` +
       `&tenant_id=eq.${tenant}&created_at=gte.${desdeUTC}`,
   );
@@ -94,6 +94,7 @@ async function montar(tenant: string, desde: string) {
       telefone: (c.customers && (c.customers.whatsapp || c.customers.phone)) || "",
       numero: p.installment_number, total_parcelas: c.installments || (c.crediario_parcelas || []).length || 1,
       valor: Number(p.amount || 0), vencimento: p.due_date, pago_em: diaManaus(p.paid_at),
+      venda_data: diaManaus(c.created_at),  // data da venda: base do regime de competência no Simples
       descricao: "Carnê (OptiFlow)",
     });
   };
