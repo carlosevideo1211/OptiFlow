@@ -784,3 +784,8 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   pelo id e apaga o que sumiu. Itens do OptiFlow ficam travados no Centofin. Teste sem enviar:
   centofin-sync?simular=1&tenant=<id>. Tela: Configuracao > Integracoes > Centofin (src/components/CentofinIntegracao.tsx;
   a chave salva nunca volta para a tela). Simulacao de out/2026 da Castanho: 35 lancamentos (R$ 8.987,33) + 1 carne (4 parcelas).
+
+## Sessao 09/10/2026 - Comprovante pelo WhatsApp
+- Janela do comprovante de parcela PAGA (CrediarioPage, icone recibo verde), do Termo de Quitacao do crediario e do Termo de Quitacao da venda (VendasPage) tem o botao "Enviar ao cliente no WhatsApp": gera o PDF na propria janela (printDoc.ts, opcao whatsapp) e chama window.opener.__optiflowEnviarComprovante -> whatsapp-manage action send_document.
+- Evolution: /message/sendMedia (document). Meta: sobe o PDF em /{phone_id}/media e manda document direto (janela de 24h); fora da janela usa o modelo comprovante_pagamento (HEADER DOCUMENT + corpo {{1}} nome, {{2}} loja, {{3}} descricao), criado em 09/10 via meta-modelos-pix?acao=criar_comprovante (PENDING na criacao).
+- O envio fica registrado em whatsapp_mensagens (tipo document) e aparece na tela Mensagens.
