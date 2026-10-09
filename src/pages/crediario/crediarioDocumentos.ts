@@ -40,6 +40,13 @@ export const imprimirReciboParcial = (p: Parcela, pago: number, operador: string
   });
 };
 
+// WhatsApp do cliente do carne (para o botao "Enviar ao cliente no WhatsApp" do comprovante).
+const whatsDoCliente = async (customerId: string | null | undefined): Promise<string> => {
+  if (!customerId) return '';
+  const { data } = await supabase.from('customers').select('whatsapp,phone').eq('id', customerId).maybeSingle();
+  return String((data as any)?.whatsapp || (data as any)?.phone || '').replace(/\D/g, '');
+};
+
 export const imprimirCarneIndividual = async (p: Parcela, tenantId: string | null) => {
   const { data: creds } = await supabase.from('crediario').select('*').eq('id', p.crediario_id).single();
   const cr = creds as any || {};
@@ -141,6 +148,11 @@ export const imprimirCarneIndividual = async (p: Parcela, tenantId: string | nul
     css,
     body: html,
     windowFeatures: 'width=800,height=900',
+    whatsapp: parcelaPaga ? {
+      phone: await whatsDoCliente(cr.customer_id),
+      customer_name: p.customer_name || cr.customer_name || 'cliente',
+      descricao: 'comprovante de pagamento da parcela ' + pNum + '/' + nP2 + ' (' + fmtV(valorRecibo) + ')',
+    } : undefined,
   });
 };
 
@@ -194,12 +206,15 @@ export const imprimirQuitacaoCrediario = async (crediarioId: string, tenantId: s
     +'<p style="margin-top:30px">, '+dataExtenso+'</p>'
     +'<div class="sig"><div class="sig-line">'+sName+'<br/><span style="font-size:10px;color:#666">Assinatura da Empresa</span></div></div>';
 
+  const foneQuit = await whatsDoCliente(cr.customer_id);
   abrirDocumentoImprimivel({
     title: 'Quitacao',
     filename: 'quitacao-crediario-' + (cr.customer_name||'').replace(/\s+/g,'-').toLowerCase() + '.pdf',
     css,
     body: html,
     windowFeatures: 'width=800,height=960',
+    whatsapp: { phone: foneQuit, customer_name: cr.customer_name || 'cliente',
+                descricao: 'termo de quitação do crediário (débito totalmente pago, ' + fmtV(totalPago) + ')' },
   });
 };
 

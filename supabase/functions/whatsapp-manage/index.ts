@@ -464,6 +464,76 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    // ---------- COMPROVANTE EM PDF (recibo de parcela / termo de quitacao) ----------
+    // O PDF e gerado na janela do documento (mesmo do "Baixar PDF") e chega aqui em base64.
+    // Evolution: vai como documento com legenda. Meta: tenta o documento direto (vale ate 24h
+    // depois da ultima mensagem do cliente); fora da janela, usa o modelo comprovante_pagamento.
+    if (action === "send_document") {
+      const numero = String(body.phone || "").replace(/\D/g, "");
+      const b64 = String(body.base64 || "");
+      const arquivo = String(body.filename || "comprovante.pdf").replace(/[^\w.\-]/g, "_").slice(0, 80);
+      const nome = String(body.customer_name || "cliente").split(" ")[0];
+      const descricao = String(body.descricao || "comprovante de pagamento").slice(0, 200);
+      const loja = tenant.company_name || "nossa loja";
+      if (!numero || numero.length < 10) return json({ ok: false, error: "cliente sem WhatsApp cadastrado" }, 400);
+      if (!b64 || b64.length > 9_000_000) return json({ ok: false, error: "PDF inválido ou grande demais" }, 400);
+      const para = numero.startsWith("55") ? numero : `55${numero}`;
+      const legenda = `Olá, ${nome}! Aqui é da ${loja}. Segue o seu ${descricao}, em PDF. Obrigado pela confiança!`;
+      let metaId: string | null = null;
+      let erroEnvio: string | null = null;
+
+      if (usaMeta) {
+        const cred = await credenciaisMeta(tenant.id);
+        if (!cred) return json({ ok: false, error: "WhatsApp Business API não configurado nesta ótica" }, 400);
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const form = new FormData();
+        form.append("messaging_product", "whatsapp");
+        form.append("type", "application/pdf");
+        form.append("file", new Blob([bytes], { type: "application/pdf" }), arquivo);
+        const up = await fetch(`${META_GRAPH_BASE}/${cred.phoneId}/media`, { method: "POST", headers: { Authorization: `Bearer ${cred.token}` }, body: form });
+        const upd = await up.json().catch(() => ({}));
+        if (!up.ok || !upd?.id) return json({ ok: false, error: upd?.error?.message || `falha ao subir o PDF (HTTP ${up.status})` }, 502);
+        const enviar = (payload: unknown) => fetch(`${META_GRAPH_BASE}/${cred.phoneId}/messages`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cred.token}` },
+          body: JSON.stringify(payload),
+        }).then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => ({})) }));
+        let r = await enviar({ messaging_product: "whatsapp", to: para, type: "document",
+          document: { id: upd.id, filename: arquivo, caption: legenda } });
+        const cod = r.d?.error?.code;
+        if (!r.ok && (cod === 131047 || cod === 131026)) {
+          r = await enviar({ messaging_product: "whatsapp", to: para, type: "template", template: {
+            name: "comprovante_pagamento", language: { code: "pt_BR" },
+            components: [
+              { type: "header", parameters: [{ type: "document", document: { id: upd.id, filename: arquivo } }] },
+              { type: "body", parameters: [nome, loja, descricao].map((t) => ({ type: "text", text: t })) },
+            ] } });
+          if (!r.ok && /template|132001/i.test(JSON.stringify(r.d))) {
+            erroEnvio = "O cliente não mandou mensagem nas últimas 24h e o modelo de comprovante ainda está em aprovação na Meta. Tente de novo em breve.";
+          }
+        }
+        if (r.ok) metaId = r.d?.messages?.[0]?.id || null;
+        else if (!erroEnvio) erroEnvio = r.d?.error?.message || "falha ao enviar";
+      } else {
+        if (!tenant.whatsapp_instance_name) return json({ ok: false, error: "WhatsApp nao conectado nesta ótica" }, 400);
+        const r = await evolutionFetch(`/message/sendMedia/${tenant.whatsapp_instance_name}`, "POST", {
+          number: para, mediatype: "document", mimetype: "application/pdf", media: b64, fileName: arquivo, caption: legenda,
+        });
+        if (!r.ok) erroEnvio = `HTTP ${r.status}: ${JSON.stringify(r.data).slice(0, 200)}`;
+      }
+
+      await supabaseFetch("whatsapp_mensagens", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          tenant_id: tenant.id, phone: para, direcao: "out", tipo: "document", texto: `[documento] ${arquivo} — ${legenda}`.slice(0, 4000),
+          meta_message_id: metaId, status: erroEnvio ? "failed" : "sent", erro: erroEnvio,
+          enviado_por: profile.full_name || null, lida: true,
+        }),
+      });
+      if (erroEnvio) return json({ ok: false, error: erroEnvio }, 400);
+      return json({ ok: true });
+    }
+
     if (action === "log_manual_local") {
       // Registra que o usuario clicou no botao de abrir o WhatsApp Web/app
       // manualmente (nao via robo). Identico nos dois canais — nao depende

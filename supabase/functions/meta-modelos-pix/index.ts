@@ -62,6 +62,31 @@ async function handleImagemExemplo(): Promise<{ handle?: string; erro?: unknown 
   return { handle: up.d.h };
 }
 
+// PDF minimo (1 pagina em branco) usado como exemplo no cabecalho DOCUMENT do modelo de comprovante.
+function pdfExemplo(): Uint8Array {
+  const N = String.fromCharCode(10);
+  const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>"];
+  let pdf = "%PDF-1.4" + N;
+  const offs: number[] = [];
+  objs.forEach((o, i) => { offs.push(pdf.length); pdf += (i + 1) + " 0 obj" + N + o + N + "endobj" + N; });
+  const xref = pdf.length;
+  pdf += "xref" + N + "0 " + (objs.length + 1) + N + "0000000000 65535 f " + N;
+  pdf += offs.map((o) => String(o).padStart(10, "0") + " 00000 n " + N).join("");
+  pdf += "trailer" + N + "<< /Size " + (objs.length + 1) + " /Root 1 0 R >>" + N + "startxref" + N + xref + N + "%%EOF";
+  return new TextEncoder().encode(pdf);
+}
+
+async function handleArquivo(bytes: Uint8Array, nome: string, tipo: string): Promise<{ handle?: string; erro?: unknown }> {
+  const app = await gj(`${G}/app?access_token=${TOKEN}`);
+  if (!app.ok || !app.d?.id) return { erro: { etapa: "app", ...app } };
+  const ses = await gj(`${G}/${app.d.id}/uploads?file_name=${nome}&file_length=${bytes.length}&file_type=${tipo}&access_token=${TOKEN}`, { method: "POST" });
+  if (!ses.ok || !ses.d?.id) return { erro: { etapa: "sessao", ...ses } };
+  const up = await gj(`${G}/${ses.d.id}`, { method: "POST", headers: { Authorization: `OAuth ${TOKEN}`, file_offset: "0" }, body: bytes });
+  if (!up.ok || !up.d?.h) return { erro: { etapa: "upload", ...up } };
+  return { handle: up.d.h };
+}
+
 serve(async (req) => {
   if (!CRON_SECRET || req.headers.get("x-cron-secret") !== CRON_SECRET) {
     return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
@@ -123,6 +148,28 @@ serve(async (req) => {
     return new Response(JSON.stringify({ ok: lista.ok, erro: lista.ok ? undefined : lista.d, modelos: existentes.map(resumo) }), {
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // ?acao=criar_comprovante -> modelo com o PDF do comprovante/quitacao no cabecalho (envio fora da janela de 24h).
+  if (acao === "criar_comprovante") {
+    if (existentes.some((t) => t.name === "comprovante_pagamento")) {
+      return new Response(JSON.stringify({ ja_existia: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    const doc = await handleArquivo(pdfExemplo(), "comprovante.pdf", "application/pdf");
+    if (!doc.handle) return new Response(JSON.stringify({ ok: false, erro_doc: doc.erro }), { status: 500 });
+    const r = await gj(`${G}/${WABA_ID}/message_templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({
+        name: "comprovante_pagamento", language: "pt_BR", category: "UTILITY",
+        components: [
+          { type: "HEADER", format: "DOCUMENT", example: { header_handle: [doc.handle] } },
+          { type: "BODY", text: "Olá, {{1}}! Aqui é da {{2}}. Segue o seu {{3}}, em PDF. Obrigado pela confiança!",
+            example: { body_text: [["Maria", "Ótica Evangelista Castanho", "comprovante de pagamento da parcela 2/5 (R$ 150,00)"]] } },
+        ],
+      }),
+    });
+    return new Response(JSON.stringify({ ok: r.ok, status: r.status, resposta: r.d }), { headers: { "Content-Type": "application/json" } });
   }
 
   const img = await handleImagemExemplo();

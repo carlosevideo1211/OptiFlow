@@ -184,7 +184,7 @@ export const imprimirInstrumentoDivida = async (v: Sale, storeSettings: StoreSet
 };
 
 export const imprimirQuitacao = async (v: Sale, storeSettings: StoreSettings | null) => {
-  const { data: custData } = await supabase.from('customers').select('cpf,rg,phone,address,city,state').eq('id', v.customer_id || '').single();
+  const { data: custData } = await supabase.from('customers').select('cpf,rg,phone,whatsapp,address,city,state').eq('id', v.customer_id || '').maybeSingle();
   const cust = custData as any || {};
   const fmtV = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const fmtD2 = (d: string) => { if (!d) return '--'; const dt=d.includes('T')?new Date(d):new Date(d+'T12:00:00'); return isNaN(dt.getTime())?'--':dt.toLocaleDateString('pt-BR'); };
@@ -217,5 +217,7 @@ export const imprimirQuitacao = async (v: Sale, storeSettings: StoreSettings | n
     css,
     body: html,
     windowFeatures: 'width=800,height=960',
+    whatsapp: { phone: String(cust.whatsapp || cust.phone || '').replace(/\D/g, ''), customer_name: v.customer_name || 'cliente',
+                descricao: 'termo de quitação da venda nº ' + v.sale_number + ' (' + fmtV(v.total) + ')' },
   });
 };

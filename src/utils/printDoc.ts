@@ -27,7 +27,23 @@ export interface AbrirDocumentoOpts {
   extraScripts?: string;
   /** Tamanho da janela popup, ex: 'width=800,height=960' */
   windowFeatures?: string;
+  /** Se informado, mostra o botao "Enviar ao cliente no WhatsApp" (manda este PDF pelo WhatsApp da loja). */
+  whatsapp?: { phone: string; customer_name: string; descricao: string };
 }
+
+// Chamado pela janela do documento (window.opener) com o PDF em base64: envia pelo
+// WhatsApp da loja (whatsapp-manage, action send_document). Fica no app principal
+// porque e ele que tem a sessao do usuario logado.
+(window as any).__optiflowEnviarComprovante = async (payload: Record<string, string>) => {
+  const { supabase } = await import('../lib/supabase');
+  const { data, error } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'send_document', ...payload } });
+  if (error) {
+    let msg = error.message;
+    try { const c = await (error as any).context?.json?.(); if (c?.error) msg = c.error; } catch { /* mantem a mensagem */ }
+    return { ok: false, error: msg };
+  }
+  return data || { ok: false, error: 'sem resposta' };
+};
 
 export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | null {
   const win = window.open('', '_blank', opts.windowFeatures || 'width=900,height=1000');
@@ -49,6 +65,9 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
     #__pd_download{background:#22c55e;color:#fff}
     #__pd_download:hover{background:#16a34a}
     #__pd_download:disabled{opacity:.65;cursor:wait}
+    #__pd_whats{background:#25D366;color:#fff}
+    #__pd_whats:hover{background:#1ebe5b}
+    #__pd_whats:disabled{opacity:.65;cursor:wait}
     #__pd_status{font-size:12px;color:#dbeafe;font-family:Arial,sans-serif;min-width:160px}
     #__pd_content{width:210mm;margin:0 auto;background:#fff}
     #__pd_content .print-page{width:210mm;background:#fff}
@@ -62,6 +81,7 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
     <div id="__pd_toolbar">
       <button id="__pd_print" type="button">Imprimir</button>
       <button id="__pd_download" type="button">Baixar PDF</button>
+      ${opts.whatsapp ? '<button id="__pd_whats" type="button">Enviar ao cliente no WhatsApp</button>' : ''}
       <span id="__pd_status"></span>
     </div>
   `;
@@ -84,27 +104,56 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
         await __pd_loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
       }
     }
+    async function __pd_gerarPdf(escala, qualidade){
+      var status = document.getElementById('__pd_status');
+      status.textContent = 'Preparando PDF...';
+      await __pd_ensureLibs();
+      var pages = document.querySelectorAll('.print-page');
+      if (pages.length === 0) pages = [document.getElementById('__pd_content')];
+      var jsPDFctor = window.jspdf.jsPDF;
+      var pdf = new jsPDFctor('p', 'mm', 'a4');
+      for (var i = 0; i < pages.length; i++) {
+        status.textContent = 'Gerando pagina ' + (i + 1) + ' de ' + pages.length + '...';
+        var canvas = await window.html2canvas(pages[i], { scale: escala, useCORS: true, backgroundColor: '#ffffff' });
+        var imgData = canvas.toDataURL('image/jpeg', qualidade);
+        if (i > 0) pdf.addPage();
+        var pageW = pdf.internal.pageSize.getWidth();
+        var pageH = pdf.internal.pageSize.getHeight();
+        var imgH = (canvas.height * pageW) / canvas.width;
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageW, Math.min(imgH, pageH));
+      }
+      return pdf;
+    }
+    async function __pd_enviarWhats(){
+      var btn = document.getElementById('__pd_whats');
+      var status = document.getElementById('__pd_status');
+      var dados = ${JSON.stringify(opts.whatsapp || null).replace(/</g, '\u003c')};
+      if (!dados) return;
+      if (!dados.phone) { alert('Este cliente não tem WhatsApp cadastrado. Cadastre o número em Clientes e tente de novo.'); return; }
+      if (!window.opener || !window.opener.__optiflowEnviarComprovante) { alert('Abra este comprovante de novo pelo sistema para poder enviar.'); return; }
+      if (!confirm('Enviar este comprovante em PDF para ' + dados.customer_name + ' no WhatsApp (' + dados.phone + ')?')) return;
+      btn.disabled = true;
+      try {
+        var pdf = await __pd_gerarPdf(1.6, 0.85);
+        status.textContent = 'Enviando pelo WhatsApp...';
+        var b64 = pdf.output('datauristring').split(',')[1];
+        var r = await window.opener.__optiflowEnviarComprovante({ phone: dados.phone, customer_name: dados.customer_name,
+          descricao: dados.descricao, filename: '${opts.filename}', base64: b64 });
+        status.textContent = '';
+        if (r && r.ok) { btn.textContent = 'Enviado ✓'; alert('Comprovante enviado para ' + dados.customer_name + ' no WhatsApp.'); }
+        else { btn.disabled = false; alert('Não foi possível enviar: ' + ((r && r.error) || 'erro desconhecido')); }
+      } catch (e) {
+        console.error('Erro ao enviar:', e);
+        status.textContent = ''; btn.disabled = false;
+        alert('Não foi possível enviar agora. Tente novamente.');
+      }
+    }
     async function __pd_baixarPdf(){
       var btn = document.getElementById('__pd_download');
       var status = document.getElementById('__pd_status');
       btn.disabled = true;
       try {
-        status.textContent = 'Preparando PDF...';
-        await __pd_ensureLibs();
-        var pages = document.querySelectorAll('.print-page');
-        if (pages.length === 0) pages = [document.getElementById('__pd_content')];
-        var jsPDFctor = window.jspdf.jsPDF;
-        var pdf = new jsPDFctor('p', 'mm', 'a4');
-        for (var i = 0; i < pages.length; i++) {
-          status.textContent = 'Gerando pagina ' + (i + 1) + ' de ' + pages.length + '...';
-          var canvas = await window.html2canvas(pages[i], { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-          var imgData = canvas.toDataURL('image/jpeg', 0.92);
-          if (i > 0) pdf.addPage();
-          var pageW = pdf.internal.pageSize.getWidth();
-          var pageH = pdf.internal.pageSize.getHeight();
-          var imgH = (canvas.height * pageW) / canvas.width;
-          pdf.addImage(imgData, 'JPEG', 0, 0, pageW, Math.min(imgH, pageH));
-        }
+        var pdf = await __pd_gerarPdf(2, 0.92);
         pdf.save('${opts.filename}');
         status.textContent = '';
       } catch (e) {
@@ -117,6 +166,7 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
     }
     document.getElementById('__pd_print').addEventListener('click', function(){ window.print(); });
     document.getElementById('__pd_download').addEventListener('click', __pd_baixarPdf);
+    if (document.getElementById('__pd_whats')) document.getElementById('__pd_whats').addEventListener('click', __pd_enviarWhats);
     ${opts.extraScripts || ''}
   `;
 
