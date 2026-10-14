@@ -243,6 +243,12 @@ serve(async (req) => {
     if (action === "emitir") {
       const saleId = String(body.sale_id || "");
       if (!saleId) return json({ error: "sale_id obrigatório" }, 400);
+      // So a janela "Emitir NFC-e" (botao) manda incluir_cpf. A versao antiga do sistema (16 a 23/09)
+      // emitia sozinha ao fechar a venda, sem esse campo, e um computador da loja com a pagina aberta
+      // desde aquela epoca continuou emitindo notas sem ninguem clicar (notas 84-97, 25 e 30/09/2026).
+      if (typeof body.incluir_cpf !== "boolean") {
+        return json({ error: "Esta tela do sistema está desatualizada. Aperte Ctrl+Shift+R e emita a nota pelo botão da venda." }, 400);
+      }
 
       const sales = await supabaseFetch(`sales?id=eq.${saleId}&select=*`);
       const sale = Array.isArray(sales) ? sales[0] : null;
