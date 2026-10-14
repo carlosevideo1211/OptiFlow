@@ -789,3 +789,9 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
 - Janela do comprovante de parcela PAGA (CrediarioPage, icone recibo verde), do Termo de Quitacao do crediario e do Termo de Quitacao da venda (VendasPage) tem o botao "Enviar ao cliente no WhatsApp": gera o PDF na propria janela (printDoc.ts, opcao whatsapp) e chama window.opener.__optiflowEnviarComprovante -> whatsapp-manage action send_document.
 - Evolution: /message/sendMedia (document). Meta: sobe o PDF em /{phone_id}/media e manda document direto (janela de 24h); fora da janela usa o modelo comprovante_pagamento (HEADER DOCUMENT + corpo {{1}} nome, {{2}} loja, {{3}} descricao), criado em 09/10 via meta-modelos-pix?acao=criar_comprovante (PENDING na criacao).
 - O envio fica registrado em whatsapp_mensagens (tipo document) e aparece na tela Mensagens.
+
+## Sessao 13/10/2026 - NFC-e emitidas sem clicar (Castanho)
+- Contadora viu R$ 15.240 em NFC-e de setembro na Sefaz (notas 84-97). 84 foi o teste do Carlos (24/09); 85-88 (25/09) e 89-97 (30/09) sairam no MESMO minuto de cada venda, sem ninguem clicar: um computador da loja estava com a pagina de Vendas aberta desde a versao antiga (16-23/09, commit 63738f8) que emitia sozinha ao fechar a venda. Depois de 30/09 nenhuma nota (26 vendas sem nota).
+- Nota 96 (Francinildo, R$ 1.380) e DUPLICADA: venda apagada e refeita 3 min depois (nota 97). Vendas reais com nota: R$ 13.860. Nenhuma foi no cartao (12 crediario + 1 dinheiro).
+- Trava (commit 59f572a): emitir-nfce recusa action=emitir sem o campo incluir_cpf (so a janela "Emitir NFC-e" manda) - pagina antiga aberta nao consegue mais emitir.
+- Lista para a contadora: Documents\Centofin\Centofin - Contador\NFC-e setembro 2026 - conferencia.csv. Cancelamento/ajuste da 96 fica com a contadora (prazo de cancelamento de NFC-e ja passou).
