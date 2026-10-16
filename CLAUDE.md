@@ -795,3 +795,17 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
 - Nota 96 (Francinildo, R$ 1.380) e DUPLICADA: venda apagada e refeita 3 min depois (nota 97). Vendas reais com nota: R$ 13.860. Nenhuma foi no cartao (12 crediario + 1 dinheiro).
 - Trava (commit 59f572a): emitir-nfce recusa action=emitir sem o campo incluir_cpf (so a janela "Emitir NFC-e" manda) - pagina antiga aberta nao consegue mais emitir.
 - Lista para a contadora: Documents\Centofin\Centofin - Contador\NFC-e setembro 2026 - conferencia.csv. Cancelamento/ajuste da 96 fica com a contadora (prazo de cancelamento de NFC-e ja passou).
+
+## Sessao 16/10/2026 - Contas a Receber com parcelas ja pagas (todas as lojas)
+- Pedido da Mayana (Altazes): "clientes que ja pagaram aparecem como se nao tivessem dado baixa". O Crediario estava
+  certo; o problema era o Financeiro > Contas a Receber: lancamentos "pendente" criados nas vendas de jun-set/2026 SEM
+  crediario_parcela_id (antes do vinculo existir) nunca recebiam baixa quando a parcela era paga.
+- Correcao via SQL em todas as lojas (backup em financial_transactions_backup_20261016, 2216 linhas): cada lancamento
+  foi casado com a parcela (nome do cliente + numero da parcela + valor, desempate pelo vencimento). Parcela paga com
+  lancamento pago ja existente -> o pendente (duplicado) foi apagado; parcela paga sem lancamento -> virou pago com a
+  data/valor/forma da parcela; parcela em aberto -> ganhou o vinculo (proximas baixas atualizam sozinhas). Lancamentos
+  de carnes refeitos (mesmo vencimento, parcela ja com lancamento) foram apagados. Sobraram 133 sem par claro (nome do
+  cliente mudou ou valor diferente) - revisar manualmente se aparecer reclamacao.
+- 3 parcelas tinham o recebimento lancado 2-3x no Financeiro (clique duplo em Confirmar Baixa): copias apagadas (backup
+  em financial_transactions_dup_backup_20261016) e CrediarioPage ganhou trava por useRef (payingRef) no handleConfirmPay.
+- Letra maior na tela da Mayana: nada mudou no sistema; orientado Ctrl+0 (zoom do navegador).

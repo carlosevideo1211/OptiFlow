@@ -277,7 +277,17 @@ export default function CrediarioPage() {
 
   const fmtM = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 
+  // Trava contra clique duplo em "Confirmar Baixa": o payingSaving so liga depois
+  // de conferir o operador, e nesse intervalo um 2o clique gravava o pagamento
+  // de novo no Financeiro (16/10/2026: 3 parcelas com recebimento em dobro/triplo).
+  const payingRef = useRef(false);
   const handleConfirmPay = async () => {
+    if (payingRef.current) return;
+    payingRef.current = true;
+    try { await confirmarBaixa(); } finally { payingRef.current = false; }
+  };
+
+  const confirmarBaixa = async () => {
     if (payingSaving) return;
     if (!selectedParcela) return;
     const p = selectedParcela;
