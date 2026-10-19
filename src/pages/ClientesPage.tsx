@@ -786,7 +786,7 @@ export default function ClientesPage() {
                           <td style={{padding:'3px 6px'}}>{b.paid_date?new Date(b.paid_date+'T12:00:00').toLocaleDateString('pt-BR'):'--'}</td>
                           <td style={{padding:'3px 6px',textAlign:'right',fontWeight:700,color:'#22c55e'}}>{Number(b.paid_amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
                           <td style={{padding:'3px 6px',textAlign:'center'}}>
-                            <span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:b.is_partial?'rgba(251,191,36,.15)':'rgba(34,197,94,.15)',color:b.is_partial?'#fbbf24':'#22c55e'}}>{b.is_partial?'Parcial':'Total'}</span>
+                            <span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:b.is_partial?'rgba(251,191,36,.15)':'rgba(34,197,94,.15)',color:b.is_partial?'#fbbf24':'#22c55e'}}>{b.is_partial?'Parcial':'Total'}</span>{b.renegociacao && <span title="Parcela de um carnê de renegociação de dívida" style={{display:'inline-block',marginLeft:6,padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:'rgba(99,102,241,.15)',color:'#818cf8',border:'1px solid rgba(99,102,241,.4)',verticalAlign:'middle'}}>🔁 RENEGOCIAÇÃO</span>}
                           </td>
                           <td style={{padding:'3px 6px',textAlign:'center'}}>{formaLabel[b.payment_method] || '--'}</td>
                           <td style={{padding:'3px 6px'}}>{b.operator_name||'--'}</td>

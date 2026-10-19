@@ -127,7 +127,7 @@ export const imprimirCarneIndividual = async (p: Parcela, tenantId: string | nul
     +(storeAddr?'<div class="store-info">'+storeAddr+'</div>':'')
     +(storeTel?'<div class="store-info">Tel: '+storeTel+'</div>':'')
     +'</div>'
-    +'<div class="title">Recibo de Pagamento de Parcela</div>'
+    +'<div class="title">Recibo de Pagamento de Parcela'+(String(creds?.notes||'').startsWith('Renegociacao:')?' &middot; Renegociação':'')+'</div>'
     +'<table class="table"><thead><tr><th>Parcela</th><th>Cliente</th><th>Vencimento</th><th>Emissão</th></tr></thead>'
     +'<tbody><tr><td>'+pNum+'/'+nP2+'</td><td>'+p.customer_name+'</td><td>'+venc+'</td><td>'+hoje+'</td></tr></tbody></table>'
     +breakdownHtml

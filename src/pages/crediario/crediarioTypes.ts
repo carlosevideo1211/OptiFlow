@@ -26,6 +26,8 @@ export interface Parcela {
   // Nome gravado no carne na hora da venda, quando difere do nome atual do
   // cadastro do cliente (cadastro renomeado depois). A busca aceita os dois.
   nome_no_carne?: string;
+  // Parcela de um carne criado por renegociacao de divida (crediario.notes = 'Renegociacao:<id do original>').
+  renegociacao?: boolean;
 }
 
 // Vencimento valido: AAAA-MM-DD entre 2020 e 2100. Barra ano digitado errado

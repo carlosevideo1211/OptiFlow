@@ -809,3 +809,10 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
 - 3 parcelas tinham o recebimento lancado 2-3x no Financeiro (clique duplo em Confirmar Baixa): copias apagadas (backup
   em financial_transactions_dup_backup_20261016) e CrediarioPage ganhou trava por useRef (payingRef) no handleConfirmPay.
 - Letra maior na tela da Mayana: nada mudou no sistema; orientado Ctrl+0 (zoom do navegador).
+
+## Sessao 19/10/2026 - Renegociacao identificada na baixa
+- Carne de renegociacao = crediario.notes 'Renegociacao:<id do carne original>' (ja era assim). Agora CrediarioPage carrega
+  notes e marca Parcela.renegociacao: selo "🔁 RENEGOCIAÇÃO" na lista de parcelas, aviso no topo da janela Receber
+  Parcela, recibo "Recibo de Pagamento de Parcela · Renegociação" e descricao do Financeiro "(renegociação)".
+- baixas_log.renegociacao (boolean, coluna nova via SQL; 2 baixas antigas marcadas retroativamente) -> selo em
+  Baixas (BaixasTab) e no historico de pagamentos do cliente (ClientesPage). Em 19/10 havia 5 carnes renegociados.

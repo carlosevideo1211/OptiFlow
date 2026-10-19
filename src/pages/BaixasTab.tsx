@@ -48,7 +48,7 @@ export default function BaixasTab() {
                 <tr key={b.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '10px 12px', fontSize: 12 }}>{fmtDT(b.created_at)}</td>
                   <td style={{ padding: '10px 12px', fontSize: 12, fontWeight: 600 }}>{b.operator_name || '--'}</td>
-                  <td style={{ padding: '10px 12px', fontSize: 12 }}>{b.customer_name || '--'}</td>
+                  <td style={{ padding: '10px 12px', fontSize: 12 }}>{b.customer_name || '--'}{b.renegociacao && <span title="Parcela de um carnê de renegociação de dívida" style={{display:'inline-block',marginLeft:6,padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:'rgba(99,102,241,.15)',color:'#818cf8',border:'1px solid rgba(99,102,241,.4)',verticalAlign:'middle'}}>🔁 RENEGOCIAÇÃO</span>}</td>
                   <td style={{ padding: '10px 12px', fontSize: 12 }}>#{b.installment_number}</td>
                   <td style={{ padding: '10px 12px', fontSize: 12 }}>{fmt(b.amount)}</td>
                   <td style={{ padding: '10px 12px', fontSize: 12, color: '#22c55e', fontWeight: 600 }}>{fmt(b.paid_amount)}</td>

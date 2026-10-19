@@ -68,7 +68,7 @@ export default function CrediarioPage() {
     setLoading(true);
     const creds = await fetchAllRows<any>((from, to) => supabase
       .from('crediario')
-      .select('id, customer_id, customer_name, total_amount, installments, sale_id, status, negativado, negativado_em, created_at, parcelas:crediario_parcelas(*)')
+      .select('id, customer_id, customer_name, total_amount, installments, sale_id, status, negativado, negativado_em, created_at, notes, parcelas:crediario_parcelas(*)')
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelado')
       .range(from, to));
@@ -145,6 +145,7 @@ export default function CrediarioPage() {
           total_installments: nP,
           sale_id: cr.sale_id,
           arquivado,
+          renegociacao: String(cr.notes || '').startsWith('Renegociacao:'),
         });
       });
     });
@@ -334,10 +335,10 @@ export default function CrediarioPage() {
         .eq('crediario_parcela_id', p.id)
         .select('id');
       if (!finAtualizado || finAtualizado.length === 0) {
-        await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + ' - ' + p.customer_name, category: 'Crediário', amount: pago, due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: payForm.payment_method, crediario_parcela_id: p.id }]);
+        await supabase.from('financial_transactions').insert([{ tenant_id: tenantId, type: 'receita', description: 'Parcela ' + p.installment_number + (p.renegociacao ? ' (renegociação)' : '') + ' - ' + p.customer_name, category: 'Crediário', amount: pago, due_date: hoje, paid_at: new Date().toISOString(), status: 'pago', payment_method: payForm.payment_method, crediario_parcela_id: p.id }]);
       }
       // Corrigido 22/07/2026: havia uma gravacao duplicada aqui (mesmo insert rodava 2x a cada pagamento)
-      await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount+calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial?Math.round((p.amount+calcJuros(p)-pago)*100)/100:0, operator_name: funcs[0].name, paid_date: hoje, payment_method: payForm.payment_method }]);
+      await supabase.from('baixas_log').insert([{ tenant_id: tenantId, parcela_id: p.id, customer_name: p.customer_name, installment_number: p.installment_number, amount: p.amount+calcJuros(p), paid_amount: pago, is_partial: payForm.is_partial, balance: payForm.is_partial?Math.round((p.amount+calcJuros(p)-pago)*100)/100:0, operator_name: funcs[0].name, paid_date: hoje, payment_method: payForm.payment_method, renegociacao: !!p.renegociacao }]);
       // Verificar se todas as parcelas do crediario estao pagas -> quitar
       if (!payForm.is_partial) {
         const { data: todasParcelas } = await supabase
@@ -553,8 +554,13 @@ export default function CrediarioPage() {
           <button onClick={()=>setShowPayModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted,#888)',padding:4}}><X size={18}/></button>
         </div>
         <div style={{background:'rgba(255,255,255,0.05)',borderRadius:8,padding:12,marginBottom:16,fontSize:13}}>
+          {selectedParcela.renegociacao && (
+            <div style={{background:'rgba(99,102,241,.15)',border:'1px solid rgba(99,102,241,.4)',color:'#a5b4fc',borderRadius:8,padding:'6px 10px',marginBottom:8,fontWeight:700,fontSize:12}}>
+              🔁 RENEGOCIAÇÃO — esta parcela é de um acordo de renegociação de dívida, não do carnê original da venda.
+            </div>
+          )}
           <div style={{fontWeight:600,fontSize:14}}>{selectedParcela.customer_name}</div>
-          <div style={{color:'var(--text-muted,#888)',marginTop:2}}>Parcela {selectedParcela.installment_number} &mdash; Venc: {selectedParcela.due_date ? new Date(selectedParcela.due_date+'T00:00:00').toLocaleDateString('pt-BR') : '--'}</div>
+          <div style={{color:'var(--text-muted,#888)',marginTop:2}}>{selectedParcela.renegociacao ? 'Parcela da renegociação' : 'Parcela'} {selectedParcela.installment_number} &mdash; Venc: {selectedParcela.due_date ? new Date(selectedParcela.due_date+'T00:00:00').toLocaleDateString('pt-BR') : '--'}</div>
           <div style={{fontSize:22,fontWeight:700,color:'#6366f1',marginTop:6}}>{fmtM(selectedParcela.amount + calcJuros(selectedParcela))}</div>
         </div>
         <div style={{marginBottom:14}}>
@@ -901,7 +907,7 @@ export default function CrediarioPage() {
                       <tr key={p.id}>
                 <td style={{ textAlign:'center' }}>{podeCobrarAuto && (<input type="checkbox" checked={selecionadas.has(p.id)} onChange={()=>toggleSelecionada(p.id)} />)}</td>
                         <td>
-                          <div style={{ fontWeight:600 }}>{p.customer_name}</div>
+                          <div style={{ fontWeight:600 }}>{p.customer_name}{p.renegociacao && <span title="Parcela de um carnê de renegociação de dívida" style={{display:'inline-block',marginLeft:6,padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:'rgba(99,102,241,.15)',color:'#818cf8',border:'1px solid rgba(99,102,241,.4)',verticalAlign:'middle'}}>🔁 RENEGOCIAÇÃO</span>}</div>
                           {p.nome_no_carne && <div style={{ fontSize:11, color:'var(--text-muted)' }}>no carnê: {p.nome_no_carne}</div>}
                         </td>
                         <td style={{ textAlign:'center', fontWeight:700, color:'#6366f1' }}>
