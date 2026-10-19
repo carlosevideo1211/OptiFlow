@@ -820,4 +820,7 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   cadastro "FULANO (RENEGOCIAÇÃO)"): Solar tem 218 cadastros assim (112 com carne) e Altazes 224 (nenhum com carne).
   baixas_log marcadas retroativamente (11 no total). Caso Edimilson de Souza Brandao (Solar): o cadastro "(RENEGOCIAÇÃO)"
   (CPF 444.525.352-91) ficou sem carnes; os carnes estao no cadastro sem CPF (8x R$ 2.120 importado VisionProERP + 7x
-  R$ 1.260 venda de 25/09) e ha um carne importado duplicado vazio (b8c2d0f0). Aguardando o Carlos dizer qual carne e o acordo.
+  R$ 1.260 venda de 25/09) e ha um carne importado duplicado vazio (b8c2d0f0). Carlos confirmou: o 8x (9522def1) e a
+  renegociacao. Feito via SQL (backup em merge_clientes_backup_20261019): tudo passou para o cadastro com CPF (renomeado sem
+  "(RENEGOCIAÇÃO)"), o outro ficou inativo "(duplicado - juntado em 19/10)", carne 8x com notes 'Renegociacao:VisionProERP...'
+  e o carne vazio b8c2d0f0 cancelado (nao apagado).
