@@ -816,3 +816,8 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   Parcela, recibo "Recibo de Pagamento de Parcela · Renegociação" e descricao do Financeiro "(renegociação)".
 - baixas_log.renegociacao (boolean, coluna nova via SQL; 2 baixas antigas marcadas retroativamente) -> selo em
   Baixas (BaixasTab) e no historico de pagamentos do cliente (ClientesPage). Em 19/10 havia 5 carnes renegociados.
+- 19/10 (cont.): renegociacao tambem reconhecida pelo NOME do cliente/carne com "RENEGOCIA" (sistemas antigos criavam um
+  cadastro "FULANO (RENEGOCIAÇÃO)"): Solar tem 218 cadastros assim (112 com carne) e Altazes 224 (nenhum com carne).
+  baixas_log marcadas retroativamente (11 no total). Caso Edimilson de Souza Brandao (Solar): o cadastro "(RENEGOCIAÇÃO)"
+  (CPF 444.525.352-91) ficou sem carnes; os carnes estao no cadastro sem CPF (8x R$ 2.120 importado VisionProERP + 7x
+  R$ 1.260 venda de 25/09) e ha um carne importado duplicado vazio (b8c2d0f0). Aguardando o Carlos dizer qual carne e o acordo.

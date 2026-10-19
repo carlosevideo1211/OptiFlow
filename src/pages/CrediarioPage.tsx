@@ -145,7 +145,9 @@ export default function CrediarioPage() {
           total_installments: nP,
           sale_id: cr.sale_id,
           arquivado,
-          renegociacao: String(cr.notes || '').startsWith('Renegociacao:'),
+          // Renegociacao feita no OptiFlow (botao Renego) ou vinda dos sistemas antigos, onde o
+          // acordo era um cadastro de cliente com "(RENEGOCIAÇÃO)" no nome.
+          renegociacao: String(cr.notes || '').startsWith('Renegociacao:') || /renegocia/i.test(nomeAtual || '') || /renegocia/i.test(nomeNoCarne),
         });
       });
     });
