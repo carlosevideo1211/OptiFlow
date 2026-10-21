@@ -40,6 +40,9 @@ async function todas(caminho: string): Promise<any[]> {
   return out;
 }
 
+// Itens (o que mais vende) so das oticas do Carlos: por decisao dele (21/10/2026), so a Castanho.
+const LOJAS_COM_ITENS = new Set(["2ca58112-4498-4dfa-b6d1-550630d5c4a4"]);
+
 const CATEGORIAS: Record<string, string> = {
   armacao: "Armação", armacoes: "Armação", lente: "Lentes", lentes: "Lentes", oculos_sol: "Óculos de sol",
   oculos_de_sol: "Óculos de sol", solar: "Óculos de sol", lente_contato: "Lente de contato", lentes_contato: "Lente de contato",
@@ -194,8 +197,10 @@ serve(async (req) => {
       const dados = { ...(await montar(loja.tenant_id, desde)), itens_desde: "", itens: [] as any[] };
       const completo = agora.getUTCHours() === 8 && agora.getUTCMinutes() < 15 ||
         !String(loja.centofin_ultimo_status || "").includes('"itens"');
-      dados.itens_desde = url.searchParams.get("itens_desde") || (completo ? diasAtras(365) : diasAtras(40));
-      dados.itens = await montarItens(loja.tenant_id, dados.itens_desde);
+      if (LOJAS_COM_ITENS.has(loja.tenant_id)) {
+        dados.itens_desde = url.searchParams.get("itens_desde") || (completo ? diasAtras(365) : diasAtras(40));
+        dados.itens = await montarItens(loja.tenant_id, dados.itens_desde);
+      }
       if (simular) {
         resultado.push({ tenant: loja.tenant_id, desde, lancamentos: dados.lancamentos.length,
           parcelas: dados.parcelas.length, itens: dados.itens.length, itens_desde: dados.itens_desde,
