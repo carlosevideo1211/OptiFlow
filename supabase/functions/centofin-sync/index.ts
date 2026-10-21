@@ -4,7 +4,10 @@
 // centofin_desde (padrao: dia 1 do mes atual):
 //   - lancamentos: financial_transactions PAGAS sem parcela (vendas, entradas, despesas)
 //     + cada parcela de carne PAGA no periodo (entrada "Parcela n/N - Cliente");
-//   - parcelas: os carnes criados no periodo, com vencimento e baixa.
+//   - parcelas: os carnes criados no periodo, com vencimento e baixa;
+//   - itens: o que foi vendido (itens das vendas e das OS que nao viraram venda), com categoria e
+//     custo do produto, para o relatorio "o que mais vende" do Centofin. Janela de 40 dias a cada envio
+//     e de 12 meses uma vez por dia (8h UTC) ou no primeiro envio com itens; ?itens_desde=AAAA-MM-DD forca.
 // O Centofin grava pelo id (reenviar nao duplica) e apaga o que sumiu daqui.
 // Teste sem enviar: ?simular=1&tenant=<id>  |  so uma loja: ?tenant=<id>
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -35,6 +38,70 @@ async function todas(caminho: string): Promise<any[]> {
     if (lote.length < 1000) break;
   }
   return out;
+}
+
+const CATEGORIAS: Record<string, string> = {
+  armacao: "Armação", armacoes: "Armação", lente: "Lentes", lentes: "Lentes", oculos_sol: "Óculos de sol",
+  oculos_de_sol: "Óculos de sol", solar: "Óculos de sol", lente_contato: "Lente de contato", lentes_contato: "Lente de contato",
+  acessorio: "Acessórios", acessorios: "Acessórios", servico: "Serviços", servicos: "Serviços", estojo: "Acessórios",
+};
+function categoria(cat: string, descricao: string): string {
+  const k = String(cat || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
+  if (k) return CATEGORIAS[k] || (cat.charAt(0).toUpperCase() + cat.slice(1));
+  const d = String(descricao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/contato/.test(d)) return "Lente de contato";
+  if (/lente|multifoc|bifoc|antirref|visao simples|policarb/.test(d)) return "Lentes";
+  if (/arma[cç]|aro /.test(d)) return "Armação";
+  if (/sol/.test(d)) return "Óculos de sol";
+  if (/conserto|ajuste|solda|consulta|exame/.test(d)) return "Serviços";
+  return "Outros";
+}
+
+async function emLotes(base: string, campo: string, ids: string[]): Promise<any[]> {
+  const out: any[] = [];
+  for (let i = 0; i < ids.length; i += 120) {
+    out.push(...await todas(`${base}&${campo}=in.(${ids.slice(i, i + 120).join(",")})`));
+  }
+  return out;
+}
+
+async function montarItens(tenant: string, itensDesde: string) {
+  const desdeUTC = `${itensDesde}T04:00:00Z`;
+  const prods = await todas(`products?select=id,name,category,cost_price&tenant_id=eq.${tenant}`);
+  const P = new Map(prods.map((p: any) => [p.id, p]));
+  const vendas = (await todas(
+    `sales?select=id,sale_number,created_at,status,payment_method&tenant_id=eq.${tenant}&created_at=gte.${desdeUTC}`,
+  )).filter((v: any) => v.status !== "cancelada");
+  const V = new Map(vendas.map((v: any) => [v.id, v]));
+  const itensV = await emLotes(`sale_items?select=id,sale_id,product_id,description,quantity,total`, "sale_id", [...V.keys()] as string[]);
+  // OS que viraram venda: os itens ja contam pela venda (nao contar duas vezes)
+  const ligadas = new Set((await todas(
+    `sales?select=os_id&tenant_id=eq.${tenant}&os_id=not.is.null&status=neq.cancelada`,
+  )).map((v: any) => v.os_id));
+  const oss = (await todas(
+    `service_orders?select=id,os_number,created_at,status&tenant_id=eq.${tenant}&created_at=gte.${desdeUTC}`,
+  )).filter((o: any) => o.status !== "cancelada" && !ligadas.has(o.id));
+  const O = new Map(oss.map((o: any) => [o.id, o]));
+  const itensO = await emLotes(`os_itens?select=id,os_id,product_id,descricao,quantidade,valor_total`, "os_id", [...O.keys()] as string[]);
+  const itens: any[] = [];
+  const add = (ext: string, origem: string, numero: any, criado: string, desc: string, pid: string, qtd: number, valor: number, forma: string) => {
+    const p: any = pid ? P.get(pid) : null;
+    const q = Number(qtd || 1);
+    itens.push({
+      ext_id: ext, origem, numero: String(numero ?? ""), data: diaManaus(criado), descricao: desc || "",
+      produto: p?.name || desc || "", categoria: categoria(p?.category || "", desc || p?.name || ""),
+      quantidade: q, valor: Number(valor || 0), custo: p ? Number(p.cost_price || 0) * q : 0, forma: forma || "",
+    });
+  };
+  for (const i of itensV) {
+    const v: any = V.get(i.sale_id);
+    if (v) add(`si:${i.id}`, "venda", v.sale_number, v.created_at, i.description, i.product_id, i.quantity, i.total, v.payment_method);
+  }
+  for (const i of itensO) {
+    const o: any = O.get(i.os_id);
+    if (o) add(`os:${i.id}`, "os", o.os_number, o.created_at, i.descricao, i.product_id, i.quantidade, i.valor_total, "");
+  }
+  return itens;
 }
 
 async function montar(tenant: string, desde: string) {
@@ -113,8 +180,10 @@ serve(async (req) => {
   const soTenant = url.searchParams.get("tenant");
   const simular = url.searchParams.get("simular") === "1";
   let lojas = await todas(
-    `store_settings?select=tenant_id,centofin_chave,centofin_desde,centofin_url&centofin_ativo=eq.true&centofin_chave=not.is.null`,
+    `store_settings?select=tenant_id,centofin_chave,centofin_desde,centofin_url,centofin_ultimo_status&centofin_ativo=eq.true&centofin_chave=not.is.null`,
   );
+  const diasAtras = (n: number) => diaManaus(new Date(Date.now() - n * 864e5).toISOString());
+  const agora = new Date();
   if (soTenant) lojas = lojas.filter((l) => l.tenant_id === soTenant);
   if (simular && soTenant && !lojas.length) lojas = [{ tenant_id: soTenant }];  // ver o que iria, antes de ligar
   const resultado: any[] = [];
@@ -122,10 +191,15 @@ serve(async (req) => {
     const desde = loja.centofin_desde || inicioDoMesManaus();
     let status = "";
     try {
-      const dados = await montar(loja.tenant_id, desde);
+      const dados = { ...(await montar(loja.tenant_id, desde)), itens_desde: "", itens: [] as any[] };
+      const completo = agora.getUTCHours() === 8 && agora.getUTCMinutes() < 15 ||
+        !String(loja.centofin_ultimo_status || "").includes('"itens"');
+      dados.itens_desde = url.searchParams.get("itens_desde") || (completo ? diasAtras(365) : diasAtras(40));
+      dados.itens = await montarItens(loja.tenant_id, dados.itens_desde);
       if (simular) {
         resultado.push({ tenant: loja.tenant_id, desde, lancamentos: dados.lancamentos.length,
-          parcelas: dados.parcelas.length, total_entradas: dados.lancamentos.filter((l) => l.tipo === "entrada")
+          parcelas: dados.parcelas.length, itens: dados.itens.length, itens_desde: dados.itens_desde,
+          itens_valor: dados.itens.reduce((a: number, i: any) => a + i.valor, 0), total_entradas: dados.lancamentos.filter((l) => l.tipo === "entrada")
             .reduce((a, l) => a + l.valor, 0) });
         continue;
       }
