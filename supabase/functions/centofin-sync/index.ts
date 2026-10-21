@@ -44,7 +44,7 @@ async function todas(caminho: string): Promise<any[]> {
 const LOJAS_COM_ITENS = new Set(["2ca58112-4498-4dfa-b6d1-550630d5c4a4"]);
 
 const CATEGORIAS: Record<string, string> = {
-  armacao: "Armação", armacoes: "Armação", lente: "Lentes", lentes: "Lentes", oculos_sol: "Óculos de sol",
+  armacao: "Armação", armacoes: "Armação", lente: "Lentes", lentes: "Lentes", lente_de_grau: "Lentes", lentes_de_grau: "Lentes", oculos_sol: "Óculos de sol",
   oculos_de_sol: "Óculos de sol", solar: "Óculos de sol", lente_contato: "Lente de contato", lentes_contato: "Lente de contato",
   acessorio: "Acessórios", acessorios: "Acessórios", servico: "Serviços", servicos: "Serviços", estojo: "Acessórios",
 };
@@ -53,7 +53,7 @@ function categoria(cat: string, descricao: string): string {
   if (k) return CATEGORIAS[k] || (cat.charAt(0).toUpperCase() + cat.slice(1));
   const d = String(descricao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (/contato/.test(d)) return "Lente de contato";
-  if (/lente|multifoc|bifoc|antirref|visao simples|policarb/.test(d)) return "Lentes";
+  if (/lente|mult|bifoc|antirref|visao simples|policarb|poly|foto|blue|blu\b|transition|cr ?39|\bvs\b|\bmf\b|\bar\b/.test(d)) return "Lentes";
   if (/arma[cç]|aro /.test(d)) return "Armação";
   if (/sol/.test(d)) return "Óculos de sol";
   if (/conserto|ajuste|solda|consulta|exame/.test(d)) return "Serviços";
