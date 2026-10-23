@@ -327,6 +327,20 @@ export default function VendasPage() {
   // lancamentos financeiros gerados por esta venda, apaga o crediario/
   // parcelas dela, e libera a OS vinculada de volta pra "Pronta p/ Entrega".
   const excluirVenda = async (v: Sale) => {
+    // 23/10/2026: antes, excluir uma venda no crediario apagava tambem os
+    // recebimentos das parcelas JA PAGAS (o dinheiro sumia do caixa). Agora
+    // a exclusao e bloqueada enquanto houver parcela paga.
+    const { data: credsPagos } = await supabase.from('crediario').select('id').eq('sale_id', v.id).eq('tenant_id', tenantId);
+    const credIds = (credsPagos || []).map((c: any) => c.id);
+    if (credIds.length > 0) {
+      const { data: pagas } = await supabase.from('crediario_parcelas').select('paid_amount, amount')
+        .in('crediario_id', credIds).or('status.eq.pago,paid_at.not.is.null');
+      if (pagas && pagas.length > 0) {
+        const recebido = pagas.reduce((s: number, p: any) => s + Number(p.paid_amount ?? p.amount ?? 0), 0);
+        toast.error('Esta venda tem ' + pagas.length + ' parcela(s) já paga(s) (' + formatBRL(recebido) + '). Para não sumir dinheiro do caixa, ela não pode ser excluída. Use "Desmarcar pagamento" no Crediário antes, se o recebimento foi lançado por engano.', { duration: 9000 });
+        return;
+      }
+    }
     if (!confirm('Excluir permanentemente a venda #' + String(v.sale_number).padStart(4, '0') + '? Isso devolve o estoque dos itens vendidos, remove os lançamentos financeiros gerados por ela e libera a OS vinculada para ser usada numa nova venda.')) return;
     try {
       // 1) Devolver ao estoque os produtos vendidos nesta venda.
@@ -361,8 +375,11 @@ export default function VendasPage() {
       //    outra venda cujo numero comece com os mesmos digitos (ex: venda
       //    #275 x #2755).
       const entradaDesc = 'Venda #' + v.sale_number + (v.customer_name ? ' — ' + v.customer_name : '');
-      await supabase.from('financial_transactions').delete().eq('description', entradaDesc);
-      await supabase.from('financial_transactions').delete().like('description', 'Crediário Venda #' + v.sale_number + ' —%');
+      // tenant_id no filtro: a mesma descricao pode existir em outra loja.
+      const r1 = await supabase.from('financial_transactions').delete().eq('tenant_id', tenantId).eq('description', entradaDesc);
+      if (r1.error) throw r1.error;
+      const r2 = await supabase.from('financial_transactions').delete().eq('tenant_id', tenantId).like('description', 'Crediário Venda #' + v.sale_number + ' —%');
+      if (r2.error) throw r2.error;
 
       // 4) Reabrir a OS vinculada (se houver) para "Pronta p/ Entrega", pra
       //    poder ser selecionada de novo numa venda nova.
@@ -370,7 +387,8 @@ export default function VendasPage() {
 
       // 5) Por fim, os itens e a venda em si.
       await supabase.from('sale_items').delete().eq('sale_id', v.id);
-      await supabase.from('sales').delete().eq('id', v.id);
+      const r3 = await supabase.from('sales').delete().eq('id', v.id);
+      if (r3.error) throw r3.error;
 
       toast.success('Venda excluída — estoque devolvido, lançamentos financeiros removidos e OS liberada.');
       load();
@@ -436,7 +454,8 @@ export default function VendasPage() {
       }]).select().single();
       if (saleErr) throw saleErr;
       await supabase.from('sale_items').insert(cartItems.map(i => ({ product_id: i.product_id || null, description: i.description, quantity: i.quantity, unit_price: i.unit_price, total: i.total + i.acrescimo, sale_id: saleData.id, tenant_id: tenantId })));
-      for (const item of cartItems) { if (item.product_id) { const prod = products.find(p => p.id === item.product_id); if (prod) await supabase.from('products').update({ stock: Math.max(0, prod.stock - item.quantity) }).eq('id', item.product_id); } }
+      // Estoque lido na hora (a lista "products" pode estar desatualizada se outro computador vendeu o mesmo item).
+      for (const item of cartItems) { if (item.product_id) { const { data: prod } = await supabase.from('products').select('stock').eq('id', item.product_id).maybeSingle(); if (prod) await supabase.from('products').update({ stock: Math.max(0, (prod.stock || 0) - item.quantity) }).eq('id', item.product_id); } }
       if (osVinculada?.id) {
         // Corrigido 06/09/2026 (encontrado ao investigar a venda #27541,
         // Otica Solar): antes, o campo "Forma de Pagamento" da OS ficava

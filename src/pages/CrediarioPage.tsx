@@ -1004,6 +1004,10 @@ export default function CrediarioPage() {
                                 // voltando o valor para o original da parcela (sem juros/desconto do
                                 // pagamento que foi desfeito).
                                 await supabase.from('financial_transactions').update({ status:'pendente', paid_at:null, amount: p.amount }).eq('crediario_parcela_id', p.id);
+                                // 23/10/2026: tambem tira a baixa da aba Baixas e reabre o carne
+                                // se ele tinha ficado "quitado" com esse pagamento.
+                                await supabase.from('baixas_log').delete().eq('tenant_id', tenantId).eq('parcela_id', p.id);
+                                await supabase.from('crediario').update({ status:'ativo' }).eq('id', p.crediario_id).eq('status', 'quitado');
                                 toast.success('Parcela desmarcada'); load();
                               }} title="Desfazer pagamento / Retornar para Pendente"
                                 style={{ background:'rgba(248,113,113,.1)', border:'1px solid rgba(248,113,113,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#f87171', display:'flex', alignItems:'center' }}>

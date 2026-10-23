@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { formatBRL } from '../types/index';
+import { fetchAllRows } from '../lib/fetchAll';
 import { Users, ClipboardList, ShoppingCart, CreditCard, TrendingUp, AlertTriangle, Package, QrCode } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GerarPixMensalidade from '../components/GerarPixMensalidade';
@@ -45,7 +46,10 @@ export default function DashboardPage() {
   const loadStats = async () => {
     setLoading(true);
     const today = toLocalDateStr();
-    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    // Meia-noite LOCAL convertida para UTC (antes, '2026-10-23' era lido como
+    // meia-noite UTC = 20h da vespera em Manaus).
+    const today0 = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
     // Últimos 12 meses
     const months: MonthPoint[] = [];
@@ -61,22 +65,26 @@ export default function DashboardPage() {
     const [clients, os, sales, crediario, consultas, produtos, receita, osRec, storeData, salesHistory] = await Promise.all([
       supabase.from('customers').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('active', true),
       supabase.from('service_orders').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).not('status', 'in', '(entregue,cancelada)'),
-      supabase.from('sales').select('total').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', today),
+      // subtotal - desconto = valor da venda. "total" e so o saldo devedor
+      // (sem a entrada) e deixava o painel ~25% abaixo (corrigido 23/10/2026).
+      supabase.from('sales').select('subtotal, discount').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', today0),
       supabase.from('crediario_parcelas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'pendente').lt('due_date', today),
       supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('date', today),
       supabase.from('products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('active', true).lt('stock', 5),
-      supabase.from('sales').select('total').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', monthStart),
+      supabase.from('sales').select('subtotal, discount').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', monthStart),
       supabase.from('service_orders').select('id, os_number, customer_name, status, delivery_date').eq('tenant_id', tenantId).not('status', 'in', '(entregue,cancelada)').order('created_at', { ascending: false }).limit(5),
       // Corrigido 06/09/2026 (Achado 7 da auditoria, encontrado numa
       // varredura final — nao estava na lista original): .single() lanca
       // erro (inofensivo, mas desnecessario) pra tenant novo sem
       // store_settings salvo ainda; .maybeSingle() so retorna null.
       supabase.from('store_settings').select('name').eq('tenant_id', tenantId).maybeSingle(),
-      supabase.from('sales').select('total, created_at').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', months[0].key + '-01').order('created_at', { ascending: true }),
+      // fetchAllRows: a Castanho ja passa de 1.000 vendas em 12 meses.
+      fetchAllRows<any>((from, to) => supabase.from('sales').select('subtotal, discount, created_at').eq('tenant_id', tenantId).eq('status', 'concluida').gte('created_at', months[0].key + '-01').order('created_at', { ascending: true }).range(from, to)).then(data => ({ data })),
     ]);
 
-    const vendasHoje = (sales.data ?? []).reduce((s: number, v: any) => s + (v.total || 0), 0);
-    const receitaMes = (receita.data ?? []).reduce((s: number, v: any) => s + (v.total || 0), 0);
+    const valorVenda = (v: any) => Math.max(0, (v.subtotal || 0) - (v.discount || 0));
+    const vendasHoje = (sales.data ?? []).reduce((s: number, v: any) => s + valorVenda(v), 0);
+    const receitaMes = (receita.data ?? []).reduce((s: number, v: any) => s + valorVenda(v), 0);
 
     if (storeData.data?.name) {
       setStoreName(storeData.data.name);
@@ -89,7 +97,7 @@ export default function DashboardPage() {
     const salesByMonth: Record<string, number> = {};
     (salesHistory.data ?? []).forEach((s: any) => {
       const key = s.created_at.slice(0, 7);
-      salesByMonth[key] = (salesByMonth[key] || 0) + (s.total || 0);
+      salesByMonth[key] = (salesByMonth[key] || 0) + valorVenda(s);
     });
     const points = months.map(m => ({ ...m, total: salesByMonth[m.key] || 0 }));
     setMonthPoints(points);
@@ -293,8 +301,8 @@ export default function DashboardPage() {
       {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
         {[
-          { icon: <ShoppingCart size={20}/>, label: 'Receita Hoje',    val: formatBRL(stats.vendas_hoje),  color: '#22c55e' },
-          { icon: <TrendingUp size={20}/>,   label: 'Receita do Mês',  val: formatBRL(stats.receita_mes),  color: '#6366f1' },
+          { icon: <ShoppingCart size={20}/>, label: 'Vendas Hoje',   val: formatBRL(stats.vendas_hoje),  color: '#22c55e' },
+          { icon: <TrendingUp size={20}/>,   label: 'Vendas do Mês', val: formatBRL(stats.receita_mes),  color: '#6366f1' },
           { icon: <Users size={20}/>,        label: 'Clientes',        val: stats.clientes,                color: '#06b6d4' },
           { icon: <ClipboardList size={20}/>,label: 'OS Ativas',       val: stats.os_abertas,              color: '#f59e0b' },
         ].map((k, i) => (

@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { formatBRL } from '../types/index';
 import { norm } from '../utils/normalize';
 import { toLocalDateStr } from './crediario/crediarioTypes';
+import { fetchAllRows } from '../lib/fetchAll';
 
 const CATEGORIAS_RECEITA = ['Venda','Crediário','Serviço','Outros'];
 const CATEGORIAS_DESPESA = ['Fornecedor','Aluguel','Salário','Água/Luz','Internet','Laboratório','Manutenção','Impostos','Outros'];
@@ -21,7 +22,12 @@ interface Transaction {
   category: string; amount: number; due_date: string;
   paid_at?: string; status: string; payment_method?: string; notes?: string;
   created_at: string; sale_id?: string; sale_number?: number; origin?: string;
+  crediario_parcela_id?: string | null;
 }
+
+// Lancamento ligado a uma parcela do crediario: quem manda e a tela Crediario
+// (baixa, desmarcar, excluir). Mexer so aqui deixava as duas telas diferentes.
+const AVISO_PARCELA = 'Este lançamento é de uma parcela do Crediário. Dê baixa, desmarque ou exclua pela tela Crediário, para as duas telas ficarem iguais.';
 
 function emptyForm(type: string) {
   return {
@@ -49,10 +55,13 @@ export default function FinanceiroPage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('financial_transactions')
-      .select('*').eq('tenant_id', tenantId)
-      .order('due_date', { ascending: false });
-    setTransactions((data as Transaction[]) || []);
+    // fetchAllRows: sem ele so vinham 1.000 lancamentos e o Contas a Receber
+    // e os totais ficavam incompletos (corrigido 23/10/2026).
+    const data = await fetchAllRows<Transaction>((from, to) =>
+      supabase.from('financial_transactions')
+        .select('*').eq('tenant_id', tenantId)
+        .order('due_date', { ascending: false }).order('id').range(from, to));
+    setTransactions(data || []);
     setLoading(false);
   };
 
@@ -138,9 +147,14 @@ export default function FinanceiroPage() {
     if (!form.description || form.amount <= 0) { toast.error('Preencha descrição e valor'); return; }
     setSaving(true);
     try {
+      if (editing?.crediario_parcela_id && (form.status !== editing.status || Number(form.amount) !== Number(editing.amount))) {
+        toast.error(AVISO_PARCELA, { duration: 7000 }); return;
+      }
+      // Ao editar um lancamento ja pago, mantem a data do pagamento (antes
+      // virava "hoje" e o dinheiro mudava de dia/mes no caixa).
       const payload = {
         ...form, tenant_id: tenantId,
-        paid_at: form.status==='pago' ? new Date().toISOString() : null,
+        paid_at: form.status==='pago' ? (editing?.status==='pago' && editing.paid_at ? editing.paid_at : new Date().toISOString()) : null,
       };
       if (editing) {
         const { error } = await supabase.from('financial_transactions').update(payload).eq('id', editing.id);
@@ -155,6 +169,7 @@ export default function FinanceiroPage() {
   };
 
   const toggleStatus = async (t: Transaction) => {
+    if (t.crediario_parcela_id) { toast.error(AVISO_PARCELA, { duration: 7000 }); return; }
     const newStatus = t.status==='pago' ? 'pendente' : 'pago';
     const { error } = await supabase.from('financial_transactions').update({
       status: newStatus,
@@ -166,8 +181,10 @@ export default function FinanceiroPage() {
   };
 
   const deleteTransaction = async (t: Transaction) => {
+    if (t.crediario_parcela_id) { toast.error(AVISO_PARCELA, { duration: 7000 }); return; }
     if (!confirm('Excluir lançamento "'+t.description+'"?')) return;
-    await supabase.from('financial_transactions').delete().eq('id', t.id);
+    const { error } = await supabase.from('financial_transactions').delete().eq('id', t.id).eq('tenant_id', tenantId);
+    if (error) { toast.error('Erro ao excluir: ' + error.message); return; }
     toast.success('Excluído'); load();
   };
 
