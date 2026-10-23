@@ -508,7 +508,9 @@ export default function VendasPage() {
       // etc.) também gera um aviso em vez de sumir só no console.
       try {
         // Lançamento da entrada ou pagamento à vista
-        const entradaAmount = payment === 'crediario' ? (entrada||0) : Math.max(0, total - (discount||0));
+        // "total" já é subtotal − desconto (linha do cálculo lá em cima). Antes descontava de novo aqui e o caixa
+        // recebia menos (ex.: venda #27782, R$ 1.380 − 380 = 1.000 virou R$ 620). Corrigido em 23/10/2026.
+        const entradaAmount = payment === 'crediario' ? (entrada||0) : Math.max(0, total);
         if (entradaAmount > 0) {
           const { error: entradaErr } = await supabase.from('financial_transactions').insert([{
             tenant_id: tenantId, type: 'receita',
