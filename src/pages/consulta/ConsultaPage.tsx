@@ -76,12 +76,32 @@ export default function ConsultaPage() {
   useEffect(() => {
     if (!tenantId) return;
     if (simples && tab !== 'consultas') { setLoading(false); return; }
-    if (simples && historicoCarregado) return;
     load(); setHistoricoCarregado(true);
-  }, [tenantId, simples, tab]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tenantId, simples, tab, buscaHist, statusFilter]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Visual novo: historico com as 300 mais recentes; busca e filtro de status vao ao banco (13 mil+ na Castanho).
+  const [buscaHist, setBuscaHist] = useState('');
+  useEffect(() => { const t = setTimeout(() => setBuscaHist(search.trim()), 400); return () => clearTimeout(t); }, [search]);
+  const [contHist, setContHist] = useState<{ realizadas: number; hoje: number; comOs: number } | null>(null);
   const load = async () => {
     setLoading(true);
+    if (simples) {
+      let q = supabase.from('consultations').select('*').eq('tenant_id', tenantId);
+      if (statusFilter) q = q.eq('status', statusFilter);
+      if (buscaHist) {
+        const padrao = '%' + buscaHist.replace(/[,()%_\\]/g, ' ').trim().replace(/[aáàâãeéêiíoóôõuúücç]/gi, '_') + '%';
+        q = q.or('customer_name.ilike.' + padrao + ',professional_name.ilike.' + padrao);
+      }
+      const { data } = await q.order('created_at', { ascending: false }).limit(buscaHist || statusFilter ? 1000 : 300);
+      setConsultations(data ?? []);
+      const conta = (f: (q: any) => any) => f(supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId)).then((r: any) => r.count || 0);
+      const [realizadas, hoje, comOs] = await Promise.all([
+        conta(q => q.eq('status', 'realizada')), conta(q => q.eq('date', toLocalDateStr())), conta(q => q.eq('generated_os', true)),
+      ]);
+      setContHist({ realizadas, hoje, comOs });
+      setLoading(false);
+      return;
+    }
     const data = await fetchAllRows<any>((from, to) => supabase
       .from('consultations')
       .select('*')
@@ -102,10 +122,10 @@ export default function ConsultaPage() {
     return list;
   }, [consultations, search, statusFilter]);
 
-  const total      = consultations.length;
-  const realizadas = consultations.filter(c => c.status === 'realizada').length;
-  const hoje_count = consultations.filter(c => c.date === toLocalDateStr()).length;
-  const com_os     = consultations.filter(c => c.generated_os).length;
+  const total      = simples && totalRegistros != null ? totalRegistros : consultations.length;
+  const realizadas = simples && contHist ? contHist.realizadas : consultations.filter(c => c.status === 'realizada').length;
+  const hoje_count = simples && contHist ? contHist.hoje : consultations.filter(c => c.date === toLocalDateStr()).length;
+  const com_os     = simples && contHist ? contHist.comOs : consultations.filter(c => c.generated_os).length;
 
   const STATUS_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
     agendada:  { label:'Agendada',  color:'#6366f1', bg:'rgba(99,102,241,.15)',  icon:'📅' },
@@ -344,7 +364,7 @@ export default function ConsultaPage() {
               </table>
             </div>
             <div style={{ padding:'10px 16px', fontSize:13, color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
-              {filtered.length} consulta(s) no total — Pag. {pagina}/{Math.ceil(filtered.length/POR_PAGINA)}
+              {simples && !buscaHist && !statusFilter ? 'Mostrando as 300 mais recentes (use a busca para achar as antigas)' : filtered.length + ' consulta(s) no total'} — Pag. {pagina}/{Math.ceil(filtered.length/POR_PAGINA)}
               <div style={{ display:'flex', gap:6, marginTop:6, flexWrap:'wrap' }}>
                 <button onClick={() => setPagina(p => Math.max(1,p-1))} disabled={pagina===1}
                   style={{ padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:pagina===1?'transparent':'var(--primary)', color:pagina===1?'var(--text-muted)':'#fff', cursor:pagina===1?'not-allowed':'pointer', fontSize:12 }}>← Ant</button>
