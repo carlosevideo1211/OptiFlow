@@ -134,7 +134,8 @@ export const imprimirInstrumentoDivida = async (v: Sale, storeSettings: StoreSet
   const sState = storeSettings?.state || '';
   const sPhone = storeSettings?.phone || '';
   const sLogo = storeSettings?.logo_url || '';
-  const saldo = v.total - (v.entrada || 0);
+  // v.total ja e o saldo financiado (entrada ja descontada) - antes subtraia a entrada de novo (venda #27786: dizia R$ 730 em vez de R$ 1.000).
+  const saldo = v.total || 0;
   const nP = v.installments || 1;
   const lista = (parc || []) as any[];
   // Corrigido 06/09/2026 (Achado 9 da auditoria): quando a venda tem mais de
@@ -169,13 +170,13 @@ export const imprimirInstrumentoDivida = async (v: Sale, storeSettings: StoreSet
     +'<div class="info"><p><b>CONTRATANTE (DEVEDOR):</b> '+v.customer_name+'</p></div>'
     +'<p>Pelo presente instrumento de Confissao de Divida, o(a) Confitente Devedor(a) acima identificado(a), reconhece e confessa dever a esta empresa as parcelas declaradas abaixo, conformas demonstrativo (a) de debito (a) que integra (m) o presente instrumento.</p>'
     +'<p>De acordo com o art. 49 do Codigo de Defesa do Consumidor (Lei n. 8.078/1990), o consumidor pode desistir do contrato no prazo de 7 dias a contar de sua assinatura ou do ato de recebimento do produto, sempre que a contratacao ocorrer fora do estabelecimento comercial. Sendo exercido o direito, os valores pagos serao devolvidos monetariamente atualizados.</p>'
-    +'<p>Venda: '+fmtD2(v.created_at)+(v.os_number?' | OS: #'+String(v.os_number).padStart(4,'0'):'')+(v.notes?' | '+v.notes:'')+'</p>'
+    +'<p>Venda: '+fmtD2(v.created_at)+(v.os_number && !(v.notes||'').includes('OS #')?' | OS: #'+String(v.os_number).padStart(4,'0'):'')+(v.notes?' | '+v.notes:'')+'</p>'
     +'<table><thead><tr><th>#</th><th>Descricao dos Produtos/Servicos</th><th>Qtd</th><th>Val. Unit.</th><th>Total Item</th></tr></thead><tbody>'+itensHtml+'</tbody>'
     +'<tfoot><tr class="tot"><td colspan="4" style="text-align:right">Subtotal:</td><td style="text-align:right">'+fmtV(v.subtotal||v.total)+'</td></tr>'
     +((v.entrada||0)>0?'<tr class="tot"><td colspan="4" style="text-align:right">Entrada / Sinal:</td><td style="text-align:right">- '+fmtV(v.entrada||0)+'</td></tr>':'')
     +(v.discount>0?'<tr class="tot"><td colspan="4" style="text-align:right">Desconto:</td><td style="text-align:right">- '+fmtV(v.discount)+'</td></tr>':'')
     +'<tr class="totv"><td colspan="4" style="text-align:right">VALOR DA CONFISSAO:</td><td style="text-align:right">'+fmtV(saldoAtual)+'</td></tr></tfoot></table>'
-    +(saldoAtual !== saldo ? '<p style="font-size:10px;color:#555">Valor atualizado considerando parcelas já pagas. Valor total originalmente financiado: '+fmtV(saldo)+'.</p>' : '')
+    +(Math.abs(saldoAtual - saldo) > 0.01 ? '<p style="font-size:10px;color:#555">Valor atualizado considerando parcelas já pagas. Valor total originalmente financiado: '+fmtV(saldo)+'.</p>' : '')
     +(nP>1?'<div class="demo"><div class="demo-title">Demonstrativo de Parcelamento (Carne)</div><div class="demo-grid">'+parcelasDemo+'</div></div>':'')
     +'<p style="margin-top:20px">'+dataLocal+'</p>'
     +'<div class="sigs"><div class="sig-line">'+v.customer_name+'<br/><span style="font-size:10px;color:#666">Assinatura do Devedor</span></div><div class="sig-line">'+sName+'<br/><span style="font-size:10px;color:#666">Assinatura da Empresa</span></div></div>';
