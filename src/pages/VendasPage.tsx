@@ -110,21 +110,56 @@ export default function VendasPage() {
   const [osVinculada, setOsVinculada] = useState<OS | null>(null);
   const [saleDate, setSaleDate]     = useState(toLocalDateStr());
 
-  const load = async () => {
+  // Visual novo (Fase 7, 26/10/2026): a lista nao baixa mais TODAS as vendas (12 mil+ na Castanho, 15-20 s para abrir).
+  // Sem busca: so o periodo da tela. Com busca: procura no banco (nome/vendedor sem acento, numero da venda ou da OS).
+  const carregarVendas = async () => {
+    if (!tenantId) return;
     setLoading(true);
+    try {
+      const termo = search.trim();
+      let q = supabase.from('sales').select('*').eq('tenant_id', tenantId);
+      if (termo) {
+        const digitos = termo.replace(/\D/g, '');
+        if (digitos && digitos === termo) {
+          q = q.or('sale_number.eq.' + digitos + ',os_number.eq.' + digitos);
+        } else {
+          // letras que podem ter acento viram "_" (qualquer letra) no banco; a lista e refinada sem acento logo abaixo
+          const padrao = '%' + termo.replace(/[,()%_\\]/g, ' ').trim().replace(/[aáàâãeéêiíoóôõuúücç]/gi, '_') + '%';
+          q = q.or('customer_name.ilike.' + padrao + ',vendedor.ilike.' + padrao);
+        }
+        const { data } = await q.order('created_at', { ascending: false }).limit(1000);
+        setSales((data as Sale[]) || []);
+      } else {
+        const de = dateFrom ? new Date(dateFrom + 'T00:00:00').toISOString() : null;
+        const ate = dateTo ? new Date(dateTo + 'T23:59:59.999').toISOString() : null;
+        const rows = await fetchAllRows((from, to) => {
+          let r = supabase.from('sales').select('*').eq('tenant_id', tenantId);
+          if (de) r = r.gte('created_at', de);
+          if (ate) r = r.lte('created_at', ate);
+          return r.order('created_at', { ascending: false }).range(from, to);
+        });
+        setSales((rows as Sale[]) || []);
+      }
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { if (tenantId && visualNovo) carregarVendas(); }, [tenantId, visualNovo, search, dateFrom, dateTo]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const load = async () => {
+    // Visual novo: a lista aparece assim que as vendas do periodo chegam; produtos e clientes (para o PDV) vem em paralelo.
+    if (visualNovo) carregarVendas(); else setLoading(true);
     const [s, { data: o }] = await Promise.all([
-      fetchAllRows((from, to) => supabase.from('sales').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).range(from, to)),
+      visualNovo ? Promise.resolve(null) : fetchAllRows((from, to) => supabase.from('sales').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).range(from, to)),
       supabase.from('service_orders').select(OS_COLUNAS).eq('tenant_id', tenantId).neq('status','entregue').neq('status','cancelada').order('created_at', { ascending: false }).limit(100),
     ]);
     const [pAll, cAll] = await Promise.all([
       fetchAllRows<Product>((from, to) => supabase.from('products').select('id,name,sale_price,stock,category,brand,code').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to)),
       fetchAllRows<Customer>((from, to) => supabase.from('customers').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to)),
     ]);
-    setSales((s as Sale[]) || []);
+    if (!visualNovo) setSales((s as Sale[]) || []);
     setProducts(pAll);
     setCustomers(cAll);
     setOrders((o as OS[]) || []);
-    setLoading(false);
+    if (!visualNovo) setLoading(false);
   };
 
   const loadNotas = async () => {
@@ -258,12 +293,14 @@ export default function VendasPage() {
     if (vendedorFilter) list = list.filter(v => v.vendedor === vendedorFilter);
     // O filtro de data so se aplica quando NAO ha busca por nome/OS/ID ativa —
     // buscar um cliente deve sempre achar a compra dele, seja de que data for.
-    if (!buscando) {
+    // Visual novo: o periodo ja vem filtrado do banco, no horario local (o filtro antigo comparava a data local com o
+    // horario UTC e escondia vendas feitas depois das 20h no ultimo dia do periodo).
+    if (!buscando && !visualNovo) {
       if (dateFrom) list = list.filter(v => v.created_at >= dateFrom);
       if (dateTo)   list = list.filter(v => v.created_at <= dateTo + 'T23:59:59');
     }
     return list;
-  }, [sales, search, vendedorFilter, dateFrom, dateTo]);
+  }, [sales, search, vendedorFilter, dateFrom, dateTo, visualNovo]);
 
   // Corrigido 12/09/2026: os cards de resumo (Número de Vendas, Tíquete Médio,
   // Total Líquido, Descontos Conc.) usam a MESMA lista já filtrada por
@@ -898,6 +935,29 @@ export default function VendasPage() {
 
               <div>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Users size={13} style={{ color: '#06b6d4' }} /> Cliente *</label>
+                {visualNovo ? (
+                  // Visual novo (Fase 7): um campo so, com sugestoes - antes era uma lista com os 5 mil clientes (tela pesada).
+                  <div style={{ position: 'relative' }}>
+                    <input className="form-input" placeholder="Digite o nome do cliente..." value={customerName} autoComplete="off"
+                      onChange={e => { setCustomerName(e.target.value); setSelectedCustomer(''); }}
+                      style={{ borderColor: selectedCustomer ? 'rgba(34,197,94,.5)' : undefined }} />
+                    {selectedCustomer
+                      ? <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4 }}>✓ Cliente cadastrado</div>
+                      : customerName.trim().length > 1 && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
+                          {customers.filter(c => norm(c.name).includes(norm(customerName))).slice(0, 8).map(c => (
+                            <div key={c.id} onClick={() => { setSelectedCustomer(c.id); setCustomerName(c.name); }}
+                              style={{ padding: '9px 14px', cursor: 'pointer', borderBottom: '1px solid var(--border)', fontSize: 13 }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.05)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = '')}>{c.name}</div>
+                          ))}
+                          {customers.filter(c => norm(c.name).includes(norm(customerName))).length === 0 && (
+                            <div style={{ padding: '9px 14px', fontSize: 12, color: 'var(--text-muted)' }}>Nenhum cliente cadastrado com esse nome (a venda fica só com o nome digitado).</div>
+                          )}
+                        </div>
+                      )}
+                  </div>
+                ) : (
                 <div style={{ display: 'flex', gap: 10 }}>
                   <select className="form-input" style={{ flex: 1 }} value={selectedCustomer} onChange={e => { const c = customers.find(c => c.id === e.target.value); setSelectedCustomer(e.target.value); setCustomerName(c?.name || ''); }}>
                     <option value="">Selecionar cliente cadastrado...</option>
@@ -905,6 +965,7 @@ export default function VendasPage() {
                   </select>
                   <input className="form-input" style={{ flex: 1 }} placeholder="Ou digite o nome *" value={customerName} onChange={e => { setCustomerName(e.target.value); setSelectedCustomer(''); }} />
                 </div>
+                )}
               </div>
             </div>
 

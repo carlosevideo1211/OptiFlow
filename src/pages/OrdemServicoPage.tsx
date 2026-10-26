@@ -115,17 +115,58 @@ export default function OrdemServicoPage() {
 
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
-  const load = async () => {
+  // Visual novo (Fase 7, 26/10/2026): nao baixa mais todos os pedidos (6 mil+ na Castanho). Sem busca: os em aberto +
+  // os 300 mais recentes; com busca ou filtro de status: procura no banco. Os numeros dos cards vem de contagens.
+  const [contagens, setContagens] = useState<{ aberto: number; prontas: number; entregues: number; total: number } | null>(null);
+  const [buscaOS, setBuscaOS] = useState('');
+  useEffect(() => { const t = setTimeout(() => setBuscaOS(search.trim()), 400); return () => clearTimeout(t); }, [search]);
+  const carregarOS = async () => {
+    if (!tenantId) return;
     setLoading(true);
+    try {
+      const base = () => supabase.from('service_orders').select('*').eq('tenant_id', tenantId);
+      let lista: OS[] = [];
+      if (buscaOS || statusFilter) {
+        let q = base();
+        if (statusFilter) q = q.eq('status', statusFilter);
+        if (buscaOS) {
+          const dig = buscaOS.replace(/\D/g, '');
+          if (dig && dig === buscaOS) q = q.eq('os_number', Number(dig));
+          else q = q.ilike('customer_name', '%' + buscaOS.replace(/[%_\\]/g, ' ').replace(/[aáàâãeéêiíoóôõuúücç]/gi, '_') + '%');
+        }
+        const { data } = await q.order('os_number', { ascending: false }).limit(1000);
+        lista = (data as OS[]) || [];
+      } else {
+        const [abertas, recentes] = await Promise.all([
+          fetchAllRows<OS>((from, to) => base().not('status', 'in', '(entregue,cancelada)').order('os_number', { ascending: false }).range(from, to)),
+          base().order('os_number', { ascending: false }).limit(300),
+        ]);
+        const mapa = new Map<string, OS>();
+        [...abertas, ...(((recentes as any).data as OS[]) || [])].forEach(o => mapa.set(o.id, o));
+        lista = [...mapa.values()].sort((x, y) => y.os_number - x.os_number);
+      }
+      setOrders(lista);
+      const conta = (f: (q: any) => any) => f(supabase.from('service_orders').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId)).then((r: any) => r.count || 0);
+      const [aberto, prontas, entregues, total] = await Promise.all([
+        conta(q => q.not('status', 'in', '(entregue,cancelada)')), conta(q => q.eq('status', 'pronta')),
+        conta(q => q.eq('status', 'entregue')), conta(q => q),
+      ]);
+      setContagens({ aberto, prontas, entregues, total });
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { if (tenantId && visualNovo) carregarOS(); }, [tenantId, visualNovo, buscaOS, statusFilter]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const load = async () => {
+    if (visualNovo) carregarOS(); else setLoading(true);
     const [os, prods, cust] = await Promise.all([
-      fetchAllRows<OS>((from, to) => supabase.from('service_orders').select('*').eq('tenant_id', tenantId).order('os_number', { ascending: false }).range(from, to)),
+      visualNovo ? Promise.resolve(null) : fetchAllRows<OS>((from, to) => supabase.from('service_orders').select('*').eq('tenant_id', tenantId).order('os_number', { ascending: false }).range(from, to)),
       fetchAllRows<Product>((from, to) => supabase.from('products').select('*').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to)),
       fetchAllRows<Customer>((from, to) => supabase.from('customers').select('id,name,phone').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to)),
     ]);
-    setOrders(os || []);
+    if (!visualNovo) setOrders(os || []);
     setProducts(prods || []);
     setCustomers(cust || []);
-    setLoading(false);
+    if (!visualNovo) setLoading(false);
   };
 
   useEffect(() => {
@@ -406,9 +447,10 @@ export default function OrdemServicoPage() {
     return list;
   }, [orders, search, statusFilter]);
 
-  const emAberto  = orders.filter(o => !['entregue','cancelada'].includes(o.status)).length;
-  const prontas   = orders.filter(o => o.status === 'pronta').length;
-  const entregues = orders.filter(o => o.status === 'entregue').length;
+  const emAberto  = visualNovo && contagens ? contagens.aberto : orders.filter(o => !['entregue','cancelada'].includes(o.status)).length;
+  const prontas   = visualNovo && contagens ? contagens.prontas : orders.filter(o => o.status === 'pronta').length;
+  const entregues = visualNovo && contagens ? contagens.entregues : orders.filter(o => o.status === 'entregue').length;
+  const totalOS   = visualNovo && contagens ? contagens.total : orders.length;
 
   const inp = (label: string, field: string, type = 'text', placeholder = '') => (
     <div>
@@ -603,7 +645,7 @@ export default function OrdemServicoPage() {
           { icon:<Clock size={22}/>, val:emAberto, label:'Ordens em Aberto', color:'#f59e0b' },
           { icon:<CheckCircle size={22}/>, val:prontas, label:'Prontas p/ Entrega', color:'#22c55e' },
           { icon:<Truck size={22}/>, val:entregues, label:'Entregues (Total)', color:'#a855f7' },
-          { icon:<Package size={22}/>, val:orders.length, label:'Total de OS', color:'#6366f1' },
+          { icon:<Package size={22}/>, val:totalOS, label:'Total de OS', color:'#6366f1' },
         ].map((s,i) => (
           <div key={i} className="card" style={{ padding:20, borderTop:'3px solid '+s.color }}>
             <div style={{ color:s.color, marginBottom:6 }}>{s.icon}</div>
