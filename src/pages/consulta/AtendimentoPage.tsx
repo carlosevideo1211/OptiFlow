@@ -640,7 +640,7 @@ export default function AtendimentoPage() {
       css,
       body,
       windowFeatures: 'width=800,height=1000',
-      ...whatsDoc(tipo + ' da consulta'),
+      ...whatsDoc('documento da consulta (' + tipo + ')'),
     });
   };
 
@@ -1087,7 +1087,7 @@ export default function AtendimentoPage() {
       css,
       body,
       windowFeatures: 'width=800,height=1000',
-      ...whatsDoc('receita de óculos (receituário)'),
+      ...whatsDoc('receituário de óculos'),
     });
   };
 
