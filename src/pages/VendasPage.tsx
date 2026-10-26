@@ -64,6 +64,9 @@ export default function VendasPage() {
   const [showProductSug, setShowProductSug]     = useState(false);
   const [discount, setDiscount]     = useState(0);
   const [entrada, setEntrada]       = useState(0);
+  // Como a entrada do crediário foi paga (25/10/2026): antes ficava gravada como "crediario" e o relatório de
+  // recebimentos não sabia se era Pix, dinheiro ou cartão.
+  const [formaEntradaVenda, setFormaEntradaVenda] = useState('pix');
   const [payment, setPayment]       = useState('dinheiro');
   const [installments, setInstallments] = useState(1);
   const [dueDate, setDueDate]       = useState('');
@@ -309,7 +312,7 @@ export default function VendasPage() {
   const removeItem = (idx: number) => setCartItems(prev => prev.filter((_, k) => k !== idx));
 
   const clearCart = () => {
-    setCartItems([]); setDiscount(0); setEntrada(0); setPayment('dinheiro');
+    setCartItems([]); setDiscount(0); setEntrada(0); setFormaEntradaVenda('pix'); setPayment('dinheiro');
     setInstallments(1); setNotes(''); setSelectedCustomer(''); setCustomerName('');
     setReceived(0); setOsVinculada(null); setFuncionario(''); setDueDate('');
     setSaleDate(toLocalDateStr());
@@ -536,7 +539,7 @@ export default function VendasPage() {
             description: 'Venda #' + saleData.sale_number + (customerName ? ' — ' + customerName : ''),
             category: 'Vendas', amount: entradaAmount,
             due_date: toLocalDateStr(),
-            paid_at: new Date().toISOString(), status: 'pago', payment_method: payment
+            paid_at: new Date().toISOString(), status: 'pago', payment_method: payment === 'crediario' ? formaEntradaVenda : payment
           }]);
           if (entradaErr) {
             console.error('Falha ao lançar entrada/pagamento no Financeiro (venda #' + saleData.sale_number + '):', entradaErr);
@@ -953,6 +956,14 @@ export default function VendasPage() {
                   </button>
                 ))}
               </div>
+              {payment === 'crediario' && entrada > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <label className="form-label">A entrada de {formatBRL(entrada)} foi paga em</label>
+                  <select className="form-input" value={formaEntradaVenda} onChange={e => setFormaEntradaVenda(e.target.value)}>
+                    {PAGAMENTOS.filter(p => !['crediario', 'boleto'].includes(p.value)).map(p => <option key={p.value} value={p.value}>{p.icon} {p.label}</option>)}
+                  </select>
+                </div>
+              )}
               {(payment === 'credito' || payment === 'crediario') && (
                 <div style={{ marginBottom: 12 }}>
                   <label className="form-label">Parcelas</label>

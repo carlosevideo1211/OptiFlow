@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { formatBRL } from '../types/index';
 import BaixasTab from './BaixasTab';
+import RecebimentosTab from './relatorios/RecebimentosTab';
 import { abrirDocumentoImprimivel, getCabecalhoLoja, printBaseStyle, type DadosLoja } from '../utils/printDoc';
 // Achado 1 da auditoria: "hoje" precisa ser calculado em horario LOCAL, nao
 // via toISOString() (que converte pra UTC e adianta o dia a partir de ~20h
@@ -427,8 +428,10 @@ export default function RelatoriosPage() {
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid rgba(255,255,255,.1)' }}>
         <button onClick={() => setAbaAtiva('resumo')} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, background: abaAtiva === 'resumo' ? '#6366f1' : 'transparent', color: abaAtiva === 'resumo' ? 'white' : 'rgba(255,255,255,.5)', borderRadius: '6px 6px 0 0' }}>Resumo</button>
         <button onClick={() => setAbaAtiva('impressao')} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, background: abaAtiva === 'impressao' ? '#6366f1' : 'transparent', color: abaAtiva === 'impressao' ? 'white' : 'rgba(255,255,255,.5)', borderRadius: '6px 6px 0 0' }}>Relatórios para Impressão</button>
+        <button onClick={() => setAbaAtiva('recebimentos')} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, background: abaAtiva === 'recebimentos' ? '#6366f1' : 'transparent', color: abaAtiva === 'recebimentos' ? 'white' : 'rgba(255,255,255,.5)', borderRadius: '6px 6px 0 0' }}>💰 Recebimentos</button>
         <button onClick={() => setAbaAtiva('baixas')} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, background: abaAtiva === 'baixas' ? '#6366f1' : 'transparent', color: abaAtiva === 'baixas' ? 'white' : 'rgba(255,255,255,.5)', borderRadius: '6px 6px 0 0' }}>Baixas Crediario</button>
       </div>
+      {abaAtiva === 'recebimentos' && <RecebimentosTab loja={storeSettings} />}
       {abaAtiva === 'baixas' && (
         (user as any)?.role === 'master' || (user as any)?.role === 'Gerente' || (user as any)?.cargo === 'Gerente' ?
         <BaixasTab /> :
