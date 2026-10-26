@@ -733,7 +733,7 @@ export default function OrdemServicoPage() {
             </table>
           </div>
           <div style={{ padding:'10px 16px', fontSize:13, color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
-            {filtered.length} OS no total — Pag. {pagina}/{Math.ceil(filtered.length/POR_PAGINA)}
+            {visualNovo && !buscaOS && !statusFilter ? 'Mostrando os pedidos em aberto e os 300 mais recentes (use a busca para achar os antigos)' : filtered.length + ' OS no total'} — Pag. {pagina}/{Math.ceil(filtered.length/POR_PAGINA)}
             <div style={{ display:'flex', gap:6, marginTop:6, flexWrap:'wrap' }}>
               <button onClick={() => setPagina(p => Math.max(1,p-1))} disabled={pagina===1} style={{ padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:pagina===1?'transparent':'var(--primary)', color:pagina===1?'var(--text-muted)':'#fff', cursor:pagina===1?'not-allowed':'pointer', fontSize:12 }}>← Ant</button>
               {Array.from({length:Math.ceil(filtered.length/POR_PAGINA)},(_,i)=>i+1).filter(n=>Math.abs(n-pagina)<=2).map(n=>(<button key={n} onClick={()=>setPagina(n)} style={{ padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:n===pagina?'var(--primary)':'transparent', color:n===pagina?'#fff':'var(--text-muted)', cursor:'pointer', fontWeight:n===pagina?700:400, fontSize:12 }}>{n}</button>))}
