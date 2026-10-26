@@ -11,7 +11,7 @@ import { norm } from '../../utils/normalize';
 // a partir de ~20h em Manaus). toLocalDateStr() ja existe em crediarioTypes.ts.
 import { toLocalDateStr } from '../crediario/crediarioTypes';
 
-interface Props { onClose: () => void; onSaved: () => void; }
+interface Props { onClose: () => void; onSaved: () => void; clienteInicial?: { id: string; name: string } | null; }
 
 interface Professional { id: string; name: string; specialty?: string | null; }
 interface Partnership { id: string; name: string; commission_percent?: number | null; }
@@ -28,16 +28,17 @@ function addMinutes(hhmm: string, min: number) {
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
-export default function NovaConsultaModal({ onClose, onSaved }: Props) {
+export default function NovaConsultaModal({ onClose, onSaved, clienteInicial }: Props) {
   const { tenantId } = useAuth();
-  const [step, setStep] = useState<Step>('paciente');
+  // Vindo da ficha do cliente ("Nova consulta"): ja comeca no passo do profissional, com o cliente escolhido.
+  const [step, setStep] = useState<Step>(clienteInicial ? 'profissional' : 'paciente');
   const [saving, setSaving] = useState(false);
 
   // ── Paciente ──
   const [pacienteMode, setPacienteMode] = useState<'buscar' | 'novo'>('buscar');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Customer | null>(null);
+  const [selected, setSelected] = useState<Customer | null>(clienteInicial ? ({ id: clienteInicial.id, name: clienteInicial.name } as Customer) : null);
   const [novoNome, setNovoNome] = useState('');
   const [novoNascimento, setNovoNascimento] = useState('');
   const [novoTelefone, setNovoTelefone] = useState('');

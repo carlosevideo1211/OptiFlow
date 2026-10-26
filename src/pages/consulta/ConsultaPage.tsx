@@ -4,10 +4,11 @@ import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAll';
 import {
   Plus, Search, Eye, ClipboardList, CheckCircle,
-  Clock, XCircle, Download, Edit2, Trash2
+  Clock, XCircle, Download, Edit2, Trash2, ShoppingBag
 } from 'lucide-react';
 import { formatDate } from '../../types/index';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useVisualNovo } from '../../lib/visualNovo';
 import NovaConsultaModal from './NovaConsultaModal';
 import AgendaPage from '../AgendaPage';
 import ConfiguracoesConsultas from './ConfiguracoesConsultas';
@@ -27,6 +28,7 @@ import { toLocalDateStr } from '../crediario/crediarioTypes';
 
 export default function ConsultaPage() {
   const { tenantId, user } = useAuth();
+  const navigate = useNavigate();
   const [consultations, setConsultations] = useState<any[]>([]);
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
@@ -36,6 +38,21 @@ export default function ConsultaPage() {
   const [showModal, setShowModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [tab, setTab] = useState<'inicio'|'pacientes'|'consultas'|'agenda'|'fila'|'financeiro'|'relatorios'|'acoes'|'ajustes'|'auditoria'>('inicio');
+  // C2 (visual novo, 26/10/2026): na otica o modulo vira 3 abas - Hoje (fila do dia), Agenda e Historico. O modo
+  // consultorio completo (10 abas) continua guardado: o dono pode abrir em "Mostrar todas as abas".
+  const visualNovo = useVisualNovo(tenantId);
+  const [modoCompleto, setModoCompleto] = useState(() => { try { return localStorage.getItem('consultas_modo_completo') === '1'; } catch { return false; } });
+  const simples = visualNovo && !modoCompleto;
+  useEffect(() => { if (simples) setTab(t => ['fila', 'agenda', 'consultas'].includes(t) ? t : 'fila'); }, [simples]);
+  // "Nova consulta" da ficha do cliente: abre ja com o cliente escolhido.
+  const location = useLocation();
+  const [clienteInicial, setClienteInicial] = useState<{ id: string; name: string } | null>(null);
+  useEffect(() => {
+    const c = (location.state as any)?.novaConsultaCliente;
+    if (!c?.id) return;
+    setClienteInicial(c); setShowModal(true);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auditoria e a unica aba com regra de visibilidade diferente das demais:
   // nas outras, modulos_permitidos nulo/indefinido = sem restricao (ve tudo).
@@ -45,7 +62,6 @@ export default function ConsultaPage() {
   // liberar o modulo 'auditoria' explicitamente.
   const podeVerAuditoria = user?.role === 'master' || user?.role === 'system_admin'
     || (user?.modulos_permitidos != null && user.modulos_permitidos.includes('auditoria'));
-  const navigate = useNavigate();
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
 
@@ -143,7 +159,10 @@ export default function ConsultaPage() {
           {k:'acoes',l:'🎯 Ações',modulo:'pacientes'},
           {k:'ajustes',l:'⚙️ Configurações',modulo:'configuracoes'},
           {k:'auditoria',l:'🛡️ Auditoria',modulo:'auditoria'},
-        ].filter(t => t.modulo === 'auditoria' ? podeVerAuditoria : (!user?.modulos_permitidos || user.modulos_permitidos.includes(t.modulo))).map(t => (
+        ].filter(t => !simples || ['fila', 'agenda', 'consultas'].includes(t.k))
+         .map(t => simples ? { ...t, l: t.k === 'fila' ? '⏳ Hoje' : t.k === 'consultas' ? '🗂 Histórico' : t.l } : t)
+         .sort((x, y) => simples ? ['fila', 'agenda', 'consultas'].indexOf(x.k) - ['fila', 'agenda', 'consultas'].indexOf(y.k) : 0)
+         .filter(t => t.modulo === 'auditoria' ? podeVerAuditoria : (!user?.modulos_permitidos || user.modulos_permitidos.includes(t.modulo))).map(t => (
           <button key={t.k} onClick={() => setTab(t.k as any)}
             style={{ padding:'10px 20px', background:'none', border:'none', cursor:'pointer',
               fontSize:14, fontWeight:600,
@@ -152,6 +171,12 @@ export default function ConsultaPage() {
             {t.l}
           </button>
         ))}
+        {visualNovo && user?.role === 'master' && (
+          <button onClick={() => { const v = !modoCompleto; setModoCompleto(v); try { localStorage.setItem('consultas_modo_completo', v ? '1' : '0'); } catch { /* sem localStorage */ } }}
+            style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', fontSize:12, color:'var(--text-muted)', textDecoration:'underline' }}>
+            {modoCompleto ? 'Mostrar só o essencial' : 'Mostrar todas as abas'}
+          </button>
+        )}
       </div>
 
       {/* Início (Dashboard do módulo, Fase 2) */}
@@ -284,6 +309,11 @@ export default function ConsultaPage() {
                         </td>
                         <td>
                           <div style={{ display:'flex', gap:5 }}>
+                            {visualNovo && c.status === 'realizada' && (
+                              <IconBtn onClick={() => navigate('/os', { state: { prefillConsultationId: c.id } })} title="Fazer pedido com este grau" color="#22c55e">
+                                <ShoppingBag size={14}/>
+                              </IconBtn>
+                            )}
                             <IconBtn onClick={() => openEdit(c)} title="Editar" color="#6366f1">
                               <Edit2 size={14}/>
                             </IconBtn>
@@ -317,8 +347,9 @@ export default function ConsultaPage() {
 
       {showModal && (
         <NovaConsultaModal
-          onClose={() => setShowModal(false)}
+          onClose={() => { setShowModal(false); setClienteInicial(null); }}
           onSaved={load}
+          clienteInicial={clienteInicial}
         />
       )}
     </div>

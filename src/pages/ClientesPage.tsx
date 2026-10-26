@@ -563,6 +563,9 @@ export default function ClientesPage() {
                             <CreditCard size={15}/> Receber parcela
                           </button>
                         )}
+                        <button className="btn btn-secondary" style={{ color:'#06b6d4' }} onClick={() => { setShowModal(false); navigate('/consulta', { state: { novaConsultaCliente: { id: viewing.id, name: viewing.name } } }); }}>
+                          <Eye size={15}/> Nova consulta
+                        </button>
                         <button className="btn btn-secondary" style={{ color:'#22c55e' }} onClick={() => openWhatsApp(viewing)}>
                           <MessageCircle size={15}/> WhatsApp
                         </button>
@@ -708,6 +711,10 @@ export default function ClientesPage() {
                       <div style={{fontWeight:700,fontSize:14}}>{co.date?new Date(co.date+'T00:00:00').toLocaleDateString('pt-BR'):'--'}</div>
                       <div style={{display:'flex',alignItems:'center',gap:8}}>
                         <div style={{fontSize:12,color:'var(--text-muted)'}}>{co.professional_name||'--'}</div>
+                        {visualNovo && (
+                          <button onClick={() => { setShowModal(false); navigate('/os', { state: { prefillConsultationId: co.id } }); }}
+                            style={{padding:'3px 8px',fontSize:11,background:'rgba(34,197,94,.12)',border:'1px solid rgba(34,197,94,.3)',borderRadius:6,cursor:'pointer',color:'#22c55e',fontWeight:600}}>🛍 Fazer pedido</button>
+                        )}
                         <button onClick={()=>{
                           // Receituario no padrao do sistema (Imprimir / Baixar PDF) - antes abria e imprimia direto (26/10/2026).
                           const c=viewing;

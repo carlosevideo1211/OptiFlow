@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useVisualNovo } from '../../lib/visualNovo';
 import { supabase } from '../../lib/supabase';
 import {
   Eye, ClipboardList, FileText,
@@ -23,13 +24,24 @@ export default function AtendimentoPage() {
   const newData = location.state as any;
   const { tenantId, user } = useAuth();
   const navigate = useNavigate();
+  const visualNovo = useVisualNovo(tenantId);
 
   const [consultation, setConsultation] = useState<any>(null);
+  // Telefone do cliente: documentos (receita, atestado...) com botao "Enviar ao cliente no WhatsApp" (C3, 26/10/2026).
+  const [foneCliente, setFoneCliente] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const creatingRef = useRef(false);
   const [gerandoOS, setGerandoOS] = useState(false);
   const [section, setSection] = useState<Section>('prescricao_oculos');
+  useEffect(() => {
+    const cid = consultation?.customer_id || newData?.customerId;
+    if (!tenantId || !cid) return;
+    supabase.from('customers').select('phone,whatsapp').eq('id', cid).eq('tenant_id', tenantId).maybeSingle()
+      .then(({ data }) => setFoneCliente(String(data?.whatsapp || data?.phone || '').replace(/\D/g, '')));
+  }, [tenantId, consultation?.customer_id]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const whatsDoc = (descricao: string) => foneCliente
+    ? { whatsapp: { phone: foneCliente, customer_name: consultation?.customer_name || 'cliente', descricao } } : {};
   const [open, setOpen] = useState<Record<Accordion, boolean>>({
     anamnese: false, ult_prescricao: false, acuidade: false, biomicroscopia: false,
     ceratometria: false, tonometria: false, forometria: false, oftalmoscopia: false,
@@ -617,6 +629,7 @@ export default function AtendimentoPage() {
       css,
       body,
       windowFeatures: 'width=800,height=1000',
+      ...whatsDoc(tipo + ' da consulta'),
     });
   };
 
@@ -770,13 +783,13 @@ export default function AtendimentoPage() {
     valor_cobrado: num(docValorExame),
   });
 
-  const handleSave = async (finalizando: boolean = false) => {
-    if (creatingRef.current) return;
+  const handleSave = async (finalizando: boolean = false): Promise<boolean> => {
+    if (creatingRef.current) return false;
     const rxErrors = validateAllRx();
     if (rxErrors.length > 0) {
       rxErrors.forEach(e => toast.error(e, { duration: 5000 }));
       setOpen(p => ({ ...p, rx_final: true }));
-      return;
+      return false;
     }
     setSaving(true);
     try {
@@ -794,9 +807,9 @@ export default function AtendimentoPage() {
         toast.success(finalizando ? 'Atendimento finalizado!' : 'Consulta salva!');
         setSaving(false);
         navigate('/consulta/atendimento/' + created.id, { replace: true });
-        return;
+        return true;
       }
-      if (!id || id === 'novo') { setSaving(false); return; }
+      if (!id || id === 'novo') { setSaving(false); return false; }
       const statusFinal = finalizando ? 'realizada' : status;
       const payload = buildFullPayload(statusFinal);
       const { error } = await supabase.from('consultations').update(payload).eq('id', id);
@@ -804,12 +817,21 @@ export default function AtendimentoPage() {
       await syncLancamentosFinanceiros(id, statusFinal);
       if (finalizando) setStatus('realizada');
       toast.success(finalizando ? 'Atendimento finalizado!' : 'Salvo com sucesso!');
+      return true;
     } catch (err: any) {
       creatingRef.current = false;
       toast.error('Erro ao salvar: ' + err.message);
+      return false;
     } finally {
       setSaving(false);
     }
+  };
+
+  // C1 (visual novo): termina o atendimento e abre o pedido ja com o cliente e o grau desta consulta.
+  const fazerPedido = async () => {
+    if (isNew || !id) { toast.error('Salve o atendimento antes de fazer o pedido'); return; }
+    const ok = await handleSave(true);
+    if (ok) navigate('/os', { state: { prefillConsultationId: id } });
   };
 
   const handleGerarOS = async () => {
@@ -1054,6 +1076,7 @@ export default function AtendimentoPage() {
       css,
       body,
       windowFeatures: 'width=800,height=1000',
+      ...whatsDoc('receita de óculos (receituário)'),
     });
   };
 
@@ -1117,7 +1140,9 @@ export default function AtendimentoPage() {
           <button className="btn btn-secondary" onClick={() => navigate('/consulta')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><User size={14} /> Cadastro</button>
           <button className="btn btn-secondary" onClick={() => { const cid = consultation?.customer_id || newData?.customerId; if (cid) navigate('/consulta/historico/' + cid); else toast.error('Paciente não identificado'); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><History size={14} /> Histórico</button>
           <button className="btn btn-secondary" onClick={() => { const cid = consultation?.customer_id || newData?.customerId; if (cid) navigate('/consulta/prontuario/' + cid); else toast.error('Paciente não identificado'); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={14} /> Prontuário</button>
-          <button className="btn btn-secondary" onClick={() => navigate('/os', { state: { prefillConsultationId: id } })} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ShoppingBag size={14} /> Gerar OS</button>
+          {visualNovo
+            ? <button className="btn btn-primary" onClick={fazerPedido} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#22c55e' }}><ShoppingBag size={14} /> Fazer pedido com este grau</button>
+            : <button className="btn btn-secondary" onClick={() => navigate('/os', { state: { prefillConsultationId: id } })} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ShoppingBag size={14} /> Gerar OS</button>}
           <button className="btn btn-primary" onClick={() => handleSave(true)} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <CheckCircle size={14} /> {saving ? 'Salvando...' : 'Finalizar atendimento'}
           </button>
