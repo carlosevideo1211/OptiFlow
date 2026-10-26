@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { formatBRL } from '../types/index';
@@ -6,7 +7,7 @@ import {
   AlertTriangle, Package, Boxes, DollarSign,
   TrendingUp, TrendingDown, Search, X, Save,
   CheckCircle, Download, Plus, ArrowDownCircle,
-  ArrowUpCircle, History, Bell, Edit2
+  ArrowUpCircle, History, Bell, Edit2, Glasses
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -22,7 +23,11 @@ interface Movimento {
 
 export default function EstoquePage() {
   const { tenantId } = useAuth();
+  const navigate = useNavigate();
   const [products, setProducts]     = useState<Product[]>([]);
+  // Lentes com estoque por grau (lentes_grade_produto): a quantidade vem da grade (pares = pecas/2), entao aqui nao
+  // ha entrada/saida/ajuste manual - o banco desfaria. O botao leva para a tela Lentes por grau. (26/10/2026)
+  const [porGrau, setPorGrau] = useState<Set<string>>(new Set());
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
   const [loading, setLoading]       = useState(true);
   const [tab, setTab]               = useState<'estoque'|'entrada'|'alertas'|'historico'>('estoque');
@@ -49,6 +54,8 @@ export default function EstoquePage() {
     ]);
     setProducts((p as Product[]) || []);
     setMovimentos((m as Movimento[]) || []);
+    const { data: g } = await supabase.from('lentes_grade_produto').select('product_id').eq('tenant_id', tenantId);
+    setPorGrau(new Set((g || []).map((r: any) => r.product_id)));
     setLoading(false);
   };
 
@@ -88,6 +95,7 @@ export default function EstoquePage() {
   };
 
   const openAjuste = (p: Product, type: 'entrada'|'saida'|'ajuste') => {
+    if (porGrau.has(p.id)) { navigate('/lentes', { state: { produtoId: p.id } }); return; }
     setSelProduct(p); setAdjType(type); setAdjQty(0); setAdjNotes(''); setShowModal(true);
   };
 
@@ -242,6 +250,7 @@ export default function EstoquePage() {
                             color: zerado?'#f87171':critico?'#f59e0b':'#22c55e' }}>
                             {p.stock}
                           </span>
+                          {porGrau.has(p.id) && <span style={{ fontSize:10, marginLeft:4, color:'var(--text-muted)' }}>pares</span>}
                           {zerado && <span style={{ fontSize:10, marginLeft:4, color:'#f87171' }}>ZERADO</span>}
                           {critico && <span style={{ fontSize:10, marginLeft:4, color:'#f59e0b' }}>⚠ CRÍTICO</span>}
                         </td>
@@ -250,6 +259,12 @@ export default function EstoquePage() {
                         <td style={{ fontSize:13, fontWeight:600 }}>{formatBRL(p.sale_price)}</td>
                         <td style={{ fontSize:13, color:'#22c55e', fontWeight:600 }}>{formatBRL(p.sale_price * p.stock)}</td>
                         <td>
+                          {porGrau.has(p.id) ? (
+                            <button onClick={() => navigate('/lentes', { state: { produtoId: p.id } })} title="Estoque desta lente é controlado por grau"
+                              style={{ padding:'5px 10px', borderRadius:7, border:'none', cursor:'pointer', background:'rgba(6,182,212,.12)', color:'#06b6d4', display:'flex', alignItems:'center', gap:5, fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>
+                              <Glasses size={14}/> Ver por grau
+                            </button>
+                          ) : (
                           <div style={{ display:'flex', gap:4 }}>
                             <button onClick={() => openAjuste(p,'entrada')} title="Entrada"
                               style={{ padding:'5px 8px', borderRadius:7, border:'none', cursor:'pointer', background:'rgba(34,197,94,.12)', color:'#22c55e', display:'flex', alignItems:'center' }}>
@@ -264,6 +279,7 @@ export default function EstoquePage() {
                               <Edit2 size={14}/>
                             </button>
                           </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -293,7 +309,7 @@ export default function EstoquePage() {
                   <label className="form-label">Produto *</label>
                   <select className="form-input" value={entForm.product_id} onChange={e=>setEnt('product_id',e.target.value)} required>
                     <option value="">— Selecione o produto —</option>
-                    {products.map(p => <option key={p.id} value={p.id}>{p.name} {p.code?'('+p.code+')':''} — Estoque: {p.stock}</option>)}
+                    {products.filter(p => !porGrau.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.name} {p.code?'('+p.code+')':''} — Estoque: {p.stock}</option>)}
                   </select>
                 </div>
                 <div>

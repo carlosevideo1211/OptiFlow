@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useVisualNovo } from '../lib/visualNovo';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import {
@@ -27,6 +28,7 @@ function emptyForm() {
 
 export default function ProdutosPage() {
   const { tenantId } = useAuth();
+  const visualNovo = useVisualNovo(tenantId);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -83,7 +85,9 @@ export default function ProdutosPage() {
       if (ncmLimpo && ncmLimpo.length !== 8) { toast.error('O NCM precisa ter 8 números'); setSaving(false); return; }
       const payload = { ...form, ncm: ncmLimpo || null, tenant_id: tenantId };
       if (editing) {
-        const { error } = await supabase.from('products').update(payload).eq('id', editing.id);
+        // Visual novo: editar o cadastro nao mexe na quantidade (evita sobrescrever uma venda/entrada feita enquanto a tela estava aberta).
+        const { stock: _stock, ...semEstoque } = payload;
+        const { error } = await supabase.from('products').update(visualNovo ? semEstoque : payload).eq('id', editing.id);
         if (error) throw error; toast.success('Produto atualizado!');
       } else {
         const { error } = await supabase.from('products').insert([payload]);
@@ -399,9 +403,12 @@ export default function ProdutosPage() {
                     </div>
                   )}
                   <div>
-                    <label className="form-label">Estoque Inicial</label>
-                    <input className="form-input" type="number" min="0"
+                    <label className="form-label">{editing && visualNovo ? 'Estoque atual' : 'Estoque Inicial'}</label>
+                    {/* Visual novo: Produtos e so o cadastro; a quantidade de um produto ja cadastrado muda na tela Estoque
+                        (entrada/saida/ajuste ficam registrados no historico). */}
+                    <input className="form-input" type="number" min="0" disabled={!!editing && visualNovo}
                       value={form.stock||''} onChange={e => set('stock', parseInt(e.target.value)||0)}/>
+                    {editing && visualNovo && <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>Para mudar a quantidade use a aba Estoque.</div>}
                   </div>
                   <div>
                     <label className="form-label">Estoque Mínimo</label>

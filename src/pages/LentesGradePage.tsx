@@ -3,6 +3,7 @@
 // lentes_grade_mov (movimentos). A baixa pela OS é automática no banco (trigger sync_lentes_os): 1 lente por olho,
 // a partir de lentes_grade_inicio. Vendas e giro vêm da função lentes_mais_vendidas (todas as OS com lente de grau).
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -41,6 +42,9 @@ async function buscarVendas(de: string, ate: string): Promise<Vendida[]> {
 
 export default function LentesGradePage() {
   const { tenantId } = useAuth();
+  const location = useLocation();
+  // Vindo do botao "Ver por grau" da tela Estoque: abre direto naquela lente.
+  const produtoPedido = (location.state as any)?.produtoId as string | undefined;
   const [aba, setAba] = useState<'estoque' | 'vendidas' | 'giro' | 'movimentos'>('estoque');
   const [prods, setProds] = useState<ProdGrade[]>([]);
   const [prodId, setProdId] = useState('');
@@ -64,7 +68,7 @@ export default function LentesGradePage() {
       const lista = (data || []).map((r: any) => ({ product_id: r.product_id, tipo: r.tipo, nome: nomes[r.product_id] || '?' }))
         .sort((a: ProdGrade, b: ProdGrade) => a.nome.localeCompare(b.nome));
       setProds(lista);
-      if (lista.length && !prodId) setProdId(lista[0].product_id);
+      if (lista.length && !prodId) setProdId(lista.some((x: ProdGrade) => x.product_id === produtoPedido) ? produtoPedido! : lista[0].product_id);
       const { data: ini } = await supabase.from('lentes_grade_inicio').select('inicio').eq('tenant_id', tenantId).maybeSingle();
       setInicio(ini?.inicio || null);
       if (!lista.length) setCarregando(false);
