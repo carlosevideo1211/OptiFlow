@@ -650,8 +650,25 @@ export default function AtendimentoPage() {
     // recriar, assim salvar de novo (ex: corrigindo valor) não duplica nada.
     await supabase.from('clinic_financial_entries').delete().eq('consultation_id', consultationId);
 
+    // Visual novo (Consultas item 4, 26/10/2026): consulta cobrada entra tambem no Financeiro da LOJA (e no Caixa do dia),
+    // como "Consultas". Mesma ideia de idempotencia: a descricao leva o codigo da consulta e e recriada a cada salvamento.
+    const descLoja = 'Consulta ' + consultationId.slice(0, 8) + ' — ' + (consultation?.customer_name || newData?.customerName || '');
+    if (visualNovo) await supabase.from('financial_transactions').delete().eq('tenant_id', tenantId).like('description', 'Consulta ' + consultationId.slice(0, 8) + ' —%');
+
     const valor = num(docValorExame);
     if (valor == null || valor <= 0 || statusFinal !== 'realizada') return;
+
+    if (visualNovo) {
+      const pm = String(paymentMethod || '').toLowerCase();
+      const forma = /pix/.test(pm) ? 'pix' : /dinheiro|esp[eé]cie/.test(pm) ? 'dinheiro' : /d[eé]bito/.test(pm) ? 'debito'
+        : /cr[eé]dito|cart[aã]o/.test(pm) ? 'credito' : /transf/.test(pm) ? 'transferencia' : (pm || null);
+      const { error: errLoja } = await supabase.from('financial_transactions').insert([{
+        tenant_id: tenantId, type: 'receita', category: 'Consultas', description: descLoja, amount: valor,
+        due_date: date || new Date().toLocaleDateString('sv-SE'),
+        status: forma ? 'pago' : 'pendente', paid_at: forma ? new Date().toISOString() : null, payment_method: forma,
+      }]);
+      if (errLoja) toast.error('A consulta foi salva, mas o valor não entrou no Financeiro da loja: ' + errLoja.message);
+    }
 
     const entries: any[] = [{
       tenant_id: tenantId, type: 'receita', category: 'consulta',
@@ -1159,6 +1176,21 @@ export default function AtendimentoPage() {
           </button>
         </div>
       </div>
+
+      {/* Visual novo (Consultas item 5, 26/10/2026): todos os documentos da consulta num lugar so, no topo - cada um abre
+          com Imprimir / Baixar PDF / Enviar ao cliente no WhatsApp. Antes ficavam espalhados em secoes diferentes. */}
+      {visualNovo && !isNew && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 28px', background: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginRight: 4 }}>📄 Documentos:</span>
+          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 12px' }} onClick={gerarReceituario}>🖨 Receita de óculos</button>
+          {docList.map(doc => (
+            <button key={doc.tipo} className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 12px', borderTop: `2px solid ${doc.color}` }} onClick={() => imprimirDocumento(doc.tipo)}>
+              {doc.icon} {doc.label}
+            </button>
+          ))}
+          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 12px' }} onClick={handlePrint}>🗂 Ficha clínica</button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', height: 'calc(100vh - 120px)', overflowY: 'auto' }}>
         {/* ── sidebar ── */}
