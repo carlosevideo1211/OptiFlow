@@ -172,6 +172,26 @@ serve(async (req) => {
     return new Response(JSON.stringify({ ok: r.ok, status: r.status, resposta: r.d }), { headers: { "Content-Type": "application/json" } });
   }
 
+  // ?acao=criar_retorno -> lembrete anual de exame de vista (Consultas C5, 26/10/2026). So texto; MARKETING porque a
+  // Meta trata lembrete de retorno como promocional (como UTILITY seria reclassificado ou recusado).
+  if (acao === "criar_retorno") {
+    if (existentes.some((t) => t.name === "retorno_exame")) {
+      return new Response(JSON.stringify({ ja_existia: true, modelo: resumo(existentes.find((t) => t.name === "retorno_exame")) }), { headers: { "Content-Type": "application/json" } });
+    }
+    const r = await gj(`${G}/${WABA_ID}/message_templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({
+        name: "retorno_exame", language: "pt_BR", category: "MARKETING",
+        components: [
+          { type: "BODY", text: "Olá, {{1}}! Aqui é da {{2}}. Seu último exame de vista conosco foi em {{3}} e já faz 1 ano. Para cuidar bem da sua visão, o ideal é refazer o exame todo ano. Quer agendar? É só responder esta mensagem.",
+            example: { body_text: [["Maria", "Ótica Evangelista Castanho", "26/10/2025"]] } },
+        ],
+      }),
+    });
+    return new Response(JSON.stringify({ ok: r.ok, status: r.status, resposta: r.d }), { headers: { "Content-Type": "application/json" } });
+  }
+
   const img = await handleImagemExemplo();
   if (!img.handle) return new Response(JSON.stringify({ ok: false, erro_imagem: img.erro }), { status: 500 });
 

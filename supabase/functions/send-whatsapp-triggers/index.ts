@@ -32,6 +32,23 @@ const TEMPLATE_ADAPTACAO_LENTE = "adaptacao_lente";
 const TEMPLATE_COBRANCA_ATRASO = "cobranca_atraso";
 const TEMPLATE_AVISO_NEGATIVACAO = "aviso_negativacao";
 const TEMPLATE_NEGOCIACAO_DEBITO_ANTIGO = "negociacao_debito_antigo";
+// Lembrete anual de exame de vista (Consultas C5, 26/10/2026). Modelo MARKETING criado via meta-modelos-pix?acao=criar_retorno.
+const TEMPLATE_RETORNO_EXAME = "retorno_exame";
+const META_WABA_ID = Deno.env.get("META_WABA_ID") || "2124840844909179";
+
+// O lembrete de retorno so roda no canal Meta depois que a Meta APROVAR o modelo - antes disso cada tentativa falharia
+// e gastaria a cota diaria da loja (atrasando as cobrancas). Consulta uma vez por execucao.
+let statusModeloRetorno: string | null = null;
+async function modeloRetornoAprovado(token: string): Promise<boolean> {
+  if (statusModeloRetorno === null) {
+    try {
+      const r = await fetch(`${META_GRAPH_BASE}/${META_WABA_ID}/message_templates?name=${TEMPLATE_RETORNO_EXAME}&fields=name,status&access_token=${token}`);
+      const d = await r.json().catch(() => ({}));
+      statusModeloRetorno = String((d?.data || []).find((t: any) => t.name === TEMPLATE_RETORNO_EXAME)?.status || "AUSENTE");
+    } catch { statusModeloRetorno = "ERRO"; }
+  }
+  return statusModeloRetorno === "APPROVED";
+}
 
 // ---------- Dois canais, um tipo comum ----------
 // Qual canal cada otica usa fica em tenants.whatsapp_canal ('evolution' ou
@@ -460,6 +477,33 @@ serve(async (req) => {
     return new Response(JSON.stringify({ conectado, ...r }), { headers: { "Content-Type": "application/json" } });
   }
 
+  // Teste do lembrete de retorno: ?teste_retorno=<customer_id>&tenant=<id> manda UMA mensagem para esse cliente,
+  // com a data do ultimo exame dele (sem olhar a janela de 1 ano).
+  const cliTeste = new URL(req.url).searchParams.get("teste_retorno");
+  if (cliTeste) {
+    const tid = new URL(req.url).searchParams.get("tenant") || "";
+    const tn = await supabaseFetch(`tenants?id=eq.${tid}&select=company_name,whatsapp_canal,whatsapp_instance_name`);
+    const ss = await supabaseFetch(`store_settings?tenant_id=eq.${tid}&select=wa_phone_id`);
+    const cl = await supabaseFetch(`customers?id=eq.${cliTeste}&tenant_id=eq.${tid}&select=name,whatsapp,phone`);
+    const ex = await supabaseFetch(`consultations?customer_id=eq.${cliTeste}&tenant_id=eq.${tid}&status=neq.cancelada&select=date&order=date.desc&limit=1`);
+    const t0 = tn?.[0], c0 = cl?.[0];
+    if (!t0 || !c0) return new Response(JSON.stringify({ ok: false, error: "loja ou cliente nao encontrado" }), { status: 400 });
+    const canal: CanalInfo | null = t0.whatsapp_canal === "meta"
+      ? (ss?.[0]?.wa_phone_id ? { canal: "meta", phoneId: ss[0].wa_phone_id, token: META_WHATSAPP_TOKEN } : null)
+      : (t0.whatsapp_instance_name ? { canal: "evolution", instance: t0.whatsapp_instance_name } : null);
+    if (!canal) return new Response(JSON.stringify({ ok: false, error: "loja sem canal" }), { status: 400 });
+    const aprovado = canal.canal === "meta" ? await modeloRetornoAprovado(canal.token) : true;
+    if (!aprovado) return new Response(JSON.stringify({ ok: false, error: "modelo retorno_exame ainda nao aprovado", status_modelo: statusModeloRetorno }), { status: 400 });
+    const nome = String(c0.name || "").split(" ")[0] || "cliente";
+    const dataFmt = ex?.[0]?.date ? fmtData(ex[0].date) : "-";
+    const loja0 = t0.company_name || "sua ótica";
+    const r = await enviarMensagem(canal, c0.whatsapp || c0.phone, {
+      texto: `Olá, ${nome}! Aqui é da ${loja0}. Seu último exame de vista conosco foi em ${dataFmt} e já faz 1 ano. Para cuidar bem da sua visão, o ideal é refazer o exame todo ano. Quer agendar? É só responder esta mensagem.`,
+      templateName: TEMPLATE_RETORNO_EXAME, templateParams: [nome, loja0, dataFmt],
+    });
+    return new Response(JSON.stringify({ ...r, status_modelo: statusModeloRetorno }), { headers: { "Content-Type": "application/json" } });
+  }
+
   // Teste rapido (nao envia nada): gera o Pix e o QR Code de exemplo.
   if (new URL(req.url).searchParams.get("teste_qr") === "1") {
     const codigo = pixEMV("00000000000", 1.23, "Loja Teste");
@@ -488,6 +532,8 @@ serve(async (req) => {
   const menos15dias = new Date(Date.now() - 15 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
   const menos30dias = new Date(Date.now() - 30 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
   const menos365dias = new Date(Date.now() - 365 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
+  // Janela do lembrete de retorno: exame entre 365 e 372 dias atras (pega dias em que o limite diario segurou o envio).
+  const menos372dias = new Date(Date.now() - 372 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
   const LIMITE_COBRANCA_POR_EXECUCAO = 50;
 
   // Para debitos com mais de 1 ano, consolida tudo num unico aviso por
@@ -510,6 +556,8 @@ serve(async (req) => {
     cobranca_atraso: 0,
     aviso_negativacao: 0,
     negociacao_debito_antigo: 0,
+    retorno_exame: 0,
+    retorno_exame_modelo: null as string | null,
     erros: [] as string[],
     enviados_total: 0,
     limite_global_atingido: false,
@@ -533,7 +581,7 @@ serve(async (req) => {
     // Busca todos os tenants com o canal escolhido, mais o mapa de Phone IDs
     // (store_settings, usado so pelos tenants no canal 'meta' — o Token e
     // sempre o secret global META_WHATSAPP_TOKEN).
-    const tenants = await supabaseFetch(`tenants?select=id,company_name,whatsapp_instance_name,spc_serasa_ativo,whatsapp_canal,whatsapp_auto_ativo`);
+    const tenants = await supabaseFetch(`tenants?select=id,company_name,whatsapp_instance_name,spc_serasa_ativo,whatsapp_canal,whatsapp_auto_ativo,visual_novo`);
     const settingsRows = await supabaseFetch(`store_settings?select=tenant_id,wa_phone_id,pix_key,name`);
     const phoneIdPorTenant: Record<string, string> = {};
     // Chave Pix da loja (Configuracao > Dados da Loja), para mandar o QR Code
@@ -953,6 +1001,42 @@ serve(async (req) => {
           }
         }
       }
+
+      // ---------- 7) RETORNO ANUAL DO EXAME DE VISTA (Consultas C5, 26/10/2026) ----------
+      // Cliente cujo ultimo exame (consulta realizada/importada) fez 1 ano e que nao voltou desde entao. Por enquanto
+      // so nas lojas com o visual novo (teste na Castanho) e, no canal Meta, so depois do modelo aprovado.
+      if (tenant.visual_novo && podeEnviarMais() &&
+          (canalInfo.canal !== "meta" || await modeloRetornoAprovado(canalInfo.token))) {
+        const exames = await supabaseFetch(
+          `consultations?tenant_id=eq.${tenant.id}&status=in.(realizada,concluida)&date=gte.${menos372dias}&date=lte.${menos365dias}&customer_id=not.is.null&select=customer_id,customer_name,date&order=date.asc&limit=200`
+        );
+        const porCliente: Record<string, { nome: string; data: string }> = {};
+        if (Array.isArray(exames)) for (const e of exames) porCliente[e.customer_id] = { nome: e.customer_name, data: e.date };
+        const ids = Object.keys(porCliente);
+        if (ids.length > 0) {
+          // quem fez exame depois (voltou) nao recebe
+          const recentes = await supabaseFetch(`consultations?tenant_id=eq.${tenant.id}&customer_id=in.(${ids.join(",")})&date=gt.${menos365dias}&status=neq.cancelada&select=customer_id`);
+          const voltou = new Set((Array.isArray(recentes) ? recentes : []).map((r: any) => r.customer_id));
+          const clientes = await supabaseFetch(`customers?id=in.(${ids.join(",")})&select=id,name,whatsapp,phone,whatsapp_opt_out`);
+          for (const c of (Array.isArray(clientes) ? clientes : [])) {
+            if (!podeEnviarMais()) break;
+            if (voltou.has(c.id) || c.whatsapp_opt_out) continue;
+            const telefone = c.whatsapp || c.phone;
+            if (!telefone) continue;
+            const refId = `${c.id}:${hoje.getUTCFullYear()}`;
+            if (await jaEnviado(tenant.id, "retorno_exame", refId)) continue;
+            const nome = String(c.name || porCliente[c.id].nome || "").split(" ")[0] || "cliente";
+            const dataFmt = fmtData(porCliente[c.id].data);
+            const texto = `Olá, ${nome}! Aqui é da ${loja}. Seu último exame de vista conosco foi em ${dataFmt} e já faz 1 ano. Para cuidar bem da sua visão, o ideal é refazer o exame todo ano. Quer agendar? É só responder esta mensagem.`;
+            const r = await enviarMensagem(canalInfo, telefone, { texto, templateName: TEMPLATE_RETORNO_EXAME, templateParams: [nome, loja, dataFmt] });
+            await logTrigger(tenant.id, "retorno_exame", refId, c.id, telefone, r.ok, r.error);
+            registrarEnvio();
+            if (r.ok) resultado.retorno_exame++; else resultado.erros.push(`retorno_exame ${c.id}: ${r.error}`);
+            await delayAleatorio(canalInfo.canal);
+          }
+        }
+      }
+      if (statusModeloRetorno) resultado.retorno_exame_modelo = statusModeloRetorno;
     }
 
     return new Response(JSON.stringify({ ok: true, ...resultado, tenants_processados: tenants.length }), {
