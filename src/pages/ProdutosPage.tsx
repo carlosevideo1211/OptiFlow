@@ -187,11 +187,14 @@ export default function ProdutosPage() {
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           <button className="btn btn-secondary" onClick={exportCSV}><Download size={15}/> Exportar</button>
-          <button className="btn btn-secondary" onClick={downloadModelo}><Download size={15}/> Modelo</button>
-          
+          {/* Visual novo: sem "Modelo" (importacao fica em Configuracoes > Importar dados) e sem "Zerar" (zerava o
+              estoque de todos os produtos). Pedido do Carlos, 26/10/2026. */}
+          {!visualNovo && <button className="btn btn-secondary" onClick={downloadModelo}><Download size={15}/> Modelo</button>}
+          {!visualNovo && (
           <button className="btn btn-secondary" onClick={zerarEstoque} style={{ color:'#f87171' }}>
             <Trash2 size={15}/> Zerar
           </button>
+          )}
           <button className="btn btn-primary" onClick={openNew}><Plus size={16}/> Novo Produto</button>
         </div>
       </div>
