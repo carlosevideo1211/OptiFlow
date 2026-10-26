@@ -36,8 +36,12 @@ export default function LentesGradePage() {
   useEffect(() => {
     if (!tenantId) return;
     (async () => {
-      const { data } = await supabase.from('lentes_grade_produto').select('product_id, tipo, products(name)').eq('tenant_id', tenantId);
-      const lista = (data || []).map((r: any) => ({ product_id: r.product_id, tipo: r.tipo, nome: r.products?.name || '?' }))
+      // Sem chave estrangeira para "products": busca os nomes à parte (o embed products(name) voltava vazio).
+      const { data } = await supabase.from('lentes_grade_produto').select('product_id, tipo').eq('tenant_id', tenantId);
+      const ids = (data || []).map((r: any) => r.product_id);
+      const { data: ps } = ids.length ? await supabase.from('products').select('id, name').in('id', ids) : { data: [] as any[] };
+      const nomes: Record<string, string> = {}; (ps || []).forEach((p: any) => { nomes[p.id] = p.name; });
+      const lista = (data || []).map((r: any) => ({ product_id: r.product_id, tipo: r.tipo, nome: nomes[r.product_id] || '?' }))
         .sort((a: ProdGrade, b: ProdGrade) => a.nome.localeCompare(b.nome));
       setProds(lista);
       if (lista.length && !prodId) setProdId(lista[0].product_id);
