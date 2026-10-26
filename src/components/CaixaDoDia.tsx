@@ -17,7 +17,7 @@ const FORMAS: Record<string, string> = {
 };
 const FORMAS_SAIDA = ['dinheiro', 'pix', 'debito', 'transferencia'];
 
-interface Mov { id: string; hora: string; descricao: string; valor: number; forma: string; tipo: 'entrada' | 'saida'; origem: string; }
+interface Mov { id: string; em: string; hora: string; descricao: string; valor: number; forma: string; tipo: 'entrada' | 'saida'; origem: string; }
 interface Caixa {
   id?: string; troco_inicial: number; dinheiro_contado: number | null; dinheiro_esperado: number | null; diferenca: number | null;
   obs: string | null; fechado_em: string | null; fechado_por: string | null; aberto_por: string | null;
@@ -67,7 +67,7 @@ export default function CaixaDoDia({ onMudou }: { onMudou?: () => void } = {}) {
           else if (/^Venda #/.test(desc)) origem = 'Venda';
           else if (/consulta/i.test(r.category || '') || /consulta|exame/i.test(desc)) origem = 'Consulta';
         }
-        out.push({ id: r.id, hora: d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), descricao: desc,
+        out.push({ id: r.id, em: r.paid_at, hora: d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), descricao: desc,
           valor: Number(r.amount) || 0, forma: r.payment_method || '', tipo: entrada ? 'entrada' : 'saida', origem });
       }
       setMovs(out);
@@ -103,6 +103,8 @@ export default function CaixaDoDia({ onMudou }: { onMudou?: () => void } = {}) {
   const esperado = num(troco) + dinEntradas - dinSaidas;
   const diferenca = contado.trim() ? num(contado) - esperado : null;
   const fechado = !!caixa?.fechado_em;
+  // Movimento que entrou depois do fechamento (venda ou saida feita com o caixa ja fechado): o fechamento ficou velho.
+  const depoisDoFechamento = fechado ? movs.filter(m => new Date(m.em).getTime() > new Date(caixa!.fechado_em!).getTime()).length : 0;
 
   const salvarCaixa = async (fechar: boolean) => {
     if (!tenantId || salvando) return;
@@ -190,6 +192,11 @@ export default function CaixaDoDia({ onMudou }: { onMudou?: () => void } = {}) {
         <button className="btn btn-secondary" onClick={() => imprimir()}>🖨️ Imprimir</button>
       </div>
 
+      {depoisDoFechamento > 0 && (
+        <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)', color: '#f59e0b', fontSize: 13, fontWeight: 600 }}>
+          ⚠ {depoisDoFechamento} lançamento(s) entraram depois que o caixa foi fechado. Conte o dinheiro de novo e clique em "Refazer fechamento".
+        </div>
+      )}
       {carregando ? <div className="empty-state"><p>Carregando...</p></div> : (<>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 12, marginBottom: 16 }}>
           {card('Entradas do dia', formatBRL(totEntradas), '#22c55e', entradas.length + ' lançamento(s)')}

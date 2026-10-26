@@ -12,3 +12,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
 }
+
+// Rolar a pagina com o mouse em cima de um campo numerico focado mudava o valor sozinho (ex.: entrada 90 virou 89,99
+// no teste de 26/10/2026). Ao rolar, o campo perde o foco e a pagina rola normalmente, sem mexer no numero.
+document.addEventListener('wheel', (e) => {
+  const el = document.activeElement;
+  if (el instanceof HTMLInputElement && el.type === 'number' && e.target === el) el.blur();
+}, { passive: true });
