@@ -9,6 +9,7 @@ import {
 import toast from 'react-hot-toast';
 import WhatsAppAutomatico from '../components/WhatsAppAutomatico';
 import CentofinIntegracao from '../components/CentofinIntegracao';
+import { useVisualNovo } from '../lib/visualNovo';
 
 interface StoreSettings {
   id?: string; tenant_id: string; name: string; cnpj: string;
@@ -29,6 +30,9 @@ const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG
 
 export default function ConfiguracaoPage() {
   const { tenantId } = useAuth();
+  const visualNovo = useVisualNovo(tenantId);
+  // Visual novo: Phone ID da Meta (dado tecnico) fica escondido em "Avancado".
+  const [avancado, setAvancado] = useState(false);
   const { theme, setTheme } = useTheme();
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
@@ -282,7 +286,86 @@ export default function ConfiguracaoPage() {
       )}
 
       {/* ── INTEGRAÇÕES ── */}
-      {tab === 'integracoes' && (
+      {tab === 'integracoes' && visualNovo && (
+        // Fase 6 (visual novo, 26/10/2026): um bloco de WhatsApp so. A chave Pix fica apenas em Dados da Loja.
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(340px,1fr))', gap:20 }}>
+          <div className="card" style={{ padding:24 }}>
+            <h3 style={{ fontSize:15, fontWeight:700, marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
+              <MessageCircle size={16} style={{color:'#22c55e'}}/> WhatsApp da loja
+            </h3>
+            <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:14 }}>
+              Número usado nos botões de WhatsApp do sistema (abre o WhatsApp com a mensagem pronta).
+            </p>
+            <label className="form-label">Número WhatsApp da loja</label>
+            <input className="form-input" value={form.wa_number} onChange={e=>set('wa_number',e.target.value)} placeholder="5592999990000"/>
+            <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>55 + DDD + número, sem espaços. Depois clique em "Salvar Configurações".</div>
+            {form.wa_number && (
+              <button type="button" className="btn btn-secondary" style={{ marginTop:12, color:'#22c55e' }}
+                onClick={() => window.open('https://wa.me/'+form.wa_number+'?text=Teste+do+OptiFlow', '_blank')}>
+                <MessageCircle size={14}/> Testar
+              </button>
+            )}
+            <div style={{ marginTop:16, padding:'10px 14px', borderRadius:8, fontSize:13,
+              background: form.wa_phone_id ? 'rgba(34,197,94,.08)' : 'rgba(255,255,255,.04)', color:'var(--text-muted)' }}>
+              {form.wa_phone_id ? '✅ WhatsApp oficial (Meta) ligado nesta loja.' : 'WhatsApp oficial (Meta) não configurado.'}
+              <button type="button" onClick={() => setAvancado(v => !v)}
+                style={{ marginLeft:8, background:'none', border:'none', color:'#6366f1', cursor:'pointer', fontSize:12, textDecoration:'underline' }}>
+                {avancado ? 'ocultar avançado' : 'avançado'}
+              </button>
+              {avancado && (
+                <div style={{ marginTop:10 }}>
+                  <label className="form-label">Phone ID (Meta) — só mexa com o suporte</label>
+                  <input className="form-input" value={form.wa_phone_id} onChange={e=>set('wa_phone_id',e.target.value)} placeholder="ID do número no Meta"/>
+                </div>
+              )}
+            </div>
+          </div>
+          <WhatsAppAutomatico />
+          <CentofinIntegracao />
+          {/* Asaas */}
+          <div className="card" style={{ padding:24, gridColumn:'1/-1' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+              <h3 style={{ fontSize:15, fontWeight:700, display:'flex', alignItems:'center', gap:8 }}>
+                <Key size={16} style={{color:'#f59e0b'}}/> Asaas — Cobrança Automática
+              </h3>
+              <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                <span style={{ fontSize:13, color:'var(--text-muted)' }}>{form.asaas_enabled ? 'Ativado' : 'Desativado'}</span>
+                <div onClick={() => setForm(p=>({...p, asaas_enabled:!p.asaas_enabled}))}
+                  style={{ width:44, height:24, borderRadius:12, background:form.asaas_enabled?'#22c55e':'var(--border)',
+                    cursor:'pointer', position:'relative', transition:'all 0.2s' }}>
+                  <div style={{ position:'absolute', top:2, left:form.asaas_enabled?20:2, width:20, height:20,
+                    borderRadius:'50%', background:'#fff', transition:'all 0.2s' }}/>
+                </div>
+              </label>
+            </div>
+            <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:16 }}>
+              Configure sua chave do Asaas para gerar boletos e PIX. Os pagamentos cairão direto na sua conta.
+            </p>
+            {form.asaas_enabled && (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                <div>
+                  <label className="form-label">Chave de API do Asaas</label>
+                  <input className="form-input" value={form.asaas_key} onChange={e=>set('asaas_key',e.target.value)} placeholder="..."/>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>Encontre em Minha Conta → Integrações no Asaas</div>
+                </div>
+                <div>
+                  <label className="form-label">Ambiente</label>
+                  <select className="form-input" value={form.asaas_env} onChange={e=>set('asaas_env',e.target.value)}>
+                    <option value="sandbox">Sandbox (Testes)</option>
+                    <option value="production">Produção</option>
+                  </select>
+                </div>
+              </div>
+            )}
+            {!form.asaas_enabled && (
+              <div style={{ padding:'12px 16px', borderRadius:8, background:'rgba(245,158,11,.08)', fontSize:13, color:'var(--text-muted)' }}>
+                ⚠️ Cobrança automática desativada. Ative para gerar boletos e PIX pelo Asaas.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {tab === 'integracoes' && !visualNovo && (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
 
           {/* WhatsApp Normal */}

@@ -20,6 +20,8 @@ type NavItem = {
   sub: boolean;
   roles: string[];
   requiresModule?: string;
+  // Visual novo: so o dono (role master) ve, mesmo que o cargo nao esteja na lista de restritos.
+  soMaster?: boolean;
 };
 
 type NavSection = {
@@ -106,8 +108,8 @@ const GRUPOS_NOVOS: NavGrupo[] = [
   { label: 'Configurações', icon: Settings, tabs: [
     { to: '/configuracao', label: 'Loja e integrações', icon: Settings, sub: false, roles: ['master','Gerente'], requiresModule: 'otica' },
     { to: '/cadastros',    label: 'Cadastros',          icon: BookUser, sub: false, roles: ['master','Gerente'] },
-    { to: '/importacao',   label: 'Importar dados',     icon: Upload,   sub: false, roles: ['master','Gerente'] },
-    { to: '/planos',       label: 'Assinatura',         icon: Receipt,  sub: false, roles: ['master','Gerente'] },
+    { to: '/importacao',   label: 'Importar dados',     icon: Upload,   sub: false, roles: ['master'], soMaster: true },
+    { to: '/planos',       label: 'Assinatura',         icon: Receipt,  sub: false, roles: ['master','Gerente'], requiresModule: 'cobranca' },
   ]},
 ];
 
@@ -134,15 +136,20 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   // migrados explicitamente via SQL. Mesmo padrão de moduloConsultasAtivo acima.
   const [moduloOticaAtivo, setModuloOticaAtivo] = useState<boolean>(true);
   // Lembra o ultimo valor para o menu nao "piscar" do antigo para o novo a cada carregamento.
+  // Loja sem cobranca da mensalidade (ex.: Castanho, next_billing 2099): a aba Assinatura nao aparece no visual novo.
+  const [temCobranca, setTemCobranca] = useState(true);
   const [visualNovo, setVisualNovo] = useState<boolean>(() => {
     try { return localStorage.getItem('optiflow_visual_novo') === '1'; } catch { return false; }
   });
   const podeVer = (item: NavItem) =>
+    (!item.soMaster || userRole === 'master') &&
+    (item.requiresModule !== 'cobranca' || temCobranca) &&
     (item.roles.length === 0 || isMaster || item.roles.includes(userRole)) &&
     (!item.requiresModule ||
       (item.requiresModule === 'consultas' && moduloConsultasAtivo) ||
       (item.requiresModule === 'otica' && moduloOticaAtivo) ||
-      (item.requiresModule === 'whatsapp_meta' && whatsappMeta));
+      (item.requiresModule === 'whatsapp_meta' && whatsappMeta) ||
+      item.requiresModule === 'cobranca');
   const navSections = visualNovo
     ? [{ label: '', items: GRUPOS_NOVOS
         .map(g => ({ g, tabs: g.tabs.filter(podeVer) }))
@@ -176,7 +183,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         .neq('status', 'cancelado');
       const { data: tenant } = await supabase
         .from('tenants')
-        .select('trial_end_date, status, plan, modulo_consultas_ativo, modulo_otica_ativo, whatsapp_canal, visual_novo')
+        .select('trial_end_date, status, plan, modulo_consultas_ativo, modulo_otica_ativo, whatsapp_canal, visual_novo, next_billing')
         .eq('id', tenantId)
         .single();
       if (tenant?.trial_end_date && tenant.status === 'trial') {
@@ -190,6 +197,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       // motivo vier null/undefined (tenant muito antigo antes da coluna existir),
       // mantém ligado — não pode esconder Ótica de quem sempre usou.
       setModuloOticaAtivo(tenant?.modulo_otica_ativo !== false);
+      const nb = (tenant as any)?.next_billing as string | null;
+      setTemCobranca(!nb || Number(String(nb).slice(0, 4)) < 2090);
       const novo = (tenant as any)?.visual_novo === true;
       setVisualNovo(novo);
       try { localStorage.setItem('optiflow_visual_novo', novo ? '1' : '0'); } catch { /* sem localStorage */ }
