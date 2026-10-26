@@ -235,6 +235,8 @@ export default function OrdemServicoPage() {
     set('oe_adicao', fmtRx(c.rx_adicao, 'adicao'));
     set('oe_dnp', c.rx_le_dnp != null ? String(c.rx_le_dnp) : '');
     if (c.professional_name) set('medico', c.professional_name);
+    // Data da receita = data da consulta (vinha vazia ao fazer o pedido a partir da consulta - teste de 26/10/2026).
+    if (c.date) set('data_receita', String(c.date).slice(0, 10));
     if (c.rx_tipo_lente) set('tipo_lente', c.rx_tipo_lente);
     toast.success('RX importado!');
   };

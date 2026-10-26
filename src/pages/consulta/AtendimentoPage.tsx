@@ -132,7 +132,7 @@ export default function AtendimentoPage() {
   const [docCpf, setDocCpf] = useState('');
   const [docRg, setDocRg] = useState('');
   const [docIdade, setDocIdade] = useState('');
-  const [docCidade, setDocCidade] = useState('Rio de Janeiro');
+  const [docCidade, setDocCidade] = useState('');
   const [docProfissional, setDocProfissional] = useState('');
   const [partnerships, setPartnerships] = useState<any[]>([]);
   const [partnershipId, setPartnershipId] = useState('');
@@ -165,18 +165,29 @@ export default function AtendimentoPage() {
   const [clinicaBranding, setClinicaBranding] = useState<DadosLoja | null>(null);
   useEffect(() => {
     if (!tenantId) return;
-    supabase.from('clinic_settings')
-      .select('clinic_name,clinic_document,clinic_phone,clinic_email,clinic_address,clinic_city,clinic_state,logo_url,brand_color')
-      .eq('tenant_id', tenantId).maybeSingle()
-      .then(({ data }) => {
-        if (!data) return;
-        setClinicaBranding({
-          name: data.clinic_name, cnpj: data.clinic_document, phone: data.clinic_phone,
-          email: data.clinic_email, address: data.clinic_address, city: data.clinic_city,
-          state: data.clinic_state, logo_url: data.logo_url, brand_color: data.brand_color,
-        });
-      });
-  }, [tenantId]);
+    (async () => {
+      const [{ data }, { data: loja }] = await Promise.all([
+        supabase.from('clinic_settings')
+          .select('clinic_name,clinic_document,clinic_phone,clinic_email,clinic_address,clinic_city,clinic_state,logo_url,brand_color')
+          .eq('tenant_id', tenantId).maybeSingle(),
+        supabase.from('store_settings').select('name,cnpj,phone,email,address,city,state,logo_url').eq('tenant_id', tenantId).maybeSingle(),
+      ]);
+      // Visual novo (consulta como parte da otica, 26/10/2026): os documentos saem com os dados da LOJA (Configuracoes >
+      // Dados da Loja). Antes saiam com o cadastro da clinica, que na Castanho estava "CliniOlhos", CNPJ 00.000.000/00.
+      const usarLoja = (visualNovo && loja) || (!data && loja);
+      const b = usarLoja
+        ? { name: loja!.name, cnpj: loja!.cnpj, phone: loja!.phone, email: loja!.email, address: loja!.address,
+            city: loja!.city, state: loja!.state, logo_url: loja!.logo_url, brand_color: data?.brand_color }
+        : data ? { name: data.clinic_name, cnpj: data.clinic_document, phone: data.clinic_phone, email: data.clinic_email,
+            address: data.clinic_address, city: data.clinic_city, state: data.clinic_state, logo_url: data.logo_url,
+            brand_color: data.brand_color } : null;
+      if (!b) return;
+      setClinicaBranding(b as DadosLoja);
+      // Cidade dos documentos: era fixa em "Rio de Janeiro" para todas as lojas.
+      const cid = [b.city, b.state].filter(Boolean).join(' - ');
+      if (cid) setDocCidade(c => (!c || c === 'Rio de Janeiro') ? cid : c);
+    })();
+  }, [tenantId, visualNovo]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -485,7 +496,7 @@ export default function AtendimentoPage() {
     const cpf = docCpf || consultation?.customer_cpf || '';
     const rg = docRg || consultation?.customer_rg || '';
     const idade = docIdade || consultation?.customer_age || '';
-    const cidade = docCidade || 'Rio de Janeiro';
+    const cidade = docCidade || '';
     const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     // formata data extenso: "19 de maio de 2026"
@@ -984,7 +995,7 @@ export default function AtendimentoPage() {
     const validade = new Date(dataBase);
     validade.setFullYear(validade.getFullYear() + 1);
     const validadeTxt = validade.toLocaleDateString('pt-BR');
-    const cidade = docCidade || 'Rio de Janeiro';
+    const cidade = docCidade || '';
 
     const linhaRx = (olho: string, rx: Record<string, string>) => `
       <tr>
@@ -1656,7 +1667,7 @@ export default function AtendimentoPage() {
                     </select>
                   </Field>
                   <Field label="Cidade">
-                    <FInput value={docCidade} onChange={setDocCidade} placeholder="Ex: Rio de Janeiro" />
+                    <FInput value={docCidade} onChange={setDocCidade} placeholder="Ex: Manaus - AM" />
                   </Field>
                   <Field label="Nome do profissional">
                     <FInput value={docProfissional} onChange={setDocProfissional} placeholder="Nome do optometrista" />

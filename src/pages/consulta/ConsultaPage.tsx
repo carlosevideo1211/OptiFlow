@@ -63,7 +63,22 @@ export default function ConsultaPage() {
   const podeVerAuditoria = user?.role === 'master' || user?.role === 'system_admin'
     || (user?.modulos_permitidos != null && user.modulos_permitidos.includes('auditoria'));
 
-  useEffect(() => { if (tenantId) load(); }, [tenantId]);
+  // Visual novo: o historico (13 mil+ consultas na Castanho) so carrega quando a aba Historico e aberta; o total do
+  // topo vem de uma contagem. A fila de Hoje recarrega quando uma consulta nova e criada (filaKey).
+  const [totalRegistros, setTotalRegistros] = useState<number | null>(null);
+  const [filaKey, setFilaKey] = useState(0);
+  const [historicoCarregado, setHistoricoCarregado] = useState(false);
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+      .then(({ count }) => setTotalRegistros(count ?? null));
+  }, [tenantId, filaKey]);
+  useEffect(() => {
+    if (!tenantId) return;
+    if (simples && tab !== 'consultas') { setLoading(false); return; }
+    if (simples && historicoCarregado) return;
+    load(); setHistoricoCarregado(true);
+  }, [tenantId, simples, tab]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = async () => {
     setLoading(true);
@@ -135,7 +150,7 @@ export default function ConsultaPage() {
           <h1 className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}>
             <Eye size={22}/> Consulta / Receituário
           </h1>
-          <p className="page-sub">{total} registros</p>
+          <p className="page-sub">{(totalRegistros ?? total).toLocaleString('pt-BR')} registros</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button className="btn btn-secondary" onClick={exportCSV}><Download size={15}/> Exportar</button>
@@ -189,7 +204,7 @@ export default function ConsultaPage() {
       {tab === 'agenda' && <AgendaPage/>}
 
       {/* Fila de Espera (visão do dia, separada da grade semanal da Agenda) */}
-      {tab === 'fila' && <FilaEsperaConsultas/>}
+      {tab === 'fila' && <FilaEsperaConsultas key={filaKey}/>}
 
       {/* Financeiro (Contas a Receber/Pagar do módulo) */}
       {tab === 'financeiro' && <FinanceiroConsultas/>}
@@ -348,7 +363,7 @@ export default function ConsultaPage() {
       {showModal && (
         <NovaConsultaModal
           onClose={() => { setShowModal(false); setClienteInicial(null); }}
-          onSaved={load}
+          onSaved={() => { setFilaKey(k => k + 1); if (historicoCarregado || !simples) load(); }}
           clienteInicial={clienteInicial}
         />
       )}
