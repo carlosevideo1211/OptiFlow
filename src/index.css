@@ -392,3 +392,24 @@ tbody tr:last-child { border-bottom: none; }
 
 .spin { animation: spin-rotate 1s linear infinite; }
 @keyframes spin-rotate { to { transform: rotate(360deg); } }
+
+/* Visual novo no celular (Fase 7, 26/10/2026): cards do topo 2 por linha (antes cortavam para fora da tela) e cada
+   linha de tabela vira um cartao empilhado, com os botoes de acao visiveis embaixo. So vale com a classe .vn (lojas
+   com o visual novo ligado) e abaixo de 768px. */
+@media (max-width: 767px) {
+  .vn [style*="grid-template-columns: repeat(3"],
+  .vn [style*="grid-template-columns: repeat(4"],
+  .vn [style*="grid-template-columns: repeat(5"],
+  .vn [style*="grid-template-columns:repeat(3"],
+  .vn [style*="grid-template-columns:repeat(4"],
+  .vn [style*="grid-template-columns:repeat(5"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .vn .page-header { flex-wrap: wrap; gap: 10px; }
+  .vn .table-wrap { overflow-x: visible; }
+  .vn .table-wrap table, .vn .table-wrap tbody { display: block; width: 100%; }
+  .vn .table-wrap thead { display: none; }
+  .vn .table-wrap tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
+  .vn .table-wrap td { display: block; border: none !important; padding: 0 !important; }
+  .vn .table-wrap td:first-child { flex-basis: 100%; font-weight: 600; }
+  .vn .table-wrap td:last-child { flex-basis: 100%; }
+  .vn .table-wrap td[colspan] { flex-basis: 100%; text-align: center; }
+}

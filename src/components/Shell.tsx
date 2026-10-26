@@ -431,7 +431,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main */}
-      <main style={{ marginLeft: isMobile ? 0 : sidebarW, minHeight:'100vh', transition:'margin-left .2s',
+      <main className={visualNovo ? 'vn' : undefined} style={{ marginLeft: isMobile ? 0 : sidebarW, minHeight:'100vh', transition:'margin-left .2s',
         background:'var(--bg-main)', padding: isMobile ? '0 16px 16px' : '24px' }}>
         {/* Barra do celular: só aparece abaixo de 768px, com o botão que abre a gaveta do menu */}
         <div style={{
