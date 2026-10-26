@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useVisualNovo } from '../lib/visualNovo';
+import CaixaDoDia from '../components/CaixaDoDia';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import {
@@ -553,15 +554,22 @@ export default function VendasPage() {
         // Lançamento da entrada ou pagamento à vista
         // "total" já é subtotal − desconto (linha do cálculo lá em cima). Antes descontava de novo aqui e o caixa
         // recebia menos (ex.: venda #27782, R$ 1.380 − 380 = 1.000 virou R$ 620). Corrigido em 23/10/2026.
-        const entradaAmount = payment === 'crediario' ? (entrada||0) : Math.max(0, total);
-        if (entradaAmount > 0) {
-          const { error: entradaErr } = await supabase.from('financial_transactions').insert([{
-            tenant_id: tenantId, type: 'receita',
-            description: 'Venda #' + saleData.sale_number + (customerName ? ' — ' + customerName : ''),
-            category: 'Vendas', amount: entradaAmount,
-            due_date: toLocalDateStr(),
-            paid_at: new Date().toISOString(), status: 'pago', payment_method: payment === 'crediario' ? formaEntradaVenda : payment
-          }]);
+        // 26/10/2026 (teste da venda #27785): venda NAO-crediario com entrada lancava tudo numa linha so, na forma do
+        // saldo (ex.: R$ 250 de entrada em dinheiro + R$ 610 no credito viravam R$ 860 "credito") e o caixa fechava
+        // errado. Agora a entrada vai numa linha propria, com a forma informada; o saldo vai na forma da venda.
+        // As duas linhas tem a mesma descricao, entao excluir a venda continua apagando as duas.
+        const descVenda = 'Venda #' + saleData.sale_number + (customerName ? ' — ' + customerName : '');
+        const pagamentos: { amount: number; forma: string }[] = payment === 'crediario'
+          ? [{ amount: entrada || 0, forma: formaEntradaVenda }]
+          : (entrada || 0) > 0
+            ? [{ amount: Math.min(entrada || 0, Math.max(0, total)), forma: formaEntradaVenda }, { amount: Math.max(0, total - (entrada || 0)), forma: payment }]
+            : [{ amount: Math.max(0, total), forma: payment }];
+        const linhasPag = pagamentos.filter(pg => pg.amount > 0).map(pg => ({
+          tenant_id: tenantId, type: 'receita', description: descVenda, category: 'Vendas', amount: pg.amount,
+          due_date: toLocalDateStr(), paid_at: new Date().toISOString(), status: 'pago', payment_method: pg.forma,
+        }));
+        if (linhasPag.length > 0) {
+          const { error: entradaErr } = await supabase.from('financial_transactions').insert(linhasPag);
           if (entradaErr) {
             console.error('Falha ao lançar entrada/pagamento no Financeiro (venda #' + saleData.sale_number + '):', entradaErr);
             toast.error('⚠ Venda #' + saleData.sale_number + ' registrada, mas o pagamento não apareceu no Financeiro. Avise o suporte para corrigir.', { duration: 12000 });
@@ -770,7 +778,9 @@ export default function VendasPage() {
         </>
       )}
 
-      {tab === 'caixa' && (
+      {/* Visual novo: o mesmo Caixa do dia do Financeiro (abertura, saidas e fechamento). */}
+      {tab === 'caixa' && visualNovo && <CaixaDoDia />}
+      {tab === 'caixa' && !visualNovo && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <div>
@@ -978,7 +988,7 @@ export default function VendasPage() {
                   </button>
                 ))}
               </div>
-              {payment === 'crediario' && entrada > 0 && (
+              {entrada > 0 && saldo >= 0 && (
                 <div style={{ marginBottom: 12 }}>
                   <label className="form-label">A entrada de {formatBRL(entrada)} foi paga em</label>
                   <select className="form-input" value={formaEntradaVenda} onChange={e => setFormaEntradaVenda(e.target.value)}>

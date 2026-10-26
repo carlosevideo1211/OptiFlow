@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useVisualNovo } from '../lib/visualNovo';
+import CaixaDoDia from '../components/CaixaDoDia';
 import { supabase } from '../lib/supabase';
 import {
   TrendingUp, TrendingDown, DollarSign, Plus,
@@ -39,9 +41,12 @@ function emptyForm(type: string) {
 
 export default function FinanceiroPage() {
   const { tenantId } = useAuth();
+  const visualNovo = useVisualNovo(tenantId);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading]     = useState(true);
-  const [tab, setTab]             = useState<'lancamentos'|'receber'|'pagar'|'fluxo'|'resumo'>('lancamentos');
+  const [tab, setTab]             = useState<'caixa'|'lancamentos'|'receber'|'pagar'|'fluxo'|'resumo'>('lancamentos');
+  // Visual novo: o Financeiro abre no Caixa do dia (Fase 5, 26/10/2026).
+  useEffect(() => { if (visualNovo) setTab(t => t === 'lancamentos' ? 'caixa' : t); }, [visualNovo]);
   const [typeFilter, setTypeFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch]       = useState('');
@@ -308,6 +313,7 @@ export default function FinanceiroPage() {
       {/* Tabs */}
       <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border)', flexWrap:'wrap' }}>
         {[
+          ...(visualNovo ? [{k:'caixa', l:'🧾 Caixa do dia'}] : []),
           {k:'lancamentos', l:'📋 Lançamentos'},
           {k:'receber',     l:'📥 Contas a Receber'},
           {k:'pagar',       l:'📤 Contas a Pagar'},
@@ -324,6 +330,8 @@ export default function FinanceiroPage() {
           </button>
         ))}
       </div>
+
+      {tab === 'caixa' && <CaixaDoDia />}
 
       {/* ── LANÇAMENTOS ── */}
       {tab === 'lancamentos' && (<>
