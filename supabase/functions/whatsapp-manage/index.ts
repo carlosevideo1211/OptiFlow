@@ -497,10 +497,26 @@ serve(async (req) => {
           method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cred.token}` },
           body: JSON.stringify(payload),
         }).then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => ({})) }));
-        let r = await enviar({ messaging_product: "whatsapp", to: para, type: "document",
-          document: { id: upd.id, filename: arquivo, caption: legenda } });
+        // 26/10/2026: fora da janela de 24h a Meta ACEITA o documento livre e so depois avisa a falha (131047, pelo
+        // webhook) - o envio direto nunca chegava. Agora: se o cliente nao mandou mensagem nas ultimas 24h, vai
+        // direto pelo modelo aprovado. Compara os 8 ultimos digitos (o wa_id pode vir sem o 9 do celular).
+        const desde = new Date(Date.now() - 23.5 * 3600e3).toISOString();
+        const recebidas = await supabaseFetch(`whatsapp_mensagens?tenant_id=eq.${tenant.id}&direcao=eq.in&phone=like.*${para.slice(-8)}&created_at=gte.${desde}&select=id&limit=1`);
+        const janelaAberta = Array.isArray(recebidas) && recebidas.length > 0;
+        const viaModelo = () => enviar({ messaging_product: "whatsapp", to: para, type: "template", template: {
+            name: "comprovante_pagamento", language: { code: "pt_BR" },
+            components: [
+              { type: "header", parameters: [{ type: "document", document: { id: upd.id, filename: arquivo } }] },
+              { type: "body", parameters: [nome, loja, descricao].map((t) => ({ type: "text", text: t })) },
+            ] } });
+        let r = janelaAberta
+          ? await enviar({ messaging_product: "whatsapp", to: para, type: "document", document: { id: upd.id, filename: arquivo, caption: legenda } })
+          : await viaModelo();
+        if (!janelaAberta && !r.ok && /template|132001/i.test(JSON.stringify(r.d))) {
+          erroEnvio = "O cliente não mandou mensagem nas últimas 24h e o modelo de comprovante ainda está em aprovação na Meta. Tente de novo em breve.";
+        }
         const cod = r.d?.error?.code;
-        if (!r.ok && (cod === 131047 || cod === 131026)) {
+        if (janelaAberta && !r.ok && (cod === 131047 || cod === 131026)) {
           r = await enviar({ messaging_product: "whatsapp", to: para, type: "template", template: {
             name: "comprovante_pagamento", language: { code: "pt_BR" },
             components: [

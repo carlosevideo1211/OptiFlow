@@ -130,8 +130,8 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
       var dados = ${JSON.stringify(opts.whatsapp || null).replace(/</g, '\u003c')};
       if (!dados) return;
       if (!dados.phone) { alert('Este cliente não tem WhatsApp cadastrado. Cadastre o número em Clientes e tente de novo.'); return; }
-      if (!window.opener || !window.opener.__optiflowEnviarComprovante) { alert('Abra este comprovante de novo pelo sistema para poder enviar.'); return; }
-      if (!confirm('Enviar este comprovante em PDF para ' + dados.customer_name + ' no WhatsApp (' + dados.phone + ')?')) return;
+      if (!window.opener || !window.opener.__optiflowEnviarComprovante) { alert('Abra este documento de novo pelo sistema para poder enviar.'); return; }
+      if (!confirm('Enviar ' + (dados.descricao || 'este documento') + ' em PDF para ' + dados.customer_name + ' no WhatsApp (' + dados.phone + ')?')) return;
       btn.disabled = true;
       try {
         var pdf = await __pd_gerarPdf(1.6, 0.85);
