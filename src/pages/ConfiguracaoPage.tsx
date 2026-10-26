@@ -297,7 +297,7 @@ export default function ConfiguracaoPage() {
               Número usado nos botões de WhatsApp do sistema (abre o WhatsApp com a mensagem pronta).
             </p>
             <label className="form-label">Número WhatsApp da loja</label>
-            <input className="form-input" value={form.wa_number} onChange={e=>set('wa_number',e.target.value)} placeholder="5592999990000"/>
+            <input className="form-input" type="tel" inputMode="numeric" name="wa_number_loja" autoComplete="off" value={form.wa_number} onChange={e=>set('wa_number',e.target.value.replace(/\D/g,''))} placeholder="5592999990000"/>
             <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>55 + DDD + número, sem espaços. Depois clique em "Salvar Configurações".</div>
             {form.wa_number && (
               <button type="button" className="btn btn-secondary" style={{ marginTop:12, color:'#22c55e' }}
@@ -379,7 +379,7 @@ export default function ConfiguracaoPage() {
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
               <div>
                 <label className="form-label">Número WhatsApp da Loja</label>
-                <input className="form-input" value={form.wa_number} onChange={e=>set('wa_number',e.target.value)} placeholder="5592999990000"/>
+                <input className="form-input" type="tel" inputMode="numeric" name="wa_number_loja" autoComplete="off" value={form.wa_number} onChange={e=>set('wa_number',e.target.value.replace(/\D/g,''))} placeholder="5592999990000"/>
                 <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>DDD + número sem espaços ou caracteres especiais</div>
               </div>
             </div>
