@@ -44,6 +44,8 @@ interface Tenant {
   // Meta usa Meta, quem paga Evolution usa Evolution.
   whatsapp_auto_ativo?: boolean;
   whatsapp_canal?: string | null;
+  // Visual novo (menu enxuto, telas em abas) - liga por loja para testar antes de liberar para todas (26/10/2026).
+  visual_novo?: boolean;
   whatsapp_instance_name?: string | null;
   // Guarda o valor anterior de next_billing logo antes da ultima confirmacao
   // de pagamento manual — mantido por compatibilidade com tenants que so
@@ -313,6 +315,16 @@ export default function AdminPanelPage() {
     if (opcao === 'evolution' && !t.whatsapp_instance_name) toast('Atencao: esta loja ainda nao conectou o WhatsApp (QR Code) em Configuracao > Integracoes.', { icon: '⚠️', duration: 6000 });
     else if (opcao === 'meta') toast('Lembrete: a loja precisa ter o Phone ID da Meta em Configuracao > Integracoes (numero proprio cadastrado na Meta).', { icon: 'ℹ️', duration: 6000 });
     else toast.success(opcao === 'off' ? 'WhatsApp automatico desligado' : 'WhatsApp automatico ligado');
+  };
+
+  const alternarVisualNovo = async (t: Tenant) => {
+    const novo = !t.visual_novo;
+    setUpdating(t.id);
+    const { error } = await supabase.from('tenants').update({ visual_novo: novo }).eq('id', t.id);
+    setUpdating(null);
+    if (error) { toast.error('Nao foi possivel alterar: ' + error.message); return; }
+    setTenants(prev => prev.map(x => x.id===t.id ? {...x, visual_novo: novo} : x));
+    toast.success('Visual novo ' + (novo ? 'ligado' : 'desligado') + ' para ' + t.company_name + ' (vale ao recarregar a pagina)');
   };
 
   const estenderTrial = async (t: Tenant, dias: number) => {
@@ -839,6 +851,14 @@ export default function AdminPanelPage() {
                           display:'flex', alignItems:'center', marginRight:4, fontSize:11, fontWeight:600, opacity:.75
                         }}>
                         Boleto: {t.boleto_habilitado ? 'On' : 'Off'}
+                      </button>
+                      <button onClick={()=>alternarVisualNovo(t)} disabled={updating===t.id}
+                        title="Visual novo: menu enxuto com as telas em abas"
+                        style={{ fontSize:11, fontWeight:700, padding:'4px 8px', borderRadius:6, marginRight:4, cursor:'pointer',
+                          border:'1px solid ' + (t.visual_novo ? 'rgba(99,102,241,.45)' : 'var(--border)'),
+                          background: t.visual_novo ? 'rgba(99,102,241,.15)' : 'transparent',
+                          color: t.visual_novo ? '#a5b4fc' : '#64748b' }}>
+                        Visual novo: {t.visual_novo ? 'On' : 'Off'}
                       </button>
                       <select value={t.whatsapp_auto_ativo ? (t.whatsapp_canal === 'meta' ? 'meta' : 'evolution') : 'off'}
                         onChange={e=>alterarWhatsappAuto(t, e.target.value)} disabled={updating===t.id}

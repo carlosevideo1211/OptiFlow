@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Eye, ClipboardList, ShoppingCart, Calendar,
   Package, Boxes, CreditCard, TrendingUp, BarChart3, FileText,
@@ -69,8 +69,51 @@ const ALL_NAV_SECTIONS: NavSection[] = [
   }
 ];
 
+// Visual novo (tenants.visual_novo, ligado por loja no Painel Admin - 26/10/2026, testes na Castanho):
+// menu com poucos itens; as telas parecidas viram abas no topo da pagina (as rotas continuam as mesmas).
+// A Agenda (sem uso em nenhuma loja) sai do menu.
+type NavGrupo = { label: string; icon: React.ComponentType<any>; tabs: NavItem[] };
+const GRUPOS_NOVOS: NavGrupo[] = [
+  { label: 'Início', icon: LayoutDashboard, tabs: [
+    { to: '/dashboard', label: 'Início', icon: LayoutDashboard, sub: false, roles: [] },
+  ]},
+  { label: 'Clientes', icon: Users, tabs: [
+    { to: '/clientes', label: 'Clientes', icon: Users, sub: false, roles: [], requiresModule: 'otica' },
+  ]},
+  { label: 'Consultas', icon: Eye, tabs: [
+    { to: '/consulta', label: 'Consultas', icon: Eye, sub: false, roles: [], requiresModule: 'consultas' },
+  ]},
+  { label: 'Vendas', icon: ShoppingCart, tabs: [
+    { to: '/vendas', label: 'Vendas / PDV',       icon: ShoppingCart,  sub: false, roles: [], requiresModule: 'otica' },
+    { to: '/os',     label: 'Ordens de Serviço', icon: ClipboardList, sub: false, roles: [], requiresModule: 'otica' },
+  ]},
+  { label: 'Crediário', icon: CreditCard, tabs: [
+    { to: '/crediario', label: 'Crediário', icon: CreditCard, sub: false, roles: [], requiresModule: 'otica' },
+  ]},
+  { label: 'Estoque', icon: Boxes, tabs: [
+    { to: '/estoque',  label: 'Estoque',         icon: Boxes,   sub: false, roles: [], requiresModule: 'otica' },
+    { to: '/lentes',   label: 'Lentes por grau', icon: Glasses, sub: false, roles: [], requiresModule: 'otica' },
+    { to: '/produtos', label: 'Cadastro de produtos', icon: Package, sub: false, roles: [], requiresModule: 'otica' },
+  ]},
+  { label: 'Financeiro', icon: TrendingUp, tabs: [
+    { to: '/financeiro', label: 'Financeiro', icon: TrendingUp, sub: false, roles: ['master','Gerente'], requiresModule: 'otica' },
+    { to: '/relatorios', label: 'Relatórios', icon: BarChart3,  sub: false, roles: ['master','Gerente'], requiresModule: 'otica' },
+    { to: '/nfe',        label: 'NF-e',       icon: FileText,   sub: false, roles: ['master','Gerente'], requiresModule: 'otica' },
+  ]},
+  { label: 'Mensagens', icon: MessageCircle, tabs: [
+    { to: '/mensagens', label: 'Mensagens', icon: MessageCircle, sub: false, roles: [], requiresModule: 'whatsapp_meta' },
+  ]},
+  { label: 'Configurações', icon: Settings, tabs: [
+    { to: '/configuracao', label: 'Loja e integrações', icon: Settings, sub: false, roles: ['master','Gerente'], requiresModule: 'otica' },
+    { to: '/cadastros',    label: 'Cadastros',          icon: BookUser, sub: false, roles: ['master','Gerente'] },
+    { to: '/importacao',   label: 'Importar dados',     icon: Upload,   sub: false, roles: ['master','Gerente'] },
+    { to: '/planos',       label: 'Assinatura',         icon: Receipt,  sub: false, roles: ['master','Gerente'] },
+  ]},
+];
+
 export default function Shell({ children }: { children: React.ReactNode }) {
   const { user, tenantId, signOut } = useAuth();
+  const location = useLocation();
   const userRole = (user as any)?.role || (user as any)?.cargo || 'master';
   const isMaster = userRole === 'master' || !CARGOS_RESTRITOS.includes(userRole);
   const navigate = useNavigate();
@@ -90,16 +133,30 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   // sistema hoje — só fica desligado pra tenants "consultório-only" (ex: Samara),
   // migrados explicitamente via SQL. Mesmo padrão de moduloConsultasAtivo acima.
   const [moduloOticaAtivo, setModuloOticaAtivo] = useState<boolean>(true);
-  const navSections = ALL_NAV_SECTIONS.map(section => ({
-    ...section,
-    items: section.items.filter(item =>
-      (item.roles.length === 0 || isMaster || item.roles.includes(userRole)) &&
-      (!item.requiresModule ||
-        (item.requiresModule === 'consultas' && moduloConsultasAtivo) ||
-        (item.requiresModule === 'otica' && moduloOticaAtivo) ||
-        (item.requiresModule === 'whatsapp_meta' && whatsappMeta))
-    )
-  })).filter(section => section.items.length > 0);
+  // Lembra o ultimo valor para o menu nao "piscar" do antigo para o novo a cada carregamento.
+  const [visualNovo, setVisualNovo] = useState<boolean>(() => {
+    try { return localStorage.getItem('optiflow_visual_novo') === '1'; } catch { return false; }
+  });
+  const podeVer = (item: NavItem) =>
+    (item.roles.length === 0 || isMaster || item.roles.includes(userRole)) &&
+    (!item.requiresModule ||
+      (item.requiresModule === 'consultas' && moduloConsultasAtivo) ||
+      (item.requiresModule === 'otica' && moduloOticaAtivo) ||
+      (item.requiresModule === 'whatsapp_meta' && whatsappMeta));
+  const navSections = visualNovo
+    ? [{ label: '', items: GRUPOS_NOVOS
+        .map(g => ({ g, tabs: g.tabs.filter(podeVer) }))
+        .filter(x => x.tabs.length > 0)
+        .map(({ g, tabs }) => ({ to: tabs[0].to, label: g.label, icon: g.icon, sub: false, roles: [], grupo: tabs })) }]
+    : ALL_NAV_SECTIONS.map(section => ({
+        ...section,
+        items: section.items.filter(podeVer).map(item => ({ ...item, grupo: [item] })),
+      })).filter(section => section.items.length > 0);
+  const naRota = (to: string) => location.pathname === to || location.pathname.startsWith(to + '/');
+  // Abas no topo da pagina: as telas do mesmo grupo do menu (so no visual novo e quando o grupo tem mais de uma).
+  const abasDaPagina = visualNovo
+    ? (navSections[0]?.items.find(i => i.grupo.some(t => naRota(t.to)))?.grupo || [])
+    : [];
 
   useEffect(() => {
     if (!tenantId || !user) return;
@@ -119,7 +176,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         .neq('status', 'cancelado');
       const { data: tenant } = await supabase
         .from('tenants')
-        .select('trial_end_date, status, plan, modulo_consultas_ativo, modulo_otica_ativo, whatsapp_canal')
+        .select('trial_end_date, status, plan, modulo_consultas_ativo, modulo_otica_ativo, whatsapp_canal, visual_novo')
         .eq('id', tenantId)
         .single();
       if (tenant?.trial_end_date && tenant.status === 'trial') {
@@ -133,6 +190,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       // motivo vier null/undefined (tenant muito antigo antes da coluna existir),
       // mantém ligado — não pode esconder Ótica de quem sempre usou.
       setModuloOticaAtivo(tenant?.modulo_otica_ativo !== false);
+      const novo = (tenant as any)?.visual_novo === true;
+      setVisualNovo(novo);
+      try { localStorage.setItem('optiflow_visual_novo', novo ? '1' : '0'); } catch { /* sem localStorage */ }
       const usaMeta = (tenant as any)?.whatsapp_canal === 'meta';
       setWhatsappMeta(usaMeta);
       let msgCount = 0;
@@ -180,6 +240,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     if (to === '/mensagens') return badges.mensagens;
     return 0;
   };
+  const badgeGrupo = (grupo: NavItem[]) => grupo.reduce((s, t) => s + badgeFor(t.to), 0);
 
   // No celular o menu é uma gaveta (drawer) de largura fixa, nunca o modo
   // "só ícones" — esse modo é só pra quem tem espaço de sobra no desktop.
@@ -271,15 +332,16 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         <div style={{ flex:1, overflowY:'auto', padding:'8px 0', marginTop:8 }}>
           {navSections.map(section => (
             <div key={section.label} style={{ marginBottom:4 }}>
-              {!effCollapsed && (
+              {!effCollapsed && section.label && (
                 <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em',
                   color:'rgba(255,255,255,.3)', padding:'8px 16px 4px', textTransform:'uppercase' }}>
                   {section.label}
                 </div>
               )}
-              {effCollapsed && <div style={{ height:12 }}/>}
-              {section.items.map(({ to, label, icon: Icon, sub }) => {
-                const badge = badgeFor(to);
+              {effCollapsed && section.label && <div style={{ height:12 }}/>}
+              {section.items.map(({ to, label, icon: Icon, sub, grupo }) => {
+                const badge = badgeGrupo(grupo);
+                const grupoAtivo = grupo.some(t => naRota(t.to));
                 return (
                   <div key={to} style={{ position:'relative', margin:'1px 8px', marginLeft: sub && !effCollapsed ? '24px' : '8px' }}
                     onMouseEnter={e => effCollapsed && setTooltip({ label, y: (e.currentTarget as HTMLElement).getBoundingClientRect().top })}
@@ -290,7 +352,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                     )}
                     <NavLink to={to}
                       onClick={() => { if (isMobile) setMobileOpen(false); }}
-                      className={({ isActive }) => 'nav-item '+(isActive?'active':'')}
+                      className={({ isActive }) => 'nav-item '+((isActive || grupoAtivo)?'active':'')}
                       style={{ justifyContent: effCollapsed?'center':'flex-start',
                         padding: effCollapsed?'10px': sub ? '7px 12px' : '10px 12px',
                         borderRadius:8, position:'relative', gap: effCollapsed?0:10 }}>
@@ -378,6 +440,28 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             Opti<span style={{ color:'#06b6d4' }}>Flow</span>
           </span>
         </div>
+        {abasDaPagina.length > 1 && (
+          <div style={{ display:'flex', gap:4, overflowX:'auto', marginBottom:16,
+            borderBottom:'1px solid var(--border)', paddingBottom:0 }}>
+            {abasDaPagina.map(t => {
+              const ativa = naRota(t.to);
+              const b = badgeFor(t.to);
+              return (
+                <NavLink key={t.to} to={t.to}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'10px 14px', whiteSpace:'nowrap',
+                    fontSize:13, fontWeight: ativa ? 700 : 500, textDecoration:'none',
+                    color: ativa ? '#a5b4fc' : 'var(--text-muted)',
+                    borderBottom: '2px solid ' + (ativa ? '#6366f1' : 'transparent'), marginBottom:-1 }}>
+                  <t.icon size={14}/> {t.label}
+                  {b > 0 && (
+                    <span style={{ background:'#f87171', color:'white', fontSize:10, fontWeight:700,
+                      borderRadius:10, padding:'1px 6px' }}>{b}</span>
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+        )}
         {children}
       </main>
     </>
