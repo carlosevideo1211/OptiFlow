@@ -247,7 +247,8 @@ export default function DashboardPage() {
           em que o pagamento e confirmado (nao so perto do vencimento):
           verde enquanto esta em dia, vermelho depois que vence. Pedido pelo
           Carlos (01/09/2026). */}
-      {billingInfo && (() => {
+      {/* Loja sem cobranca (ex.: Castanho, next_billing 2099) nao mostra o aviso. */}
+      {billingInfo && billingInfo.dias < 3650 && (() => {
         const vencido = billingInfo.dias <= 0;
         return (
           <div style={{

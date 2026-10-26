@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useVisualNovo } from '../lib/visualNovo';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import {
@@ -26,8 +28,13 @@ import {
 // toLocalDateStr() ja existe em crediarioTypes.ts.
 import { toLocalDateStr } from './crediario/crediarioTypes';
 
+const OS_COLUNAS = 'id,os_number,customer_name,customer_id,frame_brand,frame_model,frame_color,frame_price,lens_type,lens_brand,lens_price,total,discount,entrada,od_esf,od_cil,od_eixo,oe_esf,oe_cil,oe_eixo,medico,obs_cliente,status';
+
 export default function VendasPage() {
   const { tenantId } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const visualNovo = useVisualNovo(tenantId);
   const [sales, setSales]         = useState<Sale[]>([]);
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
@@ -106,7 +113,7 @@ export default function VendasPage() {
     setLoading(true);
     const [s, { data: o }] = await Promise.all([
       fetchAllRows((from, to) => supabase.from('sales').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).range(from, to)),
-      supabase.from('service_orders').select('id,os_number,customer_name,customer_id,frame_brand,frame_model,frame_color,frame_price,lens_type,lens_brand,lens_price,total,discount,entrada,od_esf,od_cil,od_eixo,oe_esf,oe_cil,oe_eixo,medico,obs_cliente,status').eq('tenant_id', tenantId).neq('status','entregue').neq('status','cancelada').order('created_at', { ascending: false }).limit(100),
+      supabase.from('service_orders').select(OS_COLUNAS).eq('tenant_id', tenantId).neq('status','entregue').neq('status','cancelada').order('created_at', { ascending: false }).limit(100),
     ]);
     const [pAll, cAll] = await Promise.all([
       fetchAllRows<Product>((from, to) => supabase.from('products').select('id,name,sale_price,stock,category,brand,code').eq('tenant_id', tenantId).eq('active', true).order('name').range(from, to)),
@@ -296,6 +303,20 @@ export default function VendasPage() {
     setOsSearch(''); setShowOsSug(false);
     toast.success('OS #' + String(os.os_number).padStart(4, '0') + ' importada!');
   };
+
+  // Visual novo: vindo do pedido (OS) com "Salvar e receber pagamento" - abre o PDV com a OS ja importada.
+  useEffect(() => {
+    const osId = (location.state as any)?.pagarOsId;
+    if (!tenantId || !osId) return;
+    navigate(location.pathname, { replace: true, state: {} });
+    (async () => {
+      const { data } = await supabase.from('service_orders').select(OS_COLUNAS).eq('id', osId).eq('tenant_id', tenantId).maybeSingle();
+      if (!data) { toast.error('Pedido não encontrado'); return; }
+      if (['entregue', 'cancelada'].includes((data as any).status)) { toast.error('Este pedido já foi finalizado'); return; }
+      setTab('pdv');
+      await importarOS(data as OS);
+    })();
+  }, [tenantId, location.state]);
 
   const addToCart = (p: Product) => {
     setCartItems(prev => {
@@ -615,7 +636,7 @@ export default function VendasPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-secondary" onClick={exportCSV}><Download size={15} /> Exportar</button>
-          <button className="btn btn-primary" onClick={() => setTab('pdv')}><Plus size={16} /> Nova Venda</button>
+          <button className="btn btn-primary" onClick={() => visualNovo ? navigate('/os', { state: { novaOS: true } }) : setTab('pdv')}><Plus size={16} /> Nova Venda</button>
         </div>
       </div>
 

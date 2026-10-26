@@ -84,8 +84,8 @@ const GRUPOS_NOVOS: NavGrupo[] = [
     { to: '/consulta', label: 'Consultas', icon: Eye, sub: false, roles: [], requiresModule: 'consultas' },
   ]},
   { label: 'Vendas', icon: ShoppingCart, tabs: [
-    { to: '/vendas', label: 'Vendas / PDV',       icon: ShoppingCart,  sub: false, roles: [], requiresModule: 'otica' },
-    { to: '/os',     label: 'Ordens de Serviço', icon: ClipboardList, sub: false, roles: [], requiresModule: 'otica' },
+    { to: '/vendas', label: 'Vendas e caixa', icon: ShoppingCart,  sub: false, roles: [], requiresModule: 'otica' },
+    { to: '/os',     label: 'Pedidos (OS)',   icon: ClipboardList, sub: false, roles: [], requiresModule: 'otica' },
   ]},
   { label: 'Crediário', icon: CreditCard, tabs: [
     { to: '/crediario', label: 'Crediário', icon: CreditCard, sub: false, roles: [], requiresModule: 'otica' },

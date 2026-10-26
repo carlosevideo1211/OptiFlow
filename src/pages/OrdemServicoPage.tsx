@@ -14,6 +14,7 @@ import { norm } from '../utils/normalize';
 import { abrirDocumentoImprimivel } from '../utils/printDoc';
 import VitrineLentes from '../components/VitrineLentes';
 import MedidasDigitaisModal from './os/MedidasDigitaisModal';
+import { useVisualNovo } from '../lib/visualNovo';
 
 const STATUS_LIST = [
   { value:'orcamento',  label:'Orçamento',        color:'#94a3b8', bg:'rgba(148,163,184,.15)' },
@@ -86,6 +87,9 @@ export default function OrdemServicoPage() {
   const { tenantId } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  // Visual novo: pedido (OS) e pagamento seguidos - "Salvar e receber pagamento" abre o PDV com a OS ja importada.
+  const visualNovo = useVisualNovo(tenantId);
+  const irParaPagamentoRef = useRef(false);
   const [storeSettings, setStoreSettings] = useState<any>(null);
   const [orders, setOrders]       = useState<OS[]>([]);
   const [pagina, setPagina] = useState(1);
@@ -150,6 +154,15 @@ export default function OrdemServicoPage() {
       navigate(location.pathname, { replace: true, state: {} });
     })();
   }, [tenantId, location.state]);
+
+  // Botao "Nova venda" da tela de Vendas (visual novo): abre direto o formulario do pedido.
+  useEffect(() => {
+    if (!tenantId || !(location.state as any)?.novaOS) return;
+    openNew();
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [tenantId, location.state]);
+
+  const receberPagamento = (osId: string) => navigate('/vendas', { state: { pagarOsId: osId } });
 
   const loadConsultations = async (customerId: string) => {
     const { data } = await supabase.from('consultations')
@@ -277,7 +290,10 @@ export default function OrdemServicoPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    const irParaPagamento = irParaPagamentoRef.current;
+    irParaPagamentoRef.current = false;
     if (!form.customer_name.trim()) { toast.error('Informe o cliente'); return; }
+    if (irParaPagamento && osItens.length === 0) { toast.error('Adicione os produtos do pedido antes de receber o pagamento'); return; }
     setSaving(true);
     try {
       const totalCalculado = Math.max(0, totalItens - (form.discount || 0) - (form.entrada || 0));
@@ -333,11 +349,13 @@ export default function OrdemServicoPage() {
           descricao: i.descricao, quantidade: i.quantidade,
           valor_unitario: i.valor_unitario, valor_total: i.valor_total,
         }));
-        await supabase.from('os_itens').insert(itensPayload);
+        const { error: errItens } = await supabase.from('os_itens').insert(itensPayload);
+        if (errItens) throw errItens;
       }
 
-      toast.success(editing ? 'OS atualizada!' : '✅ OS aberta com sucesso!');
       setShowModal(false);
+      if (irParaPagamento) { receberPagamento(osId); return; }
+      toast.success(editing ? 'OS atualizada!' : '✅ OS aberta com sucesso!');
       load();
     } catch (err: any) {
       toast.error(err.message || 'Erro ao salvar OS');
@@ -567,13 +585,13 @@ export default function OrdemServicoPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <ClipboardList size={22}/> Ordens de Serviço
+            <ClipboardList size={22}/> {visualNovo ? 'Pedidos (OS)' : 'Ordens de Serviço'}
           </h1>
-          <p className="page-sub">Acompanhamento de laboratório e montagem em tempo real</p>
+          <p className="page-sub">{visualNovo ? 'Novo pedido: preencha a OS e clique em "Salvar e receber pagamento"' : 'Acompanhamento de laboratório e montagem em tempo real'}</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button className="btn btn-secondary" onClick={exportCSV}><Download size={15}/> Exportar</button>
-          <button className="btn btn-primary" onClick={openNew}><Plus size={16}/> Nova OS</button>
+          <button className="btn btn-primary" onClick={openNew}><Plus size={16}/> {visualNovo ? 'Novo pedido' : 'Nova OS'}</button>
         </div>
       </div>
 
@@ -646,6 +664,11 @@ export default function OrdemServicoPage() {
                           <button onClick={() => { setViewing(o); setShowModal(true); }} title="Ver detalhes" style={btnStyle('#f59e0b','rgba(245,158,11,.1)')}>
                             <Eye size={14}/>
                           </button>
+                          {visualNovo && !['entregue','cancelada'].includes(o.status) && (
+                            <button onClick={() => receberPagamento(o.id)} title="Receber pagamento (finalizar a venda)" style={btnStyle('#22c55e','rgba(34,197,94,.15)')}>
+                              <CreditCard size={14}/>
+                            </button>
+                          )}
                           <button onClick={() => avancarStatus(o)} title="Avançar status" style={btnStyle('#22c55e','rgba(34,197,94,.1)')}>
                             <CheckCircle size={14}/>
                           </button>
@@ -986,9 +1009,15 @@ export default function OrdemServicoPage() {
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-                  <button type="submit" className="btn btn-primary" disabled={saving}>
-                    <Save size={15}/> {saving ? 'Salvando...' : editing ? 'Salvar' : 'Abrir OS'}
+                  <button type="submit" className={visualNovo ? 'btn btn-secondary' : 'btn btn-primary'} disabled={saving}>
+                    <Save size={15}/> {saving ? 'Salvando...' : editing ? 'Salvar' : visualNovo ? 'Salvar sem receber' : 'Abrir OS'}
                   </button>
+                  {visualNovo && !(editing && ['entregue','cancelada'].includes(editing.status)) && (
+                    <button type="submit" className="btn btn-primary" disabled={saving}
+                      onClick={() => { irParaPagamentoRef.current = true; }}>
+                      <CreditCard size={15}/> Salvar e receber pagamento
+                    </button>
+                  )}
                 </div>
               </form>
             )}
