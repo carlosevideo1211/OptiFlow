@@ -43,6 +43,9 @@ export default function ConsultaPage() {
   const visualNovo = useVisualNovo(tenantId);
   const [modoCompleto, setModoCompleto] = useState(() => { try { return localStorage.getItem('consultas_modo_completo') === '1'; } catch { return false; } });
   const simples = visualNovo && !modoCompleto;
+  const [buscaHist, setBuscaHist] = useState('');
+  useEffect(() => { const t = setTimeout(() => setBuscaHist(search.trim()), 400); return () => clearTimeout(t); }, [search]);
+  const [contHist, setContHist] = useState<{ realizadas: number; hoje: number; comOs: number } | null>(null);
   useEffect(() => { if (simples) setTab(t => ['fila', 'agenda', 'consultas'].includes(t) ? t : 'fila'); }, [simples]);
   // "Nova consulta" da ficha do cliente: abre ja com o cliente escolhido.
   const location = useLocation();
@@ -80,9 +83,6 @@ export default function ConsultaPage() {
   }, [tenantId, simples, tab, buscaHist, statusFilter]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Visual novo: historico com as 300 mais recentes; busca e filtro de status vao ao banco (13 mil+ na Castanho).
-  const [buscaHist, setBuscaHist] = useState('');
-  useEffect(() => { const t = setTimeout(() => setBuscaHist(search.trim()), 400); return () => clearTimeout(t); }, [search]);
-  const [contHist, setContHist] = useState<{ realizadas: number; hoje: number; comOs: number } | null>(null);
   const load = async () => {
     setLoading(true);
     if (simples) {
