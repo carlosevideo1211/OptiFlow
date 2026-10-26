@@ -36,24 +36,30 @@ const baseStyle = `body{font-family:Arial,sans-serif;font-size:13px;padding:24px
   th{background:#f5f5f5;font-weight:bold}.assinatura{margin-top:40px;text-align:center}.linha{border-top:1px solid #333;margin:40px 0 6px}`;
 
 export const imprimirComprovante = (v: Sale, storeSettings: StoreSettings | null) => {
+  // 26/10/2026 (teste do Carlos, venda #27785): "TOTAL PAGO" mostrava so o saldo (v.total). Pago de fato =
+  // entrada + saldo; no crediario o saldo vira carne, entao pago = so a entrada.
+  const totalCompra = Math.max(0, (v.subtotal || 0) - (v.discount || 0)) || ((v.total || 0) + (v.entrada || 0));
+  const ehCrediario = v.payment_method === 'crediario';
+  const totalPago = ehCrediario ? (v.entrada || 0) : totalCompra;
   const bodyHtml = `
     ${getCabecalho(storeSettings)}
     <h3 style="text-align:center;text-transform:uppercase;margin:0 0 16px">Comprovante de Pagamento</h3>
     <table><tr><th>Venda</th><th>Data</th><th>Cliente</th><th>Vendedor</th></tr>
     <tr><td>#${String(v.sale_number).padStart(4,'0')}</td><td>${formatDateTime(v.created_at)}</td><td>${v.customer_name}</td><td>${v.vendedor||'—'}</td></tr></table>
-    <table><tr><th>Forma de Pagamento</th><th>Parcelas</th><th>Subtotal</th><th>Desconto</th><th>Entrada</th><th>Total</th></tr>
-    <tr><td>${getPagLabel(v)}</td><td>${v.installments}x</td><td>${formatBRL(v.subtotal)}</td><td>${formatBRL(v.discount)}</td><td>${formatBRL(v.entrada||0)}</td><td><b>${formatBRL(v.total)}</b></td></tr></table>
-    <div class="total">TOTAL PAGO: ${formatBRL(v.total)}</div>
+    <table><tr><th>Forma de Pagamento</th><th>Subtotal</th><th>Desconto</th><th>Total da compra</th><th>Entrada</th><th>${ehCrediario ? 'Saldo no carnê' : 'Saldo'}</th></tr>
+    <tr><td>${getPagLabel(v)}</td><td>${formatBRL(v.subtotal)}</td><td>${formatBRL(v.discount)}</td><td><b>${formatBRL(totalCompra)}</b></td><td>${formatBRL(v.entrada||0)}</td><td>${formatBRL(v.total)}</td></tr></table>
+    <div class="total">TOTAL PAGO: ${formatBRL(totalPago)}</div>
+    ${ehCrediario && (v.total||0) > 0 ? `<p style="text-align:center;font-size:12px">Saldo de ${formatBRL(v.total)} em ${v.installments} parcela(s) no carnê.</p>` : ''}
     ${v.notes ? `<p style="font-size:11px;color:#666">Obs: ${v.notes}</p>` : ''}
     <div class="linha"></div><p class="assinatura">Assinatura do Cliente — ${v.customer_name}</p>
-    <p style="text-align:center;font-size:10px;color:#999">${storeSettings?.city||''}, ${formatDate(v.created_at)}</p>
+    <p style="text-align:center;font-size:10px;color:#999">${storeSettings?.city ? storeSettings.city + ', ' : ''}${formatDate(v.created_at)}</p>
   `;
   abrirDocumentoImprimivel({
     title: 'Comprovante',
     filename: 'comprovante-venda-' + String(v.sale_number).padStart(4, '0') + '.pdf',
     css: baseStyle + `.total{font-size:20px;font-weight:bold;text-align:center;padding:12px;border:2px solid #333;border-radius:8px;margin:16px 0}`,
     body: bodyHtml,
-    windowFeatures: 'width=600,height=800',
+    windowFeatures: 'width=840,height=900',
   });
 };
 
@@ -184,6 +190,18 @@ export const imprimirInstrumentoDivida = async (v: Sale, storeSettings: StoreSet
 };
 
 export const imprimirQuitacao = async (v: Sale, storeSettings: StoreSettings | null) => {
+  // 26/10/2026 (teste do Carlos, venda #27785 no cartao): o termo dizia "parcelas do crediario proprio" para qualquer
+  // venda e mostrava so o saldo. Agora: valor = total da compra (entrada + saldo); texto conforme a forma de pagamento;
+  // crediario com parcela em aberto nao gera quitacao.
+  if (v.payment_method === 'crediario') {
+    const { data: cred } = await supabase.from('crediario').select('id').eq('sale_id', v.id);
+    const ids = (cred || []).map((c: any) => c.id);
+    if (ids.length) {
+      const { count } = await supabase.from('crediario_parcelas').select('id', { count: 'exact', head: true })
+        .in('crediario_id', ids).neq('status', 'pago').neq('status', 'cancelado');
+      if ((count || 0) > 0) { toast.error('Ainda há ' + count + ' parcela(s) em aberto no carnê desta venda — a quitação só sai depois que todas forem pagas.', { duration: 7000 }); return; }
+    }
+  }
   const { data: custData } = await supabase.from('customers').select('cpf,rg,phone,whatsapp,address,city,state').eq('id', v.customer_id || '').maybeSingle();
   const cust = custData as any || {};
   const fmtV = (n: number) => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -200,15 +218,21 @@ export const imprimirQuitacao = async (v: Sale, storeSettings: StoreSettings | n
   const dataExtenso = new Date().toLocaleDateString('pt-BR',{day:'numeric',month:'long',year:'numeric'});
   const dataVenda = fmtD2(v.created_at);
   const css = '@page{size:A4 portrait;margin:15mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#000;background:#fff}.hdr{text-align:center;border-bottom:2px solid #1a3a8f;padding-bottom:12px;margin-bottom:24px}.hdr img{max-height:60px;margin-bottom:4px}.hn{font-size:20px;font-weight:900;color:#1a3a8f}.hs{font-size:11px;color:#444;margin-top:2px}.wrap{overflow:hidden;margin-bottom:16px}.selo{float:right;border:3px solid #e53e3e;color:#e53e3e;padding:6px 14px;border-radius:4px;font-weight:900;font-size:14px;transform:rotate(-12deg);margin-top:-8px;letter-spacing:1px}h3{text-align:center;text-decoration:underline;font-size:14px;margin:0 0 20px;text-transform:uppercase}p{margin:10px 0;text-align:justify;line-height:1.7}.sig{margin-top:50px;text-align:center}.sig-line{display:inline-block;min-width:260px;border-top:1px solid #000;padding-top:6px;font-size:11px}';
+  const valorCompra = Math.max(0, (v.subtotal || 0) - (v.discount || 0)) || ((v.total || 0) + (v.entrada || 0));
+  const entradaTxt = (v.entrada || 0) > 0 ? ' (entrada de '+fmtV(v.entrada || 0)+' e saldo de '+fmtV(v.total || 0)+')' : '';
+  const formaLabel = (PAGAMENTOS.find(p => p.value === v.payment_method)?.label || v.payment_method || '').toLowerCase();
+  const formaTexto = v.payment_method === 'crediario'
+    ? entradaTxt+', sendo o saldo pago em <b>'+v.installments+'</b> parcela(s) do crediario proprio, todas devidamente quitadas ate a presente data'
+    : entradaTxt+', pago em '+formaLabel+((v.installments || 1) > 1 ? ' em '+v.installments+'x' : '');
   const cnpjLine = sCnpj ? ', inscrita no CNPJ sob o n. '+sCnpj+',' : ',';
   const cpfLine = custCpf ? ', inscrito(a) no CPF sob o n. '+custCpf+(custRg?', RG n. '+custRg:'') : '';
   const html = '<div class="hdr">'+(sLogo?'<img src="'+sLogo+'"/><br/>':'')+'<div class="hn">'+sName+'</div>'+(sCnpj?'<div class="hs">CNPJ: '+sCnpj+'</div>':'')+(sAddr?'<div class="hs">'+sAddr+(sCity?', '+sCity:'')+(sState?' - '+sState:'')+'</div>':'')+(sPhone?'<div class="hs">Tel: '+sPhone+'</div>':'')+'</div>'
     +'<div class="wrap"><div class="selo">DEBITO QUITADO</div><h3>Termo de Quitacao Total</h3></div>'
     +'<p>Pelo presente instrumento particular, a empresa <b>'+sName+'</b>'+cnpjLine+' declara para os devidos fins que o(a) Sr(a). <b>'+v.customer_name+'</b>'+cpfLine+', efetuou o pagamento integral de todos os debitos referentes a venda efetuada em <b>'+dataVenda+'</b>.</p>'
-    +'<p>O valor total liquidado foi de <b>'+fmtV(v.total)+'</b>, correspondente a <b>'+v.installments+'</b> parcela(s) do crediario proprio, todas devidamente quitadas ate a presente data.</p>'
+    +'<p>O valor total liquidado foi de <b>'+fmtV(valorCompra)+'</b>'+formaTexto+'.</p>'
     +'<p>Desta forma, damos plena, geral e irrevogavel quitacao de todos os valores e obrigacoes decorrentes deste contrato, nada mais havendo o que reclamar ou exigir a qualquer titulo.</p>'
     +'<p>Por ser a expressao da verdade, firmamos o presente.</p>'
-    +'<p style="margin-top:30px">, '+dataExtenso+'</p>'
+    +'<p style="margin-top:30px">'+(sCity?sCity+(sState?' - '+sState:'')+', ':'')+dataExtenso+'</p>'
     +'<div class="sig"><div class="sig-line">'+sName+'<br/><span style="font-size:10px;color:#666">Assinatura da Empresa</span></div></div>';
 
   abrirDocumentoImprimivel({
@@ -218,6 +242,6 @@ export const imprimirQuitacao = async (v: Sale, storeSettings: StoreSettings | n
     body: html,
     windowFeatures: 'width=800,height=960',
     whatsapp: { phone: String(cust.whatsapp || cust.phone || '').replace(/\D/g, ''), customer_name: v.customer_name || 'cliente',
-                descricao: 'termo de quitação da venda nº ' + v.sale_number + ' (' + fmtV(v.total) + ')' },
+                descricao: 'termo de quitação da venda nº ' + v.sale_number + ' (' + fmtV(valorCompra) + ')' },
   });
 };

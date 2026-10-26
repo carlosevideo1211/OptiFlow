@@ -727,8 +727,9 @@ export default function VendasPage() {
                               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                                 <IconBtn onClick={() => setViewSale(v)} title="Ver detalhes" color="#94a3b8"><Eye size={14} /></IconBtn>
                                 <IconBtn onClick={() => imprimirComprovante(v)} title="Comprovante de pagamento" color="#06b6d4"><FileText size={14} /></IconBtn>
-                                <IconBtn onClick={() => imprimirCarne(v)} title="Carnê de pagamento" color="#f59e0b"><Receipt size={14} /></IconBtn>
-                                <IconBtn onClick={() => imprimirInstrumentoDivida(v)} title="Instrumento de dívida" color="#a855f7"><Save size={14} /></IconBtn>
+                                {/* Carne e instrumento de divida so existem em venda no crediario (antes apareciam em todas e davam erro). */}
+                                {v.payment_method === 'crediario' && <IconBtn onClick={() => imprimirCarne(v)} title="Carnê de pagamento" color="#f59e0b"><Receipt size={14} /></IconBtn>}
+                                {v.payment_method === 'crediario' && <IconBtn onClick={() => imprimirInstrumentoDivida(v)} title="Instrumento de dívida" color="#a855f7"><Save size={14} /></IconBtn>}
                                 <IconBtn onClick={() => imprimirQuitacao(v)} title="Comprovante de quitação" color="#22c55e"><FileText size={14} /></IconBtn>
                                 <IconBtn onClick={() => imprimirComprovante(v)} title="Imprimir" color="#6366f1"><Printer size={14} /></IconBtn>
                                 {focusAtivo && v.status !== 'cancelada' && (() => {
