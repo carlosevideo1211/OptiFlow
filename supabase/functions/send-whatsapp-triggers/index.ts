@@ -1005,7 +1005,13 @@ serve(async (req) => {
       // ---------- 7) RETORNO ANUAL DO EXAME DE VISTA (Consultas C5, 26/10/2026) ----------
       // Cliente cujo ultimo exame (consulta realizada/importada) fez 1 ano e que nao voltou desde entao. Por enquanto
       // so nas lojas com o visual novo (teste na Castanho) e, no canal Meta, so depois do modelo aprovado.
-      if (tenant.visual_novo && podeEnviarMais() &&
+      // Vaga propria: as cobrancas de atraso costumam usar as 3 vagas da execucao e o lembrete nunca chegava a vez dele
+      // (teste de 26/10). Ele manda no maximo 1 por execucao, fora do limite por execucao, mas dentro do limite global
+      // e do limite diario da loja.
+      let retornoNestaExecucao = 0;
+      const podeEnviarRetorno = () => retornoNestaExecucao < 1 && enviosNestaExecucao < LIMITE_GLOBAL_POR_EXECUCAO &&
+        jaEnviouHoje + enviosTenantAtual < LIMITE_DIARIO_POR_TENANT;
+      if (tenant.visual_novo && podeEnviarRetorno() &&
           (canalInfo.canal !== "meta" || await modeloRetornoAprovado(canalInfo.token))) {
         const exames = await supabaseFetch(
           `consultations?tenant_id=eq.${tenant.id}&status=in.(realizada,concluida)&date=gte.${menos372dias}&date=lte.${menos365dias}&customer_id=not.is.null&select=customer_id,customer_name,date&order=date.asc&limit=200`
@@ -1019,7 +1025,7 @@ serve(async (req) => {
           const voltou = new Set((Array.isArray(recentes) ? recentes : []).map((r: any) => r.customer_id));
           const clientes = await supabaseFetch(`customers?id=in.(${ids.join(",")})&select=id,name,whatsapp,phone,whatsapp_opt_out`);
           for (const c of (Array.isArray(clientes) ? clientes : [])) {
-            if (!podeEnviarMais()) break;
+            if (!podeEnviarRetorno()) break;
             if (voltou.has(c.id) || c.whatsapp_opt_out) continue;
             const telefone = c.whatsapp || c.phone;
             if (!telefone) continue;
@@ -1031,6 +1037,7 @@ serve(async (req) => {
             const r = await enviarMensagem(canalInfo, telefone, { texto, templateName: TEMPLATE_RETORNO_EXAME, templateParams: [nome, loja, dataFmt] });
             await logTrigger(tenant.id, "retorno_exame", refId, c.id, telefone, r.ok, r.error);
             registrarEnvio();
+            retornoNestaExecucao++;
             if (r.ok) resultado.retorno_exame++; else resultado.erros.push(`retorno_exame ${c.id}: ${r.error}`);
             await delayAleatorio(canalInfo.canal);
           }
