@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Eye, ClipboardList, ShoppingCart, Calendar,
   Package, Boxes, CreditCard, TrendingUp, BarChart3, FileText,
   BookUser, Settings, LogOut, Menu, X, Bell, Upload, ChevronRight, Receipt, MessageCircle
-} from 'lucide-react';
+, Glasses } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -46,6 +46,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/produtos', label: 'Produtos', icon: Package, sub: false, roles: [], requiresModule: 'otica' },
       { to: '/estoque',  label: 'Estoque',  icon: Boxes,   sub: false, roles: [], requiresModule: 'otica' },
+      { to: '/lentes',   label: 'Lentes por grau', icon: Glasses, sub: false, roles: [], requiresModule: 'otica' },
     ]
   },
   {

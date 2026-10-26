@@ -15,6 +15,7 @@ import ProntuarioPage from './pages/consulta/ProntuarioPage';
 import OrdemServicoPage from './pages/OrdemServicoPage';
 import VendasPage from './pages/VendasPage';
 import ProdutosPage from './pages/ProdutosPage';
+import LentesGradePage from './pages/LentesGradePage';
 import EstoquePage from './pages/EstoquePage';
 import CrediarioPage from './pages/CrediarioPage';
 import MensagensPage from './pages/MensagensPage';
@@ -95,6 +96,7 @@ function AppRoutes() {
             <Route path="/os"           element={<OrdemServicoPage />} />
             <Route path="/vendas"       element={<VendasPage />} />
             <Route path="/produtos"     element={<ProdutosPage />} />
+            <Route path="/lentes"       element={<LentesGradePage />} />
             <Route path="/estoque"      element={<EstoquePage />} />
             <Route path="/crediario"    element={<CrediarioPage />} />
             <Route path="/mensagens"    element={<MensagensPage />} />
