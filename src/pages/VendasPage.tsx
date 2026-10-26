@@ -423,8 +423,12 @@ export default function VendasPage() {
         const { data: parcelas } = await supabase.from('crediario_parcelas').select('id').eq('crediario_id', cred.id);
         const parcelaIds = (parcelas || []).map((p: any) => p.id);
         if (parcelaIds.length > 0) await supabase.from('financial_transactions').delete().in('crediario_parcela_id', parcelaIds);
-        await supabase.from('crediario_parcelas').delete().eq('crediario_id', cred.id);
-        await supabase.from('crediario').delete().eq('id', cred.id);
+        const rp = await supabase.from('crediario_parcelas').delete().eq('crediario_id', cred.id);
+        if (rp.error) throw rp.error;
+        // Antes nao conferia: se o carne nao fosse apagado (ex.: gatilho de auditoria recusado), ficava um carne vazio
+        // e a cliente "sumia" do Crediario (caso Tamiris, 26/10/2026).
+        const rc = await supabase.from('crediario').delete().eq('id', cred.id);
+        if (rc.error) throw rc.error;
       }
 
       // 3) Remover os lancamentos financeiros que esta venda gerou

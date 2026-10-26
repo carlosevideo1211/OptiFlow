@@ -97,7 +97,7 @@ export default function CrediarioPage() {
 
   const custs = await fetchAllRows<any>((from, to) => supabase
       .from('customers')
-      .select('id, name, whatsapp, phone')
+      .select('id, name, whatsapp, phone, cpf')
       .eq('tenant_id', tenantId)
       .range(from, to));
     const custMap: Record<string, any> = {};
@@ -152,6 +152,7 @@ export default function CrediarioPage() {
           nome_no_carne: nomeMudou ? nomeNoCarne : undefined,
           customer_id: cr.customer_id,
           whatsapp: custMap[cr.customer_id]?.whatsapp || custMap[cr.customer_id]?.phone || '',
+          cpf: custMap[cr.customer_id]?.cpf || '',
           total_installments: nP,
           sale_id: cr.sale_id,
           arquivado,
@@ -254,7 +255,10 @@ export default function CrediarioPage() {
         // atual do cliente E no nome antigo gravado no carne.
         const n = (t?: string) => (t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
         const s = n(search);
-        if (!n(p.customer_name).includes(s) && !n(p.nome_no_carne).includes(s)) return false;
+        // Busca tambem por CPF (e telefone) quando o texto tem numeros - antes so achava pelo nome (26/10/2026).
+        const dig = search.replace(/\D/g, '');
+        const achouNumero = dig.length >= 3 && (String((p as any).cpf || '').replace(/\D/g, '').includes(dig) || String(p.whatsapp || '').replace(/\D/g, '').includes(dig));
+        if (!achouNumero && !n(p.customer_name).includes(s) && !n(p.nome_no_carne).includes(s)) return false;
       }
       if (statusFilter === 'vencida' && (p.status === 'pago' || !p.due_date || p.due_date >= hoje)) return false;
       if (statusFilter === 'aberta' && p.status !== 'pendente') return false;
@@ -850,7 +854,7 @@ export default function CrediarioPage() {
         )}
         <div className="search-bar" style={{ flex:1, minWidth:220 }}>
           <Search size={15}/>
-          <input className="form-input" placeholder="Buscar cliente..." value={search} onChange={e=>setSearch(e.target.value)}/>
+          <input className="form-input" placeholder="Buscar por nome, CPF ou telefone..." value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
         <select className="form-input" style={{ width:160 }} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
           <option value="">Todos os status</option>
