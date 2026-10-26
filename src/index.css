@@ -404,6 +404,10 @@ tbody tr:last-child { border-bottom: none; }
   .vn [style*="grid-template-columns:repeat(4"],
   .vn [style*="grid-template-columns:repeat(5"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .vn .page-header { flex-wrap: wrap; gap: 10px; }
+  .vn .page-header > div { flex-wrap: wrap; }
+  /* blocos lado a lado com coluna fixa (ex.: grafico + Pipeline de OS no Inicio) ficam um embaixo do outro */
+  .vn [style*="grid-template-columns: 1fr 340px"], .vn [style*="grid-template-columns:1fr 340px"],
+  .vn [style*="minmax(300px"], .vn [style*="minmax(320px"], .vn [style*="minmax(340px"] { grid-template-columns: 1fr !important; }
   /* valores grandes dos cards (ex.: R$ 425.646,56 no Crediario) cabem na metade da tela */
   .vn [style*="grid-template-columns"] > * { min-width: 0; }
   .vn [style*="grid-template-columns"] [style*="font-size: 2"],
