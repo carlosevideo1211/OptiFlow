@@ -158,7 +158,10 @@ export default function OrdemServicoPage() {
   // Botao "Nova venda" da tela de Vendas (visual novo): abre direto o formulario do pedido.
   useEffect(() => {
     if (!tenantId || !(location.state as any)?.novaOS) return;
+    const cliente = (location.state as any)?.cliente as { id: string; name: string } | undefined;
     openNew();
+    // Vindo da ficha do cliente: o pedido ja abre com o cliente (e as consultas dele para importar o grau).
+    if (cliente?.id) { set('customer_id', cliente.id); set('customer_name', cliente.name); loadConsultations(cliente.id); }
     navigate(location.pathname, { replace: true, state: {} });
   }, [tenantId, location.state]);
 

@@ -1,4 +1,5 @@
 ﻿﻿﻿import { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -24,6 +25,8 @@ import {
 
 export default function CrediarioPage() {
   const { tenantId } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [parcelas, setParcelas] = useState<Parcela[]>([]);
   const [renegociando, setRenegociando] = useState<string|null>(null); // crediario_id
   const [renegoSummary, setRenegoSummary] = useState<any>(null);
@@ -33,6 +36,13 @@ export default function CrediarioPage() {
   const [renego, setRenego] = useState({ novoValor:'', numParcelas:'1', dataInicio:'', destino:'cancelar' });
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
+  // Botao "Receber parcela" da ficha do cliente (visual novo): abre ja filtrado pelo nome.
+  useEffect(() => {
+    const buscar = (location.state as any)?.buscar;
+    if (!buscar) return;
+    setSearch(buscar);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state]);
   // Reset pagina ao mudar filtros
   const [statusFilter, setStatusFilter] = useState('');
   const [janelaFilter, setJanelaFilter] = useState('');

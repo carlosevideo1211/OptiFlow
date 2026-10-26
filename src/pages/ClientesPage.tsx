@@ -1,11 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
+import { useVisualNovo } from '../lib/visualNovo';
+import { abrirDocumentoImprimivel } from '../utils/printDoc';
 import { supabase } from '../lib/supabase';
 import {
   Plus, Search, Edit2, Phone, Download, Upload, Camera,
   Trash2, Users, Gift, DollarSign, Wifi, X, Save,
-  Eye, MessageCircle, Paperclip, BellOff, Bell
+  Eye, MessageCircle, Paperclip, BellOff, Bell, ShoppingCart, CreditCard
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
@@ -42,6 +45,8 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 
 export default function ClientesPage() {
   const { tenantId } = useAuth();
+  const navigate = useNavigate();
+  const visualNovo = useVisualNovo(tenantId);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
@@ -515,6 +520,54 @@ export default function ClientesPage() {
 
             {viewing ? (
               <div className="modal-body">
+                {visualNovo && (() => {
+                  // Fase 4 (visual novo): a ficha do cliente e o ponto de partida - resumo do que importa e os atalhos.
+                  const hojeStr = new Date().toLocaleDateString('sv-SE');
+                  const vendasOk = viewHist.v.filter((v:any) => v.status !== 'cancelada');
+                  const totalComprado = vendasOk.reduce((s:number, v:any) => s + Math.max(0, (v.subtotal||0) - (v.discount||0)), 0);
+                  const abertas = viewHist.cr.filter((c:any) => c.status !== 'cancelado')
+                    .flatMap((c:any) => c.crediario_parcelas || [])
+                    .filter((p:any) => p.status !== 'pago' && p.status !== 'cancelado');
+                  const emAberto = abertas.reduce((s:number, p:any) => s + (p.amount||0), 0);
+                  const atrasadas = abertas.filter((p:any) => p.due_date && p.due_date < hojeStr);
+                  const proxima = abertas.filter((p:any) => p.due_date && p.due_date >= hojeStr).sort((a:any,b:any) => a.due_date.localeCompare(b.due_date))[0];
+                  const ultima = vendasOk[0];
+                  const fmtD = (d: string) => new Date(d.length > 10 ? d : d+'T12:00:00').toLocaleDateString('pt-BR');
+                  const cards = [
+                    { l:'Total comprado', v: formatBRL(totalComprado), sub: vendasOk.length+' compra(s)'+(viewHist.v.length>=15?' (últimas 15)':''), c:'#22c55e' },
+                    { l:'Em aberto no carnê', v: formatBRL(emAberto), sub: abertas.length+' parcela(s)', c: emAberto>0 ? '#f59e0b' : 'var(--text-muted)' },
+                    { l:'Atrasadas', v: String(atrasadas.length), sub: atrasadas.length ? formatBRL(atrasadas.reduce((s:number,p:any)=>s+(p.amount||0),0)) : 'nenhuma', c: atrasadas.length ? '#f87171' : 'var(--text-muted)' },
+                    { l:'Próximo vencimento', v: proxima ? fmtD(proxima.due_date) : '—', sub: proxima ? formatBRL(proxima.amount||0) : 'nada a vencer', c:'#6366f1' },
+                    { l:'Última compra', v: ultima ? fmtD(ultima.created_at) : '—', sub: ultima ? '#'+String(ultima.sale_number||'').padStart(4,'0') : 'nunca comprou', c:'#06b6d4' },
+                  ];
+                  return (
+                    <div style={{ marginBottom:16 }}>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:8, marginBottom:10 }}>
+                        {cards.map(k => (
+                          <div key={k.l} style={{ padding:'10px 12px', background:'var(--bg-card)', borderRadius:8, borderTop:'3px solid '+k.c }}>
+                            <div style={{ fontSize:11, color:'var(--text-muted)' }}>{k.l}</div>
+                            <div style={{ fontSize:16, fontWeight:700, color:k.c }}>{k.v}</div>
+                            <div style={{ fontSize:11, color:'var(--text-muted)' }}>{k.sub}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                        <button className="btn btn-primary" onClick={() => { setShowModal(false); navigate('/os', { state: { novaOS: true, cliente: { id: viewing.id, name: viewing.name } } }); }}>
+                          <ShoppingCart size={15}/> Nova venda
+                        </button>
+                        {abertas.length > 0 && (
+                          <button className="btn btn-secondary" style={{ color:'#f59e0b' }} onClick={() => { setShowModal(false); navigate('/crediario', { state: { buscar: viewing.name } }); }}>
+                            <CreditCard size={15}/> Receber parcela
+                          </button>
+                        )}
+                        <button className="btn btn-secondary" style={{ color:'#22c55e' }} onClick={() => openWhatsApp(viewing)}>
+                          <MessageCircle size={15}/> WhatsApp
+                        </button>
+                        <button className="btn btn-secondary" onClick={() => openEdit(viewing)}><Edit2 size={15}/> Editar cadastro</button>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{display:'flex',gap:0,marginBottom:16,borderBottom:'1px solid var(--border)'}}>
                   {[['dados','👤 Dados'],['vendas','🛒 Vendas ('+viewHist.v.length+')'],['os','📋 OS ('+viewHist.o.length+')'],['consultas','👁️ Consultas ('+viewHist.c.length+')'],['crediario','💳 Crediário ('+viewHist.cr.length+')']].map(([k,l])=>(
                     <button key={k} onClick={()=>setViewTab(k as string)} style={{padding:'8px 12px',background:'none',border:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:viewTab===k?'var(--primary)':'var(--text-muted)',borderBottom:viewTab===k?'2px solid var(--primary)':'2px solid transparent',marginBottom:-1,whiteSpace:'nowrap'}}>{l}</button>
@@ -653,26 +706,25 @@ export default function ClientesPage() {
                       <div style={{display:'flex',alignItems:'center',gap:8}}>
                         <div style={{fontSize:12,color:'var(--text-muted)'}}>{co.professional_name||'--'}</div>
                         <button onClick={()=>{
-                          const w=window.open('','_blank');
-                          if(!w)return;
+                          // Receituario no padrao do sistema (Imprimir / Baixar PDF) - antes abria e imprimia direto (26/10/2026).
                           const c=viewing;
-                          w.document.write('<html><head><title>Receituario Optico</title><style>body{font-family:Arial;padding:32px;max-width:700px;margin:0 auto;color:#333}table{width:100%;border-collapse:collapse;margin:12px 0}td,th{border:1px solid #ccc;padding:10px 12px;text-align:center;font-size:14px}h2{color:#1a1a2e;border-bottom:2px solid #1a1a2e;padding-bottom:8px}h3{color:#444;margin-top:20px}p{margin:6px 0;font-size:14px}.footer{margin-top:40px;border-top:1px solid #999;padding-top:8px;font-size:12px;color:#666}@media print{button{display:none}}</style></head><body>');
-                          w.document.write('<h2>RECEITUARIO OPTICO</h2>');
-                          w.document.write('<p><b>Paciente:</b> '+(c?.name||'')+'</p>');
-                          w.document.write('<p><b>Data:</b> '+(co.date?new Date(co.date+'T00:00:00').toLocaleDateString('pt-BR'):'--')+'</p>');
-                          w.document.write('<p><b>Profissional:</b> '+(co.professional_name||'--')+'</p>');
-                          w.document.write('<h3>Grau</h3>');
-                          w.document.write('<table><tr><th style="background:#2c3e50;color:white"></th><th style="background:#2c3e50;color:white">ESF</th><th style="background:#2c3e50;color:white">CIL</th><th style="background:#2c3e50;color:white">EIXO</th><th style="background:#2c3e50;color:white">DNP</th></tr>');
-   const fg=(v:any,t:string='esf')=>{if(v===null||v===undefined||v==='')return'--';const n=parseFloat(v);if(isNaN(n))return'--';if(t==='eixo')return Math.round(n)+'\u00b0';if(t==='dnp')return Math.abs(n).toFixed(1).replace('.',',');if(t==='adicao')return n.toFixed(2).replace('.',',');const a=Math.abs(n).toFixed(2).replace('.',',');return(n>=0?'+':'-')+a;};
-   w.document.write('<tr><td style="background:#f8f9fa"><b>OD</b></td><td>'+fg(co.rx_re_esf)+'</td><td>'+fg(co.rx_re_cil)+'</td><td>'+fg(co.rx_re_eixo,'eixo')+'</td><td>'+fg(co.rx_re_dnp,'dnp')+'</td></tr>');
-   w.document.write('<tr><td style="background:#f8f9fa"><b>OE</b></td><td>'+fg(co.rx_le_esf)+'</td><td>'+fg(co.rx_le_cil)+'</td><td>'+fg(co.rx_le_eixo,'eixo')+'</td><td>'+fg(co.rx_le_dnp,'dnp')+'</td></tr>');
-                          w.document.write('</table>');
-   if(co.rx_adicao) w.document.write('<p><b>Adição:</b> '+fg(co.rx_adicao,'adicao')+'</p>');
-                          if(co.notes) w.document.write('<p><b>Obs:</b> '+co.notes+'</p>');
-                          w.document.write('<br/><br/><p>_______________________________</p><p>Assinatura do Profissional</p>');
-                          w.document.write('</body></html>');
-                          w.document.close();
-                          w.print();
+                          const fg=(v:any,t:string='esf')=>{if(v===null||v===undefined||v==='')return'--';const n=parseFloat(v);if(isNaN(n))return'--';if(t==='eixo')return Math.round(n)+'°';if(t==='dnp')return Math.abs(n).toFixed(1).replace('.',',');if(t==='adicao')return n.toFixed(2).replace('.',',');const a=Math.abs(n).toFixed(2).replace('.',',');return(n>=0?'+':'-')+a;};
+                          const dataC=co.date?new Date(co.date+'T00:00:00').toLocaleDateString('pt-BR'):'--';
+                          const body='<h2>RECEITUARIO OPTICO</h2>'
+                            +'<p><b>Paciente:</b> '+(c?.name||'')+'</p><p><b>Data:</b> '+dataC+'</p><p><b>Profissional:</b> '+(co.professional_name||'--')+'</p>'
+                            +'<h3>Grau</h3><table><tr><th></th><th>ESF</th><th>CIL</th><th>EIXO</th><th>DNP</th></tr>'
+                            +'<tr><td><b>OD</b></td><td>'+fg(co.rx_re_esf)+'</td><td>'+fg(co.rx_re_cil)+'</td><td>'+fg(co.rx_re_eixo,'eixo')+'</td><td>'+fg(co.rx_re_dnp,'dnp')+'</td></tr>'
+                            +'<tr><td><b>OE</b></td><td>'+fg(co.rx_le_esf)+'</td><td>'+fg(co.rx_le_cil)+'</td><td>'+fg(co.rx_le_eixo,'eixo')+'</td><td>'+fg(co.rx_le_dnp,'dnp')+'</td></tr></table>'
+                            +(co.rx_adicao?'<p><b>Adição:</b> '+fg(co.rx_adicao,'adicao')+'</p>':'')
+                            +(co.notes?'<p><b>Obs:</b> '+co.notes+'</p>':'')
+                            +'<br/><br/><p>_______________________________</p><p>Assinatura do Profissional</p>';
+                          abrirDocumentoImprimivel({
+                            title:'Receituario Optico',
+                            filename:'receituario-'+(c?.name||'cliente').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase()+'-'+(co.date||'')+'.pdf',
+                            css:'body{font-family:Arial;padding:32px;color:#333}table{width:100%;border-collapse:collapse;margin:12px 0}td,th{border:1px solid #ccc;padding:10px 12px;text-align:center;font-size:14px}th{background:#2c3e50;color:#fff}h2{color:#1a1a2e;border-bottom:2px solid #1a1a2e;padding-bottom:8px}h3{color:#444;margin-top:20px}p{margin:6px 0;font-size:14px}',
+                            body,
+                            windowFeatures:'width=800,height=900',
+                          });
                         }} style={{padding:'3px 8px',fontSize:11,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,cursor:'pointer',color:'var(--text-muted)'}}>🖨️ Imprimir</button>
                       </div>
                     </div>
