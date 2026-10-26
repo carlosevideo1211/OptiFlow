@@ -331,7 +331,7 @@ export default function FinanceiroPage() {
         ))}
       </div>
 
-      {tab === 'caixa' && <CaixaDoDia />}
+      {tab === 'caixa' && <CaixaDoDia onMudou={load} />}
 
       {/* ── LANÇAMENTOS ── */}
       {tab === 'lancamentos' && (<>

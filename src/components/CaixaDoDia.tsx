@@ -27,7 +27,7 @@ function somarDias(s: string, n: number) { const d = new Date(s + 'T12:00:00'); 
 const br = (s: string) => s.split('-').reverse().join('/');
 const num = (v: string) => { const n = parseFloat(String(v).replace(/\./g, '').replace(',', '.')); return isNaN(n) ? 0 : n; };
 
-export default function CaixaDoDia() {
+export default function CaixaDoDia({ onMudou }: { onMudou?: () => void } = {}) {
   const { tenantId, user } = useAuth();
   const operador = (user as any)?.full_name || 'Operador';
   const [data, setData] = useState(toLocalDateStr());
@@ -138,6 +138,7 @@ export default function CaixaDoDia() {
     toast.success('Saída lançada');
     setSaida({ descricao: '', valor: '', forma: 'dinheiro' });
     carregar();
+    onMudou?.();
   };
 
   const imprimir = (contadoValor?: number) => {
