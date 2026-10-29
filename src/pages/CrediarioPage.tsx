@@ -556,7 +556,10 @@ export default function CrediarioPage() {
   // individual, carnê completo) — lógica movida pra ./crediario/crediarioDocumentos.ts
   // pra este arquivo não ficar tão grande. Comportamento idêntico ao de antes,
   // só passando `tenantId` explicitamente em vez de via closure.
-  const imprimirCarneIndividual = (p: Parcela) => imprimirCarneIndividualDoc(p, tenantId);
+  const imprimirCarneIndividual = (p: Parcela) => {
+    if (p.status !== 'pago') { toast.error('O recibo só pode ser impresso depois de dar baixa na parcela.'); return; }
+    imprimirCarneIndividualDoc(p, tenantId);
+  };
   const imprimirCarneCompleto = (p: Parcela) => imprimirCarneCompletoDoc(p, tenantId);
   // Emite o Termo de Quitacao Total do carne — so faz sentido pra um crediario
   // que ja esta com todas as parcelas pagas (ver crediariosQuitadosIds abaixo).
@@ -997,8 +1000,9 @@ export default function CrediarioPage() {
                                 <Receipt size={14}/>
                               </button>
                     ) : (
-                      <button onClick={() => imprimirCarneIndividual(p)} title="Imprimir recibo desta parcela"
-                                style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.2)', borderRadius:7, padding:'5px 8px', cursor:'pointer', color:'#f59e0b', display:'flex', alignItems:'center' }}>
+                      // Recibo só depois da baixa (pedido do Carlos em 29/10/2026): antes dava para imprimir recibo de parcela não paga.
+                      <button disabled title="O recibo só pode ser impresso depois de dar baixa na parcela"
+                                style={{ background:'rgba(148,163,184,.06)', border:'1px solid rgba(148,163,184,.12)', borderRadius:7, padding:'5px 8px', cursor:'not-allowed', color:'var(--text-muted)', display:'flex', alignItems:'center', opacity:0.4 }}>
                                 <Printer size={14}/>
                               </button>
                     )}
