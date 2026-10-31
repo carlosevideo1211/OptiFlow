@@ -27,7 +27,6 @@ import ConfiguracaoPage from './pages/ConfiguracaoPage';
 import ImportacaoPage from './pages/ImportacaoPage';
 
 import NfePage from './pages/NfePage';
-import AdminLoginPage from './pages/admin/AdminLoginPage';
 import AdminPanelPage from './pages/admin/AdminPanelPage';
 import TrialsVencidosPage from './pages/admin/TrialsVencidosPage';
 import LixeiraPage from './pages/admin/LixeiraPage';
@@ -42,7 +41,7 @@ function AppRoutes() {
   if (location.pathname.startsWith('/admin')) {
     return (
       <Routes>
-        <Route path="/admin-login" element={<AdminLoginPage />} />
+        <Route path="/admin-login" element={<Navigate to="/login" />} />
         <Route path="/admin"       element={<AdminPanelPage />} />
         <Route path="/admin/trials-vencidos" element={<TrialsVencidosPage />} />
         <Route path="/admin/lixeira" element={<LixeiraPage />} />
@@ -68,7 +67,7 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/admin-login" element={<AdminLoginPage />} />
+      <Route path="/admin-login" element={<Navigate to="/login" />} />
       <Route path="/admin"       element={<AdminPanelPage />} />
       <Route path="/admin/trials-vencidos" element={<TrialsVencidosPage />} />
       <Route path="/admin/lixeira" element={<LixeiraPage />} />

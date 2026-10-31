@@ -145,7 +145,7 @@ export default function AdminPanelPage() {
     // endereço passava por essa checagem, porque ela só perguntava "existe
     // sessão?", não "é o Carlos?".
     supabase.auth.getSession().then(({ data:{ session } }) => {
-      if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) navigate('/admin-login');
+      if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) navigate('/login');
       else { load(); carregarLixeiraCount(); }
     });
   }, []);
@@ -609,7 +609,7 @@ export default function AdminPanelPage() {
           <button onClick={exportCSV} style={{ background:'rgba(255,255,255,.06)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'var(--text-muted)', display:'flex', alignItems:'center' }}>
             <Download size={15}/>
           </button>
-          <button onClick={()=>{ supabase.auth.signOut(); navigate('/admin-login'); }}
+          <button onClick={async ()=>{ await supabase.auth.signOut(); navigate('/login'); }}
             style={{ background:'rgba(248,113,113,.1)', border:'1px solid rgba(248,113,113,.2)', borderRadius:8, padding:'8px 14px', cursor:'pointer', color:'#f87171', display:'flex', alignItems:'center', gap:6, fontSize:13 }}>
             <LogOut size={14}/> Sair
           </button>

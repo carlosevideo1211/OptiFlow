@@ -37,7 +37,7 @@ export default function LixeiraPage() {
     // botão de excluir um tenant definitivamente, então "existe sessão?" não
     // é suficiente — precisa ser a sessão do administrador (Carlos).
     supabase.auth.getSession().then(({ data:{ session } }) => {
-      if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) navigate('/admin-login');
+      if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) navigate('/login');
       else load();
     });
   }, []);
