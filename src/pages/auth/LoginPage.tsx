@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import {
   Calendar, Eye, EyeOff, ClipboardList, ShoppingCart, CreditCard, BarChart3, Check, ArrowRight,
@@ -12,6 +13,8 @@ import { PLANO_OTICA, PLANO_CONSULTORIO } from '../../constants/planos';
 // numa tela de login) -- por isso a linha "+ Estoque, Financeiro, NF-e e
 // muito mais" logo abaixo, sinalizando que tem mais sem competir
 // visualmente com os planos, que sao o foco da tela.
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || 'carlosevideo28@gmail.com').toLowerCase();
+
 const MODULOS_DESTAQUE = [
   { Icon: Calendar, label: 'Agenda' },
   { Icon: Eye, label: 'Consulta / Rx' },
@@ -51,6 +54,14 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
+      // E-mail do Admin entra por esta mesma tela e vai direto pro painel
+      // (antes era so pelo /admin-login, que continua funcionando).
+      if (email.trim().toLowerCase() === ADMIN_EMAIL) {
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (error) throw new Error('Email ou senha incorretos');
+        navigate('/admin');
+        return;
+      }
       await signIn(email, password);
       navigate('/dashboard');
     } catch (err: any) {
@@ -115,9 +126,6 @@ export default function LoginPage() {
           <div style={{ marginTop: 24, textAlign: 'center' }}>
             <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
               Não tem conta? <Link to="/registro" style={{ color: '#6366f1', fontWeight: 600 }}>Criar agora →</Link>
-            </p>
-            <p style={{ marginTop: 8 }}>
-              <Link to="/admin" style={{ color: 'var(--text-muted)', fontSize: 12 }}>Acesso administrativo</Link>
             </p>
             <p style={{ marginTop: 8 }}>
               <Link to="/esqueci-senha" style={{ color: 'var(--text-muted)', fontSize: 12 }}>Esqueci minha senha</Link>
