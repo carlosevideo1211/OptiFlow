@@ -86,6 +86,21 @@ export function toLocalDateStr(d: Date = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
+// Mesma data N meses depois (parcelas do carne). Quando o mes nao tem esse dia
+// (30/02, 31/04...), usa o ultimo dia do mes. Antes usava setMonth direto e o
+// JavaScript pulava para o comeco do mes seguinte: carne com vencimento dia 30
+// ficava sem parcela em fevereiro e com duas em marco (02/03 e 30/03).
+// Corrigido 03/11/2026.
+export function somarMeses(base: Date, meses: number): Date {
+  const d = new Date(base);
+  const dia = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + meses);
+  const ultimoDia = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(dia, ultimoDia));
+  return d;
+}
+
 export const JUROS_DIA = 0.07;
 
 export function calcJuros(p: Parcela): number {

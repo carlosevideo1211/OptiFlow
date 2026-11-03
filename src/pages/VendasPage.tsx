@@ -27,7 +27,7 @@ import {
 // partir de "agora" precisam usar horario LOCAL, nao toISOString() (que
 // converte pra UTC e adianta o dia a partir de ~20h em Manaus).
 // toLocalDateStr() ja existe em crediarioTypes.ts.
-import { toLocalDateStr } from './crediario/crediarioTypes';
+import { toLocalDateStr, somarMeses } from './crediario/crediarioTypes';
 
 const OS_COLUNAS = 'id,os_number,customer_name,customer_id,frame_brand,frame_model,frame_color,frame_price,lens_type,lens_brand,lens_price,total,discount,entrada,od_esf,od_cil,od_eixo,oe_esf,oe_cil,oe_eixo,medico,obs_cliente,status';
 
@@ -85,7 +85,7 @@ export default function VendasPage() {
     const base=firstDate?new Date(firstDate+'T12:00:00'):new Date();
     const vBase=Math.floor((saldoVal/n)*100)/100;
     const resto=Math.round((saldoVal-vBase*n)*100)/100;
-    return Array.from({length:n},(_,i)=>{const d=new Date(base);d.setMonth(d.getMonth()+i);return{amount:i===0?vBase+resto:vBase,due_date:toLocalDateStr(d)};});
+    return Array.from({length:n},(_,i)=>{const d=somarMeses(base,i);return{amount:i===0?vBase+resto:vBase,due_date:toLocalDateStr(d)};});
   };
   // Devolve o motivo (texto para o operador) se a lista de parcelas do
   // crediário tiver algo que o banco recusaria ou que geraria um carnê errado;
@@ -1082,7 +1082,7 @@ export default function VendasPage() {
                     <div key={i} style={{ display:'flex', gap:6, alignItems:'center', marginBottom:6 }}>
                       <span style={{ fontSize:12, fontWeight:700, color:'#6366f1', minWidth:22 }}>{i+1}x</span>
                       <input type="number" step="0.01" value={p.amount} onChange={e => { const novoVal=parseFloat(e.target.value)||0; setParcelasEdit(prev => { const totAntes=prev.slice(0,i).reduce((s,x)=>s+x.amount,0); const resto=saldo-totAntes-novoVal; const restoParcelas=prev.length-i-1; const novaParc=restoParcelas>0?Math.round((resto/restoParcelas)*100)/100:0; return prev.map((x,j)=>j===i?{...x,amount:novoVal}:j>i?{...x,amount:novaParc}:x); }); }} style={{ width:90, padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)', color:'var(--text)', fontSize:12 }}/>
-                      <input type="date" value={p.due_date} onChange={e => { const novaData=e.target.value; setParcelasEdit(prev => prev.map((x,j) => { if(j===i) return {...x,due_date:novaData}; if(j>i && novaData){ const d=new Date(novaData+'T12:00:00'); d.setMonth(d.getMonth()+(j-i)); return {...x,due_date:toLocalDateStr(d)}; } return x; })); }} style={{ flex:1, padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)', color:'var(--text)', fontSize:12 }}/>
+                      <input type="date" value={p.due_date} onChange={e => { const novaData=e.target.value; setParcelasEdit(prev => prev.map((x,j) => { if(j===i) return {...x,due_date:novaData}; if(j>i && novaData){ const d=somarMeses(new Date(novaData+'T12:00:00'),j-i); return {...x,due_date:toLocalDateStr(d)}; } return x; })); }} style={{ flex:1, padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)', color:'var(--text)', fontSize:12 }}/>
                     </div>
                   ))}
                 </div>

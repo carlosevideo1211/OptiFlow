@@ -12,7 +12,7 @@ import {
 // data preenchida — precisa ser horario LOCAL, nao toISOString() (que
 // converte pra UTC e adianta o dia a partir de ~20h em Manaus).
 // toLocalDateStr() ja existe em crediarioTypes.ts.
-import { toLocalDateStr } from './crediario/crediarioTypes';
+import { toLocalDateStr, somarMeses } from './crediario/crediarioTypes';
 
 type Tab = 'clientes' | 'consultas' | 'vendas' | 'crediario' | 'os' | 'produtos';
 
@@ -271,8 +271,7 @@ export default function ImportacaoPage() {
                       venc = new Date(s);
                     }
                   }
-                  venc = new Date(venc);
-                  venc.setMonth(venc.getMonth() + i);
+                  venc = somarMeses(venc, i);
                   parcelas.push({
                     crediario_id: credData.id,
                     tenant_id: tenantId,

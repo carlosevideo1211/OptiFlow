@@ -13,7 +13,7 @@ import { formatBRL } from '../types/index';
 import { pixEMV } from '../utils/pix';
 import { computeTier, TIER_STYLES, type Tier, type ParcelaRanking } from '../utils/clienteRanking';
 import {
-  CINCO_ANOS_MS, hashPassword, JANELA_LABELS, calcJuros, toLocalDateStr, PRAZO_NEGATIVACAO_DIAS, dataVencimentoValida,
+  CINCO_ANOS_MS, hashPassword, JANELA_LABELS, calcJuros, toLocalDateStr, somarMeses, PRAZO_NEGATIVACAO_DIAS, dataVencimentoValida,
   type Parcela, type CrediarioResumo, type CobrancaLog,
 } from './crediario/crediarioTypes';
 import {
@@ -741,8 +741,7 @@ export default function CrediarioPage() {
       const novasParcelas: { crediario_id: string; tenant_id: string | null; installment_number: number; due_date: string; amount: number; status: string }[] = [];
       const dtBase = new Date(renego.dataInicio + 'T12:00:00');
       for (let i = 0; i < numP; i++) {
-        const dt = new Date(dtBase);
-        dt.setMonth(dt.getMonth() + i);
+        const dt = somarMeses(dtBase, i);
         novasParcelas.push({
           crediario_id: novoCred.id,
           tenant_id: tenantId,
