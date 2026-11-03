@@ -389,14 +389,19 @@ async function supabaseRpc(fnName: string, args: Record<string, unknown>) {
   return res.json();
 }
 
+// Registro do envio. E ele que impede o robo de mandar de novo a mesma mensagem (jaEnviado/podeReenviar).
+// 03/11/2026: antes o registro podia falhar calado (tipo fora da lista permitida na tabela, ou a mesma
+// parcela/cliente ja registrado) e o cliente recebia a mesma mensagem a cada 15 min - um cliente da Otica
+// Solar recebeu 131 cobrancas. Agora: atualiza a linha que ja existe (a cobranca de atraso a cada 7 dias passa
+// a contar do ultimo envio) e, se o registro falhar, PARA a execucao em vez de seguir mandando.
 async function logTrigger(tenantId: string, triggerType: string, referenceId: string, customerId: string | null, phone: string, success: boolean, errorMessage?: string) {
-  await fetch(`${SUPABASE_URL}/rest/v1/whatsapp_triggers_log`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/whatsapp_triggers_log?on_conflict=tenant_id,trigger_type,reference_id`, {
     method: "POST",
     headers: {
       apikey: SUPABASE_SERVICE_KEY,
       Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
       "Content-Type": "application/json",
-      Prefer: "resolution=ignore-duplicates",
+      Prefer: "resolution=merge-duplicates,return=minimal",
     },
     body: JSON.stringify({
       tenant_id: tenantId,
@@ -406,8 +411,12 @@ async function logTrigger(tenantId: string, triggerType: string, referenceId: st
       phone,
       success,
       error_message: errorMessage || null,
+      sent_at: new Date().toISOString(),
     }),
   });
+  if (!res.ok) {
+    throw new Error(`registro do envio falhou (${triggerType} ${referenceId}): HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+  }
 }
 
 async function jaEnviado(tenantId: string, triggerType: string, referenceId: string): Promise<boolean> {
