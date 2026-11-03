@@ -376,6 +376,16 @@ async function supabaseFetch(path: string) {
   return res.json();
 }
 
+// Busca linhas por lista de ids em lotes de 100 (uma lista grande no "in.(...)" estoura o tamanho do endereco).
+async function buscarPorIds(tabela: string, ids: string[], campos: string): Promise<any[]> {
+  const todos: any[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const rows = await supabaseFetch(`${tabela}?id=in.(${ids.slice(i, i + 100).join(",")})&select=${campos}`);
+    if (Array.isArray(rows)) todos.push(...rows);
+  }
+  return todos;
+}
+
 async function supabaseRpc(fnName: string, args: Record<string, unknown>) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fnName}`, {
     method: "POST",
@@ -436,11 +446,27 @@ async function podeReenviar(tenantId: string, triggerType: string, referenceId: 
   return diasPassados >= intervaloDias;
 }
 
-async function enviosHojeDoTenant(tenantId: string, inicioHojeIso: string): Promise<number> {
+// Envios de hoje da loja: o total (limite diario) e os clientes que ja receberam alguma mensagem hoje
+// (03/11/2026: no maximo UMA mensagem automatica por cliente por dia, somando todos os tipos).
+async function enviosHojeDoTenant(tenantId: string, inicioHojeIso: string): Promise<{ total: number; clientes: Set<string> }> {
   const rows = await supabaseFetch(
-    `whatsapp_triggers_log?tenant_id=eq.${tenantId}&success=eq.true&sent_at=gte.${inicioHojeIso}&select=id`
+    `whatsapp_triggers_log?tenant_id=eq.${tenantId}&sent_at=gte.${inicioHojeIso}&select=customer_id,success`
   );
-  return Array.isArray(rows) ? rows.length : 0;
+  const lista = Array.isArray(rows) ? rows : [];
+  return {
+    total: lista.filter((r: any) => r.success).length,
+    clientes: new Set(lista.map((r: any) => r.customer_id).filter(Boolean)),
+  };
+}
+
+// Ultimo envio com sucesso de um tipo para um CLIENTE (qualquer parcela dele). Usado na cobranca de atraso, que
+// passou a ser uma mensagem por cliente (antes era uma por parcela e o registro era por parcela).
+async function diasDesdeUltimoEnvioCliente(tenantId: string, triggerType: string, customerId: string): Promise<number> {
+  const rows = await supabaseFetch(
+    `whatsapp_triggers_log?tenant_id=eq.${tenantId}&trigger_type=eq.${triggerType}&customer_id=eq.${customerId}&success=eq.true&select=sent_at&order=sent_at.desc&limit=1`
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return Infinity;
+  return (Date.now() - new Date(rows[0].sent_at).getTime()) / 86400000;
 }
 
 function fmtData(d: string) {
@@ -544,6 +570,7 @@ serve(async (req) => {
   // Janela do lembrete de retorno: exame entre 365 e 372 dias atras (pega dias em que o limite diario segurou o envio).
   const menos372dias = new Date(Date.now() - 372 * 86400000 - MANAUS_OFFSET_MS).toISOString().split("T")[0];
   const LIMITE_COBRANCA_POR_EXECUCAO = 50;
+  const INTERVALO_COBRANCA_ATRASO_DIAS = 15;
 
   // Para debitos com mais de 1 ano, consolida tudo num unico aviso por
   // CLIENTE (nao por parcela), com o valor total (parcelas + juros). O tom
@@ -644,7 +671,10 @@ serve(async (req) => {
       // Checa o limite diario deste tenant ANTES de comecar a processar seus
       // gatilhos — protege mesmo quando o cron ja rodou varias vezes hoje.
       const inicioHoje = new Date(hojeStr + "T00:00:00-04:00");
-      const jaEnviouHoje = await enviosHojeDoTenant(tenant.id, inicioHoje.toISOString());
+      const enviosHoje = await enviosHojeDoTenant(tenant.id, inicioHoje.toISOString());
+      const jaEnviouHoje = enviosHoje.total;
+      const clientesComMensagemHoje = enviosHoje.clientes;
+      const recebeuHoje = (customerId: string | null | undefined) => !!customerId && clientesComMensagemHoje.has(customerId);
       if (jaEnviouHoje >= LIMITE_DIARIO_POR_TENANT) {
         if (!resultado.tenants_limitados.includes(tenant.id)) resultado.tenants_limitados.push(tenant.id + ":limite_diario");
         continue;
@@ -667,7 +697,8 @@ serve(async (req) => {
         }
         return true;
       }
-      function registrarEnvio() {
+      function registrarEnvio(customerId?: string | null) {
+        if (customerId) clientesComMensagemHoje.add(customerId);
         enviosNestaExecucao++;
         enviosTenantAtual++;
         resultado.enviados_total++;
@@ -687,12 +718,13 @@ serve(async (req) => {
         const telefone = c.whatsapp || c.phone;
         if (!telefone) continue;
         const refId = `${c.id}:${hoje.getUTCFullYear()}`;
+        if (recebeuHoje(c.id)) continue;
         if (await jaEnviado(tenant.id, "aniversario", refId)) continue;
 
         const texto = `Olá, ${c.name}! 🎉 A equipe da ${loja} deseja um feliz aniversário! Que seu dia seja repleto de alegria. Um abraço da nossa equipe!`;
         const r = await enviarMensagem(canalInfo, telefone, { texto, templateName: TEMPLATE_ANIVERSARIO, templateParams: [c.name, loja] });
         await logTrigger(tenant.id, "aniversario", refId, c.id, telefone, r.ok, r.error);
-        registrarEnvio();
+        registrarEnvio(c.id);
         if (r.ok) resultado.aniversario++; else resultado.erros.push(`aniversario ${c.id}: ${r.error}`);
         await delayAleatorio(canalInfo.canal);
       }
@@ -724,6 +756,7 @@ serve(async (req) => {
             const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
             if (!telefone) continue;
             const refId = String(p.id);
+            if (recebeuHoje(cred.customer_id)) continue;
             if (await jaEnviado(tenant.id, "vencimento", refId)) continue;
 
             const valor = Number(p.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -736,7 +769,7 @@ serve(async (req) => {
               pix: pixLoja ? { ...pixLoja, valor: Number(p.amount || 0) } : undefined,
             });
             await logTrigger(tenant.id, "vencimento", refId, cred.customer_id, telefone, r.ok, r.error);
-            registrarEnvio();
+            registrarEnvio(cred.customer_id);
             if (r.ok) resultado.vencimento++; else resultado.erros.push(`vencimento ${p.id}: ${r.error}`);
             await delayAleatorio(canalInfo.canal);
           }
@@ -770,6 +803,7 @@ serve(async (req) => {
             const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
             if (!telefone) continue;
             const refId = String(p.id);
+            if (recebeuHoje(cred.customer_id)) continue;
             if (await jaEnviado(tenant.id, "vencimento_dia", refId)) continue;
 
             const valor = Number(p.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -782,7 +816,7 @@ serve(async (req) => {
               pix: pixLoja ? { ...pixLoja, valor: Number(p.amount || 0) } : undefined,
             });
             await logTrigger(tenant.id, "vencimento_dia", refId, cred.customer_id, telefone, r.ok, r.error);
-            registrarEnvio();
+            registrarEnvio(cred.customer_id);
             if (r.ok) resultado.vencimento_dia++; else resultado.erros.push(`vencimento_dia ${p.id}: ${r.error}`);
             await delayAleatorio(canalInfo.canal);
           }
@@ -816,6 +850,7 @@ serve(async (req) => {
             const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
             if (!telefone) continue;
             const refId = String(p.id);
+            if (recebeuHoje(cred.customer_id)) continue;
             if (await jaEnviado(tenant.id, "vencimento_atraso5", refId)) continue;
 
             const valor = Number(p.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -828,7 +863,7 @@ serve(async (req) => {
               pix: pixLoja ? { ...pixLoja, valor: Number(p.amount || 0) } : undefined,
             });
             await logTrigger(tenant.id, "vencimento_atraso5", refId, cred.customer_id, telefone, r.ok, r.error);
-            registrarEnvio();
+            registrarEnvio(cred.customer_id);
             if (r.ok) resultado.vencimento_atraso5++; else resultado.erros.push(`vencimento_atraso5 ${p.id}: ${r.error}`);
             await delayAleatorio(canalInfo.canal);
           }
@@ -847,12 +882,13 @@ serve(async (req) => {
           const telefone = cliente?.[0]?.whatsapp || cliente?.[0]?.phone;
           if (!telefone) continue;
           const refId = String(os.id);
+          if (recebeuHoje(os.customer_id)) continue;
           if (await jaEnviado(tenant.id, "pos_venda", refId)) continue;
 
           const texto = `Olá, ${os.customer_name}! Aqui é da ${loja}. Já faz uma semana que você retirou seus óculos — está tudo certinho? Se tiver qualquer ajuste a fazer, é só nos chamar!`;
           const r = await enviarMensagem(canalInfo, telefone, { texto, templateName: TEMPLATE_POS_VENDA, templateParams: [os.customer_name, loja] });
           await logTrigger(tenant.id, "pos_venda", refId, os.customer_id, telefone, r.ok, r.error);
-          registrarEnvio();
+          registrarEnvio(os.customer_id);
           if (r.ok) resultado.pos_venda++; else resultado.erros.push(`pos_venda ${os.id}: ${r.error}`);
           await delayAleatorio(canalInfo.canal);
         }
@@ -870,6 +906,7 @@ serve(async (req) => {
           const telefone = cliente?.[0]?.whatsapp || cliente?.[0]?.phone;
           if (!telefone) continue;
           const refId = String(os.id);
+          if (recebeuHoje(os.customer_id)) continue;
           if (await jaEnviado(tenant.id, "adaptacao", refId)) continue;
 
           const tipoLower = String(os.tipo_lente).toLowerCase();
@@ -880,7 +917,7 @@ serve(async (req) => {
             templateParams: [os.customer_name, loja, tipoLower],
           });
           await logTrigger(tenant.id, "adaptacao", refId, os.customer_id, telefone, r.ok, r.error);
-          registrarEnvio();
+          registrarEnvio(os.customer_id);
           if (r.ok) resultado.adaptacao++; else resultado.erros.push(`adaptacao ${os.id}: ${r.error}`);
           await delayAleatorio(canalInfo.canal);
         }
@@ -889,47 +926,59 @@ serve(async (req) => {
       // ---------- 5) COBRANÇA DE ATRASO ----------
       if (podeEnviarMais()) {
         const atrasadas = await supabaseFetch(
-          `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=lt.${menos30dias}&due_date=gte.${menos365dias}&status=eq.pendente&select=id,crediario_id,due_date,amount&order=due_date.asc&limit=${LIMITE_COBRANCA_POR_EXECUCAO}`
+          `crediario_parcelas?tenant_id=eq.${tenant.id}&due_date=lt.${menos30dias}&due_date=gte.${menos365dias}&status=eq.pendente&select=id,crediario_id,due_date,amount&order=due_date.asc&limit=1000`
         );
         if (Array.isArray(atrasadas) && atrasadas.length > 0) {
-          const credIds2 = [...new Set(atrasadas.map((p: any) => p.crediario_id))].join(",");
-          const creditos2 = await supabaseFetch(`crediario?id=in.(${credIds2})&select=id,customer_id,customer_name`);
+          const creditos2 = await buscarPorIds("crediario", [...new Set(atrasadas.map((p: any) => p.crediario_id))], "id,customer_id,customer_name");
           const credMap2: Record<string, any> = {};
           for (const c of creditos2) credMap2[c.id] = c;
 
-          const custIds2 = [...new Set(creditos2.map((c: any) => c.customer_id).filter(Boolean))].join(",");
           const clientesMap2: Record<string, any> = {};
-          if (custIds2) {
-            const clientesCred2 = await supabaseFetch(`customers?id=in.(${custIds2})&select=id,whatsapp,phone,whatsapp_opt_out`);
-            for (const c of clientesCred2) clientesMap2[c.id] = c;
+          const clientesCred2 = await buscarPorIds("customers", [...new Set(creditos2.map((c: any) => c.customer_id).filter(Boolean))], "id,whatsapp,phone,whatsapp_opt_out");
+          for (const c of clientesCred2) clientesMap2[c.id] = c;
+
+          // 03/11/2026 (pedido do Carlos, clientes reclamando de muitas cobrancas): UMA mensagem por CLIENTE com
+          // todas as parcelas atrasadas juntas, no maximo a cada 15 dias. Antes era uma por parcela a cada 7 dias.
+          // O registro fica na parcela mais antiga (aparece no historico de cobranca dela no Crediario).
+          const porCliente2: Record<string, { nome: string; total: number; qtd: number; maisAntiga: any }> = {};
+          for (const p of atrasadas) {
+            const cred = credMap2[p.crediario_id];
+            if (!cred?.customer_id) continue;
+            const atual = porCliente2[cred.customer_id];
+            if (!atual) porCliente2[cred.customer_id] = { nome: cred.customer_name, total: Number(p.amount || 0), qtd: 1, maisAntiga: p };
+            else { atual.total += Number(p.amount || 0); atual.qtd++; if (p.due_date < atual.maisAntiga.due_date) atual.maisAntiga = p; }
           }
 
-          for (const p of atrasadas) {
+          for (const customerId of Object.keys(porCliente2)) {
             if (!podeEnviarMais()) break;
-            const cred = credMap2[p.crediario_id];
-            if (!cred) continue;
-            const clienteInfo = clientesMap2[cred.customer_id];
+            const clienteInfo = clientesMap2[customerId];
             if (clienteInfo?.whatsapp_opt_out) continue;
             const telefone = clienteInfo?.whatsapp || clienteInfo?.phone;
             if (!telefone) continue;
-            const refId = String(p.id);
-            if (!(await podeReenviar(tenant.id, "cobranca_atraso", refId, 7))) continue;
+            if (recebeuHoje(customerId)) continue;
+            if ((await diasDesdeUltimoEnvioCliente(tenant.id, "cobranca_atraso", customerId)) < INTERVALO_COBRANCA_ATRASO_DIAS) continue;
 
-            const valor = Number(p.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-            const data = fmtData(p.due_date);
-            const texto = `Olá, ${cred.customer_name}. Este é um lembrete importante da ${loja}: identificamos uma parcela em atraso no valor de ${valor}, com vencimento em ${data}. Pedimos que regularize o quanto antes para evitar transtornos. Se você já efetuou o pagamento, por favor desconsidere esta mensagem ou nos avise por aqui para regularizarmos seu cadastro. Qualquer dúvida ou para negociar, estamos à disposição.`;
+            const info = porCliente2[customerId];
+            const refId = String(info.maisAntiga.id);
+            const valor = info.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const data = fmtData(info.maisAntiga.due_date);
+            const parcelasTxt = info.qtd === 1
+              ? `uma parcela em atraso no valor de ${valor}, com vencimento em ${data}`
+              : `${info.qtd} parcelas em atraso, totalizando ${valor} (a mais antiga vencida em ${data})`;
+            const texto = `Olá, ${info.nome}. Este é um lembrete importante da ${loja}: identificamos ${parcelasTxt}. Pedimos que regularize o quanto antes para evitar transtornos. Se você já efetuou o pagamento, por favor desconsidere esta mensagem ou nos avise por aqui para regularizarmos seu cadastro. Qualquer dúvida ou para negociar, estamos à disposição.`;
             // Ordem dos parametros do modelo Meta e nome, loja, valor, data —
             // diferente da ordem usada em vencimento_proximo (nome, valor,
-            // loja, data). Ver nota em modelos_whatsapp_meta.md.
+            // loja, data). Ver nota em modelos_whatsapp_meta.md. Com varias
+            // parcelas vai o total e a data da mais antiga.
             const r = await enviarMensagem(canalInfo, telefone, {
               texto,
               templateName: TEMPLATE_COBRANCA_ATRASO,
-              templateParams: [cred.customer_name, loja, valor, data],
-              pix: pixLoja ? { ...pixLoja, valor: Number(p.amount || 0) } : undefined,
+              templateParams: [info.nome, loja, valor, data],
+              pix: pixLoja ? { ...pixLoja, valor: info.total } : undefined,
             });
-            await logTrigger(tenant.id, "cobranca_atraso", refId, cred.customer_id, telefone, r.ok, r.error);
-            registrarEnvio();
-            if (r.ok) resultado.cobranca_atraso++; else resultado.erros.push(`cobranca_atraso ${p.id}: ${r.error}`);
+            await logTrigger(tenant.id, "cobranca_atraso", refId, customerId, telefone, r.ok, r.error);
+            registrarEnvio(customerId);
+            if (r.ok) resultado.cobranca_atraso++; else resultado.erros.push(`cobranca_atraso ${customerId}: ${r.error}`);
             await delayAleatorio(canalInfo.canal);
           }
         }
@@ -983,6 +1032,7 @@ serve(async (req) => {
             // Um unico aviso por cliente (nao por parcela, nem periodico) — o
             // refId e o proprio customerId.
             const triggerType = tenant.spc_serasa_ativo ? "aviso_negativacao" : "negociacao_debito_antigo";
+            if (recebeuHoje(customerId)) continue;
             if (await jaEnviado(tenant.id, triggerType, customerId)) continue;
 
             const valorFmt = info.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -1000,7 +1050,7 @@ serve(async (req) => {
 
             const r = await enviarMensagem(canalInfo, telefone, { texto, templateName, templateParams });
             await logTrigger(tenant.id, triggerType, customerId, customerId, telefone, r.ok, r.error);
-            registrarEnvio();
+            registrarEnvio(customerId);
             if (r.ok) {
               if (triggerType === "aviso_negativacao") resultado.aviso_negativacao++; else resultado.negociacao_debito_antigo++;
             } else {
@@ -1039,13 +1089,14 @@ serve(async (req) => {
             const telefone = c.whatsapp || c.phone;
             if (!telefone) continue;
             const refId = `${c.id}:${hoje.getUTCFullYear()}`;
+            if (recebeuHoje(c.id)) continue;
             if (await jaEnviado(tenant.id, "retorno_exame", refId)) continue;
             const nome = String(c.name || porCliente[c.id].nome || "").split(" ")[0] || "cliente";
             const dataFmt = fmtData(porCliente[c.id].data);
             const texto = `Olá, ${nome}! Aqui é da ${loja}. Seu último exame de vista conosco foi em ${dataFmt} e já faz 1 ano. Para cuidar bem da sua visão, o ideal é refazer o exame todo ano. Quer agendar? É só responder esta mensagem.`;
             const r = await enviarMensagem(canalInfo, telefone, { texto, templateName: TEMPLATE_RETORNO_EXAME, templateParams: [nome, loja, dataFmt] });
             await logTrigger(tenant.id, "retorno_exame", refId, c.id, telefone, r.ok, r.error);
-            registrarEnvio();
+            registrarEnvio(c.id);
             retornoNestaExecucao++;
             if (r.ok) resultado.retorno_exame++; else resultado.erros.push(`retorno_exame ${c.id}: ${r.error}`);
             await delayAleatorio(canalInfo.canal);

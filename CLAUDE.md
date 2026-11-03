@@ -824,3 +824,20 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   renegociacao. Feito via SQL (backup em merge_clientes_backup_20261019): tudo passou para o cadastro com CPF (renomeado sem
   "(RENEGOCIAÇÃO)"), o outro ficou inativo "(duplicado - juntado em 19/10)", carne 8x com notes 'Renegociacao:VisionProERP...'
   e o carne vazio b8c2d0f0 cancelado (nao apagado).
+
+## Sessao 30/10 e 03/11/2026 - Login unico do Admin e mensagens repetidas no WhatsApp
+- Admin (carlosevideo28@gmail.com) entra pela tela /login normal e vai direto para /admin. "Sair" do admin e
+  qualquer acesso ao admin sem sessao voltam para /login; /admin-login so redireciona para /login.
+- BUG GRAVE (03/11, Larissa/Otica Solar): o registro do envio (whatsapp_triggers_log) falhava calado e o robo
+  repetia a mesma mensagem a cada 15 min (um cliente recebeu 131 cobrancas de 26 a 28/10; aviso de exame 10x
+  em 03/11). Causas: (1) retorno_exame, aviso_negativacao e negociacao_debito_antigo fora do CHECK de
+  trigger_type (migration 20261103_triggers_log_tipos.sql); (2) UNIQUE (tenant_id, trigger_type, reference_id)
+  + insert com ignore-duplicates: o reenvio da cobranca de atraso nunca ficava registrado.
+  Correcao em send-whatsapp-triggers/logTrigger: upsert (on_conflict + merge-duplicates, atualiza sent_at) e,
+  se o registro falhar, a execucao PARA (throw) em vez de seguir mandando. Ao criar um trigger_type novo,
+  incluir no CHECK da tabela.
+- Regras combinadas com o Carlos (03/11): no maximo UMA mensagem automatica por cliente por dia (todos os
+  tipos somados); cobranca de atraso (30-365 dias) e UMA por cliente com todas as parcelas juntas, a cada 15
+  dias (registro na parcela mais antiga); avisos de vencimento continuam 3 (1 dia antes, no dia, +5 dias).
+- Para auditar o que saiu de verdade pelo Evolution: Postgres do container evolution-postgres-1 no VPS
+  (tabelas "Message"/"Instance", instancia optiflow-<tenant_id>, key->>'fromMe').
