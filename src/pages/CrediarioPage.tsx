@@ -22,9 +22,11 @@ import {
   imprimirCarneCompleto as imprimirCarneCompletoDoc,
   imprimirQuitacaoCrediario as imprimirQuitacaoCrediarioDoc,
 } from './crediario/crediarioDocumentos';
+import PainelCobranca, { useCobrancaNova } from './crediario/PainelCobranca';
 
 export default function CrediarioPage() {
   const { tenantId } = useAuth();
+  const cobrancaNova = useCobrancaNova(tenantId);
   const location = useLocation();
   const navigate = useNavigate();
   const [parcelas, setParcelas] = useState<Parcela[]>([]);
@@ -50,7 +52,7 @@ export default function CrediarioPage() {
   const [dateTo, setDateTo]     = useState('');
   const [cobrancaLogs, setCobrancaLogs] = useState<Record<string, CobrancaLog>>({});
   const [crediariosResumo, setCrediariosResumo] = useState<CrediarioResumo[]>([]);
-  const [aba, setAba] = useState<'parcelas'|'negativacao'|'arquivo'>('parcelas');
+  const [aba, setAba] = useState<'parcelas'|'negativacao'|'arquivo'|'resultado'>('parcelas');
   const [marcandoNegativado, setMarcandoNegativado] = useState<Set<string>>(new Set());
   const [expandidoNegativacao, setExpandidoNegativacao] = useState<Set<string>>(new Set());
   const [searchNegativacao, setSearchNegativacao] = useState('');
@@ -830,7 +832,10 @@ export default function CrediarioPage() {
         <button onClick={()=>setAba('parcelas')} style={{ padding:'10px 20px', border:'none', cursor:'pointer', fontWeight:600, fontSize:13, background: aba==='parcelas'?'#6366f1':'transparent', color: aba==='parcelas'?'white':'rgba(255,255,255,.5)', borderRadius:'6px 6px 0 0' }}>Parcelas</button>
         <button onClick={()=>setAba('negativacao')} style={{ padding:'10px 20px', border:'none', cursor:'pointer', fontWeight:600, fontSize:13, background: aba==='negativacao'?'#6366f1':'transparent', color: aba==='negativacao'?'white':'rgba(255,255,255,.5)', borderRadius:'6px 6px 0 0' }}>Análise p/ Negativação</button>
         <button onClick={()=>setAba('arquivo')} style={{ padding:'10px 20px', border:'none', cursor:'pointer', fontWeight:600, fontSize:13, background: aba==='arquivo'?'#6366f1':'transparent', color: aba==='arquivo'?'white':'rgba(255,255,255,.5)', borderRadius:'6px 6px 0 0' }}>Arquivo (5+ anos)</button>
+        {cobrancaNova && <button onClick={()=>setAba('resultado')} style={{ padding:'10px 20px', border:'none', cursor:'pointer', fontWeight:600, fontSize:13, background: aba==='resultado'?'#6366f1':'transparent', color: aba==='resultado'?'white':'rgba(255,255,255,.5)', borderRadius:'6px 6px 0 0' }}>Resultado da cobrança</button>}
       </div>
+
+      {aba === 'resultado' && cobrancaNova && tenantId && <PainelCobranca tenantId={tenantId}/>}
 
       {aba === 'parcelas' && (<>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:24 }}>

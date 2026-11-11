@@ -192,6 +192,33 @@ serve(async (req) => {
     return new Response(JSON.stringify({ ok: r.ok, status: r.status, resposta: r.d }), { headers: { "Content-Type": "application/json" } });
   }
 
+  // ?acao=criar_acordo -> oferta de acordo do Feirao (cobranca nova, Castanho, 11/11/2026). Texto + rodape PARAR +
+  // 3 botoes de resposta rapida. Pedido como UTILITY com allow_category_change (a Meta deve passar para MARKETING).
+  if (acao === "criar_acordo") {
+    const nome = "oferta_acordo_feirao";
+    if (existentes.some((t) => t.name === nome)) {
+      return new Response(JSON.stringify({ ja_existia: true, modelo: resumo(existentes.find((t) => t.name === nome)) }), { headers: { "Content-Type": "application/json" } });
+    }
+    const r = await gj(`${G}/${WABA_ID}/message_templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({
+        name: nome, language: "pt_BR", category: "UTILITY", allow_category_change: true,
+        components: [
+          { type: "BODY", text: "Olá {{1}}, aqui é da {{2}}.\nAté {{3}} você pode quitar seu débito de R$ {{4}} por R$ {{5}} à vista no Pix, ou parcelar em até {{6}}x.\nEscolha uma opção abaixo.",
+            example: { body_text: [["Maria", "Ótica Evangelista", "31/12", "840,00", "420,00", "4"]] } },
+          { type: "FOOTER", text: "Responda PARAR para não receber mais mensagens." },
+          { type: "BUTTONS", buttons: [
+            { type: "QUICK_REPLY", text: "Pagar à vista" },
+            { type: "QUICK_REPLY", text: "Parcelar" },
+            { type: "QUICK_REPLY", text: "Falar com a loja" },
+          ] },
+        ],
+      }),
+    });
+    return new Response(JSON.stringify({ ok: r.ok, status: r.status, resposta: r.d }), { headers: { "Content-Type": "application/json" } });
+  }
+
   const img = await handleImagemExemplo();
   if (!img.handle) return new Response(JSON.stringify({ ok: false, erro_imagem: img.erro }), { status: 500 });
 
