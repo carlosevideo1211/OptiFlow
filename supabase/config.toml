@@ -54,3 +54,13 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/centofin-sync/index.ts"
 # Chamada pelo pg_cron (x-cron-secret): manda vendas, despesas e carne de cada loja para o Centofin.
+
+[functions.checkup]
+enabled = true
+verify_jwt = false
+
+[functions.vigia-cobranca]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/vigia-cobranca/index.ts"
+# Chamada pelo pg_cron (x-cron-secret) de hora em hora: avisa o Carlos se o robo parar, o WhatsApp cair ou os erros subirem.
