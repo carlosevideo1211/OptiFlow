@@ -35,7 +35,7 @@ export function useRespostasPendentes(tenantId?: string | null, ativo?: boolean)
 }
 
 interface Acordo {
-  id: string; customer_id: string; status: string; tipo: string | null; valor_original: number | null; valor_juros: number | null;
+  id: string; customer_id: string; phone: string | null; status: string; tipo: string | null; valor_original: number | null; valor_juros: number | null;
   valor_vista: number | null; n_parcelas: number | null; valor_parcela: number | null; valor_acordo: number | null; pix_valor: number | null;
   expira_em: string | null; ofertado_em: string | null; aceito_em: string | null; fechado_em: string | null; fechado_por: string | null;
   customers?: { name: string } | null;
@@ -76,6 +76,18 @@ export default function RespostasCobranca({ tenantId, onVerCliente }: { tenantId
     setFechando(null);
     if (error) { toast.error('Não foi possível fechar o acordo: ' + error.message, { duration: 10000 }); return; }
     toast.success('Acordo fechado! Carnê de renegociação criado.');
+    // Confirmacao para o cliente no WhatsApp (pedido do Carlos, 11/11/2026). Vai como mensagem livre: o cliente
+    // conversou com o robo ha pouco (escolheu o acordo), entao a conversa de 24h da Meta normalmente esta aberta.
+    if (a.phone) {
+      const primeiro = (a.customers?.name || '').trim().split(/\s+/)[0];
+      const prox = new Date(); prox.setMonth(prox.getMonth() + 1);
+      const texto = a.tipo === 'vista'
+        ? `Pagamento de ${brl(a.pix_valor)} confirmado${primeiro ? ', ' + primeiro : ''}! ✅ Seu acordo do Feirão Limpa Nome está QUITADO. Obrigado pela confiança!`
+        : `Entrada de ${brl(a.pix_valor)} confirmada${primeiro ? ', ' + primeiro : ''}! ✅ Seu acordo do Feirão Limpa Nome está ativo: faltam ${(a.n_parcelas || 1) - 1}x de ${brl(a.valor_parcela)}, a próxima em ${prox.toLocaleDateString('pt-BR')}. Vamos te lembrar antes de cada vencimento, com o Pix.`;
+      const { data: env, error: errEnv } = await supabase.functions.invoke('whatsapp-manage', { body: { action: 'send_reply', phone: a.phone, text: texto } });
+      if (errEnv || (env as any)?.ok === false) toast('Acordo fechado, mas a confirmação no WhatsApp não foi: ' + ((env as any)?.error || errEnv?.message || 'erro'), { icon: '⚠️', duration: 9000 });
+      else toast.success('Confirmação enviada ao cliente no WhatsApp.');
+    }
     carregar();
   };
 
