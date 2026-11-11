@@ -45,6 +45,7 @@ language sql stable security definer set search_path = public as $$
   where length(b.fone) >= 10
     and b.dias_max between 31 and 1825          -- ate 30 dias fica na regua normal; mais de 5 anos fica de fora
     and b.original < 1500                        -- valor alto: o Carlos liga
+    and not exists (select 1 from customers x where x.id = b.id and x.telefone_sem_whatsapp_em is not null) -- numero sem WhatsApp
     and not (b.cidade = '' and b.importado)      -- importado sem cidade: conferir antes
     and b.cidade !~* 'auta[sz]|altaz'            -- cliente de Autazes e da outra loja
     and not exists (select 1 from cobranca_acordos a where a.customer_id = b.id)          -- oferta so uma vez

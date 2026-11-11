@@ -7,7 +7,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test:robo": "node scripts/checa-trava-robo.mjs",
+    "deploy:robo": "node scripts/checa-trava-robo.mjs && npx supabase functions deploy send-whatsapp-triggers --project-ref fkwamdnstrbvgheosalz --no-verify-jwt"
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.7.0",

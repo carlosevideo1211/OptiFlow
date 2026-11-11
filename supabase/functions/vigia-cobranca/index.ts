@@ -138,6 +138,7 @@ serve(async (req) => {
     // Na simulacao da para fingir outra hora (?hora=15) para testar os avisos do robo parado.
     const horaTeste = new URL(req.url).searchParams.get("hora");
     const hora = simular && horaTeste ? Number(horaTeste) : Number(dados.hora_manaus);
+    if (simular && new URL(req.url).searchParams.get("semana") === "1") dados.dia_semana = 1;
     const domingo = Number(dados.dia_semana) === 7;
     const avisos: string[] = [];          // linhas do aviso desta rodada
     const gravar: any[] = [];             // novos estados
@@ -221,6 +222,31 @@ serve(async (req) => {
     }
     for (const chave of Object.keys(estados)) {
       if (chave.startsWith("paguei:") && !comParado.has(chave.slice(7))) checar(chave, false, "ok", "", `🟢 Os "PAGUEI" pendentes foram conferidos.`);
+    }
+
+    // 5. Trava (11/11/2026): cliente com mais de 1 mensagem automatica hoje. Avisa 1x por dia (chave muda por data).
+    const dup = (await db("rpc/vigia_mensagens_duplicadas", { method: "POST", body: "{}" })) || [];
+    if (dup.length) {
+      checar(`duplicadas:${dados.hoje}`, true, "dup",
+        `🔴 TRAVA: ${dup.length} cliente(s) receberam mais de 1 mensagem automática hoje (regra: no máximo 1 por dia): ` +
+          dup.slice(0, 5).map((d: any) => `${d.cliente} (${d.loja}, ${d.qtd}x: ${d.tipos})`).join("; ") + ". Confira o robô.", "");
+    }
+
+    // 6. Resumo semanal (segunda, 8h): WhatsApp de cada loja + prova de que o vigia esta vivo.
+    if (Number(dados.dia_semana) === 1 && hora === 8 && !estados[`semanal:${dados.hoje}`]) {
+      const todas = (await db("tenants?status=eq.ativo&whatsapp_auto_ativo=eq.true&id=neq.de0e0000-0000-4000-8000-0000000000d1&select=id,company_name,whatsapp_canal,whatsapp_instance_name&order=company_name")) || [];
+      const ok: string[] = [], caiu: string[] = [], nunca: string[] = [];
+      for (const t of todas) {
+        const vig = (dados.lojas || []).find((l: any) => l.id === t.id);
+        const nome = String(t.company_name).trim();
+        if (t.whatsapp_canal === "meta" && vig?.wa_phone_id) ((await estadoMeta(vig.wa_phone_id)).startsWith("CONNECTED") ? ok : caiu).push(nome + " (oficial)");
+        else if (t.whatsapp_instance_name) ((await estadoEvolution(t.whatsapp_instance_name)) === "open" ? ok : caiu).push(nome);
+        else nunca.push(nome);
+      }
+      avisos.push(`📋 Resumo da semana (o vigia está ligado). WhatsApp das lojas ativas: 🟢 conectado: ${ok.join(", ") || "nenhuma"}` +
+        (caiu.length ? ` · 🔴 desconectado: ${caiu.join(", ")}` : "") +
+        (nunca.length ? ` · ⚪ nunca conectou o QR Code (não recebem cobrança automática): ${nunca.join(", ")}` : "") + ".");
+      gravar.push({ chave: `semanal:${dados.hoje}`, estado: "ok", alterado_em: agora.toISOString(), ultimo_aviso: agora.toISOString() });
     }
 
     let enviado: { canal: string; ok: boolean; erro?: string | null } | null = null;

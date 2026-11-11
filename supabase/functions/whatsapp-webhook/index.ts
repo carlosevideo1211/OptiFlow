@@ -451,6 +451,17 @@ serve(async (req) => {
           });
           // Falha de entrega de mensagem automatica: fica registrada no log do servidor.
           if (s.status === "failed") console.error("entrega falhou:", tenantId, s.recipient_id, erro);
+          // Cobranca nova (Telefones, 11/11/2026): numero sem WhatsApp fica marcado no cadastro, para a loja corrigir
+          // (lista "Corrigir telefones" no Crediario). A marca some quando o telefone do cadastro e alterado.
+          if (s.status === "failed" && String(s.errors?.[0]?.code) === "131026" && s.recipient_id) {
+            const f8 = so8(s.recipient_id);
+            const cs = await db(`customers?tenant_id=eq.${tenantId}&or=(phone.ilike.*${f8.slice(-4)},whatsapp.ilike.*${f8.slice(-4)})&select=id,phone,whatsapp&limit=50`);
+            for (const c of Array.isArray(cs) ? cs : []) {
+              if (so8(c.whatsapp || c.phone) === f8) {
+                await db(`customers?id=eq.${c.id}`, { method: "PATCH", body: JSON.stringify({ telefone_sem_whatsapp_em: new Date().toISOString() }) });
+              }
+            }
+          }
         }
       }
     }

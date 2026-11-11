@@ -31,8 +31,11 @@ import { toLocalDateStr, somarMeses } from './crediario/crediarioTypes';
 
 const OS_COLUNAS = 'id,os_number,customer_name,customer_id,frame_brand,frame_model,frame_color,frame_price,lens_type,lens_brand,lens_price,total,discount,entrada,od_esf,od_cil,od_eixo,oe_esf,oe_cil,oe_eixo,medico,obs_cliente,status';
 
+import { telefoneValido } from '../utils/telefone';
+import { useCobrancaNova } from './crediario/PainelCobranca';
 export default function VendasPage() {
   const { tenantId } = useAuth();
+  const cobrancaNova = useCobrancaNova(tenantId);
   const location = useLocation();
   const navigate = useNavigate();
   const visualNovo = useVisualNovo(tenantId);
@@ -504,6 +507,14 @@ export default function VendasPage() {
     let parcelasPlanejadas: { amount: number; due_date: string }[] = [];
     if (payment === 'crediario') {
       if (!selectedCustomer) { toast.error('Para vender no crediário, selecione o cliente na lista (o carnê precisa estar ligado ao cadastro do cliente).', { duration: 8000 }); return; }
+      // Cobranca nova (11/11/2026, so lojas com o interruptor ligado): sem telefone valido o robo nao consegue cobrar.
+      if (cobrancaNova) {
+        const cli = customers.find(c => c.id === selectedCustomer);
+        if (!telefoneValido(cli?.whatsapp) && !telefoneValido(cli?.phone)) {
+          toast.error('Venda no crediário só com o celular do cliente: cadastre um celular válido (com DDD) no cadastro do cliente antes de finalizar. A venda ainda não foi salva.', { duration: 10000 });
+          return;
+        }
+      }
       if (!installments || installments < 1) { toast.error('Informe o número de parcelas do crediário.'); return; }
       parcelasPlanejadas = parcelasEdit.length === installments ? parcelasEdit : gerarParcelasEdit(installments, totalDevedor, dueDate);
       const problema = problemaNasParcelas(parcelasPlanejadas, totalDevedor);

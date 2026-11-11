@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useVisualNovo } from '../lib/visualNovo';
@@ -51,7 +51,9 @@ export default function ClientesPage() {
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
   const [loading, setLoading]     = useState(true);
-  const [search, setSearch]       = useState('');
+  // Busca vinda de outra tela (ex.: Crediario > Corrigir telefones, 11/11/2026).
+  const locationBusca = useLocation();
+  const [search, setSearch]       = useState<string>(() => String((locationBusca.state as any)?.buscar || ''));
   const [cityFilter, setCityFilter] = useState('');
   const [dateFrom, setDateFrom]   = useState('');
   const [dateTo, setDateTo]       = useState('');
