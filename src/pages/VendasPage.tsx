@@ -510,7 +510,7 @@ export default function VendasPage() {
       // Cobranca nova (11/11/2026, so lojas com o interruptor ligado): sem telefone valido o robo nao consegue cobrar.
       if (cobrancaNova) {
         const cli = customers.find(c => c.id === selectedCustomer);
-        if (!telefoneValido(cli?.whatsapp) && !telefoneValido(cli?.phone)) {
+        if (!telefoneValido((cli as any)?.whatsapp) && !telefoneValido((cli as any)?.phone)) {
           toast.error('Venda no crediário só com o celular do cliente: cadastre um celular válido (com DDD) no cadastro do cliente antes de finalizar. A venda ainda não foi salva.', { duration: 10000 });
           return;
         }
