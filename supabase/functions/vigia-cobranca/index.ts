@@ -70,6 +70,30 @@ async function mandarWhatsApp(instancia: string, texto: string): Promise<string 
   }
 }
 
+// WhatsApp oficial (Meta) da Castanho. Fora da conversa de 24h so vai modelo aprovado (aviso_sistema);
+// se o modelo ainda nao estiver aprovado, tenta texto livre (so entrega se o Carlos escreveu nas ultimas 24h).
+async function mandarMeta(phoneId: string, texto: string): Promise<string | null> {
+  const url = `https://graph.facebook.com/${META_V}/${phoneId}/messages`;
+  const h = { Authorization: `Bearer ${META_TOKEN}`, "Content-Type": "application/json" };
+  // Parametro de modelo nao aceita quebra de linha nem 4+ espacos seguidos.
+  const resumo = texto.replace(/^👁️ Vigia da cobrança \(OptiFlow\)\s*/, "").replace(/\s*\n+\s*/g, " | ").replace(/\s{4,}/g, " ").slice(0, 900);
+  try {
+    const r = await fetch(url, { method: "POST", headers: h, signal: AbortSignal.timeout(20000), body: JSON.stringify({
+      messaging_product: "whatsapp", to: NUMERO_AVISO, type: "template",
+      template: { name: "aviso_sistema", language: { code: "pt_BR" }, components: [{ type: "body", parameters: [
+        { type: "text", text: "Carlos" }, { type: "text", text: resumo }] }] } }) });
+    if (r.ok) return null;
+    const erroModelo = (await r.text()).slice(0, 150);
+    // Texto livre: a Meta aceita na hora mas so entrega dentro da conversa de 24h - por isso conta como falha
+    // (quem chama manda tambem por e-mail).
+    await fetch(url, { method: "POST", headers: h, signal: AbortSignal.timeout(20000), body: JSON.stringify({
+      messaging_product: "whatsapp", to: NUMERO_AVISO, type: "text", text: { body: texto } }) }).catch(() => null);
+    return `Meta modelo indisponivel (${erroModelo}); tentado texto livre`;
+  } catch (e) {
+    return `Meta: ${String(e).slice(0, 150)}`;
+  }
+}
+
 async function mandarEmail(texto: string): Promise<string | null> {
   if (!RESEND_API_KEY) return "sem RESEND_API_KEY";
   const r = await fetch("https://api.resend.com/emails", {
@@ -77,6 +101,22 @@ async function mandarEmail(texto: string): Promise<string | null> {
     body: JSON.stringify({ from: "OptiFlow <onboarding@resend.dev>", to: [EMAIL_AVISO], subject: "Vigia da cobrança - OptiFlow", text: texto }),
   });
   return r.ok ? null : `Resend ${r.status}`;
+}
+
+// Ordem do aviso (11/11/2026): 1) WhatsApp oficial da Castanho (Meta, modelo aviso_sistema). Se o modelo falhar,
+// 2) texto livre na Meta + e-mail. So se a Meta nem existir: QR Code (Evolution) + e-mail.
+// O QR Code nao e o primeiro porque as mensagens dele para o numero do Carlos chegam como "Aguardando mensagem".
+const CASTANHO = "2ca58112-4498-4dfa-b6d1-550630d5c4a4";
+async function avisar(dados: any, texto: string): Promise<{ canal: string; erro: string | null }> {
+  const castanho = (dados.lojas || []).find((l: any) => l.id === CASTANHO);
+  let erro: string | null = castanho?.wa_phone_id ? await mandarMeta(castanho.wa_phone_id, texto) : "sem WhatsApp oficial";
+  if (!erro) return { canal: "whatsapp_meta", erro: null };
+  if (!castanho?.wa_phone_id && dados.aviso?.instancia) {
+    const e2 = await mandarWhatsApp(dados.aviso.instancia, texto);
+    erro = e2 ? `${erro} | ${e2}` : erro;
+  }
+  const erroEmail = await mandarEmail(texto + `\n\n(WhatsApp oficial do aviso falhou: ${erro})`);
+  return { canal: erroEmail ? "nenhum" : "email", erro: erroEmail ? `${erro} | ${erroEmail}` : erro };
 }
 
 serve(async (req) => {
@@ -88,8 +128,8 @@ serve(async (req) => {
     const dados = await db("rpc/vigia_cobranca_dados", { method: "POST", body: "{}" });
     // ?teste=1 -> manda so uma mensagem de teste para o numero do aviso (confere que o caminho do aviso funciona).
     if (new URL(req.url).searchParams.get("teste") === "1") {
-      const erro = await mandarWhatsApp(dados.aviso?.instancia, "👁️ Vigia da cobrança (OptiFlow)\n\nMensagem de TESTE: o vigia está ligado. Você só vai receber mensagem daqui quando o robô parar, o WhatsApp de uma loja cair ou os erros de envio aumentarem.");
-      return new Response(JSON.stringify({ ok: !erro, erro }), { headers: { "Content-Type": "application/json" } });
+      const r = await avisar(dados, "👁️ Vigia da cobrança (OptiFlow)\n\nMensagem de TESTE: o vigia está ligado. Você só vai receber mensagem daqui quando o robô parar, o WhatsApp de uma loja cair ou os erros de envio aumentarem.");
+      return new Response(JSON.stringify(r), { headers: { "Content-Type": "application/json" } });
     }
     const estados: Record<string, any> = {};
     for (const e of (await db("vigia_estado?select=*")) || []) estados[e.chave] = e;
@@ -174,14 +214,7 @@ serve(async (req) => {
     const texto = avisos.length ? `👁️ Vigia da cobrança (OptiFlow)\n\n${avisos.join("\n\n")}` : "";
     if (!simular) {
       if (texto) {
-        const inst = dados.aviso?.instancia;
-        let erro = inst ? await mandarWhatsApp(inst, texto) : "sem instancia para o aviso";
-        let canal = "whatsapp";
-        if (erro) { // WhatsApp do aviso fora do ar: manda por e-mail
-          const erroEmail = await mandarEmail(texto + `\n\n(WhatsApp do aviso falhou: ${erro})`);
-          canal = erroEmail ? "nenhum" : "email";
-          erro = erroEmail ? `${erro} | ${erroEmail}` : erro;
-        }
+        const { canal, erro } = await avisar(dados, texto);
         enviado = { canal, ok: canal !== "nenhum", erro };
         await db("vigia_avisos", { method: "POST", body: JSON.stringify({ texto, canal, ok: canal !== "nenhum", erro }) });
       }

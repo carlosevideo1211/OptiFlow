@@ -219,6 +219,26 @@ serve(async (req) => {
     return new Response(JSON.stringify({ ok: r.ok, status: r.status, resposta: r.d }), { headers: { "Content-Type": "application/json" } });
   }
 
+  // ?acao=criar_aviso -> aviso interno para o dono (vigia da cobranca, 11/11/2026). UTILITY, so texto.
+  if (acao === "criar_aviso") {
+    const nome = "aviso_sistema";
+    if (existentes.some((t) => t.name === nome)) {
+      return new Response(JSON.stringify({ ja_existia: true, modelo: resumo(existentes.find((t) => t.name === nome)) }), { headers: { "Content-Type": "application/json" } });
+    }
+    const r = await gj(`${G}/${WABA_ID}/message_templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({
+        name: nome, language: "pt_BR", category: "UTILITY",
+        components: [
+          { type: "BODY", text: "Aviso do sistema OptiFlow para {{1}}: {{2}}. Confira o sistema assim que possível.",
+            example: { body_text: [["Carlos", "o WhatsApp da loja Ótica Solar desconectou às 10h"]] } },
+        ],
+      }),
+    });
+    return new Response(JSON.stringify({ ok: r.ok, status: r.status, resposta: r.d }), { headers: { "Content-Type": "application/json" } });
+  }
+
   const img = await handleImagemExemplo();
   if (!img.handle) return new Response(JSON.stringify({ ok: false, erro_imagem: img.erro }), { status: 500 });
 
