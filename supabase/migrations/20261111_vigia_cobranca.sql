@@ -55,7 +55,8 @@ as $$
         'erro_exemplo', (select left(l.error_message, 120) from whatsapp_triggers_log l where l.tenant_id = t.id
                            and not l.success and l.sent_at > now() - interval '2 hours' order by l.sent_at desc limit 1),
         'meta_falhas_2h', (select count(*) from whatsapp_mensagens m where m.tenant_id = t.id
-                             and m.created_at > now() - interval '2 hours' and m.status in ('falhou', 'failed'))
+                             and m.created_at > now() - interval '2 hours' and m.status in ('falhou', 'failed')
+                             and coalesce(m.erro, '') !~ '^(131026|131049)')  -- numero sem WhatsApp / limite de marketing da Meta: nao e falha do sistema
       )), '[]'::jsonb)
       from tenants t left join store_settings s on s.tenant_id = t.id
       where t.cobranca_nova or (t.whatsapp_auto_ativo and (t.whatsapp_instance_name is not null or t.whatsapp_canal = 'meta'))),
