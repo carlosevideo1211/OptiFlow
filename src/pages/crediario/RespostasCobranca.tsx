@@ -34,25 +34,58 @@ export function useRespostasPendentes(tenantId?: string | null, ativo?: boolean)
   return n;
 }
 
+interface Acordo {
+  id: string; customer_id: string; status: string; tipo: string | null; valor_original: number | null; valor_juros: number | null;
+  valor_vista: number | null; n_parcelas: number | null; valor_parcela: number | null; valor_acordo: number | null; pix_valor: number | null;
+  expira_em: string | null; ofertado_em: string | null; aceito_em: string | null; fechado_em: string | null; fechado_por: string | null;
+  customers?: { name: string } | null;
+}
+const brl = (v?: number | null) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const TIPO: Record<string, string> = { vista: 'À vista', entrada: 'Parcelado com entrada', sem_entrada: 'Parcelado sem entrada' };
+
 export default function RespostasCobranca({ tenantId, onVerCliente }: { tenantId: string; onVerCliente: (nome: string) => void }) {
   const { user } = useAuth() as any;
   const navigate = useNavigate();
   const [lista, setLista] = useState<Resposta[]>([]);
   const [parar, setParar] = useState<Resposta[]>([]);
+  const [acordos, setAcordos] = useState<Acordo[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [fechando, setFechando] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     const desde = new Date(Date.now() - 30 * 864e5).toISOString();
-    const [{ data: p }, { data: pr }] = await Promise.all([
+    const [{ data: p }, { data: pr }, { data: ac }] = await Promise.all([
       supabase.from('cobranca_respostas').select('*').eq('tenant_id', tenantId).eq('status', 'pendente').order('created_at'),
       supabase.from('cobranca_respostas').select('*').eq('tenant_id', tenantId).eq('intencao', 'parar')
+        .gte('created_at', desde).order('created_at', { ascending: false }),
+      supabase.from('cobranca_acordos').select('*, customers(name)').eq('tenant_id', tenantId)
         .gte('created_at', desde).order('created_at', { ascending: false }),
     ]);
     setLista((p as Resposta[]) || []);
     setParar((pr as Resposta[]) || []);
+    setAcordos((ac as Acordo[]) || []);
     setCarregando(false);
   }, [tenantId]);
+
+  const pagamentoRecebido = async (a: Acordo) => {
+    if (fechando) return;
+    if (!window.confirm(`Confirmar que o Pix de ${brl(a.pix_valor)} de ${a.customers?.name || 'cliente'} caiu na conta?\n\nO sistema vai criar o carnê do acordo (renegociação) e cancelar as parcelas antigas.`)) return;
+    setFechando(a.id);
+    const { error } = await supabase.rpc('cobranca_fechar_acordo', { p_acordo: a.id, p_por: user?.name || user?.email || 'loja' });
+    setFechando(null);
+    if (error) { toast.error('Não foi possível fechar o acordo: ' + error.message, { duration: 10000 }); return; }
+    toast.success('Acordo fechado! Carnê de renegociação criado.');
+    carregar();
+  };
+
+  const cancelarAcordo = async (a: Acordo) => {
+    if (!window.confirm('Cancelar este acordo? A cobrança normal volta para esse cliente.')) return;
+    const { error } = await supabase.from('cobranca_acordos').update({ status: 'cancelado', fechado_em: new Date().toISOString(), fechado_por: user?.name || 'loja' })
+      .eq('id', a.id).eq('tenant_id', tenantId);
+    if (error) { toast.error(error.message); return; }
+    carregar();
+  };
   useEffect(() => { carregar(); }, [carregar]);
 
   const marcar = async (r: Resposta, status: 'confirmado' | 'nao_pago' | 'resolvido') => {
@@ -73,6 +106,54 @@ export default function RespostasCobranca({ tenantId, onVerCliente }: { tenantId
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
         Respostas dos clientes ao WhatsApp oficial que o robô entendeu. O resto das mensagens continua na tela Mensagens.
       </div>
+      {(() => {
+        const agora = Date.now();
+        const esperando = acordos.filter(a => a.status === 'aguardando_pagamento');
+        const conversando = acordos.filter(a => a.status === 'ofertado' || a.status === 'escolhendo');
+        const fechados = acordos.filter(a => a.status === 'fechado');
+        if (!acordos.length) return null;
+        return (
+          <div className="card" style={{ padding: 20, marginBottom: 16, borderLeft: '4px solid #10b981' }}>
+            <div style={{ fontWeight: 700 }}>Acordos do Feirão</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 12px' }}>
+              O robô fecha o acordo com o cliente e manda o Pix da loja. Quando o Pix cair na conta, clique em "Pagamento recebido":
+              o carnê do acordo é criado sozinho e as parcelas antigas são canceladas.
+            </div>
+            {esperando.map(a => {
+              const venceu = a.expira_em && new Date(a.expira_em).getTime() < agora;
+              return (
+                <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ fontWeight: 600 }}>{a.customers?.name || 'Cliente'} <span style={{ fontSize: 12, color: '#10b981' }}>· {TIPO[a.tipo || ''] || ''}</span></div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Esperando Pix de <b>{brl(a.pix_valor)}</b>
+                      {a.tipo === 'entrada' ? ` (entrada) + ${(a.n_parcelas || 1) - 1}x de ${brl(a.valor_parcela)}` : ''}
+                      {' '}· dívida {brl((a.valor_original || 0) + (a.valor_juros || 0))}
+                      {a.aceito_em ? ` · aceito ${fmt(a.aceito_em)}` : ''}
+                      {venceu ? <b style={{ color: '#f87171' }}> · prazo do Pix venceu (pode confirmar se o cliente pagou)</b> : ''}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {a.customers?.name && <button style={btn('#94a3b8')} onClick={() => onVerCliente(a.customers!.name)}>Ver parcelas</button>}
+                    <button style={btn('#22c55e')} disabled={fechando === a.id} onClick={() => pagamentoRecebido(a)}>{fechando === a.id ? 'Fechando...' : 'Pagamento recebido'}</button>
+                    <button style={btn('#f87171')} onClick={() => cancelarAcordo(a)}>Cancelar acordo</button>
+                  </div>
+                </div>
+              );
+            })}
+            {conversando.length > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                Oferta enviada, esperando o cliente escolher: {conversando.map(a => a.customers?.name || 'cliente').join(', ')}
+              </div>
+            )}
+            {fechados.length > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                Fechados nos últimos 30 dias ({fechados.length}): {fechados.map(a => `${a.customers?.name || 'cliente'} (${TIPO[a.tipo || ''] || ''}, ${brl(a.valor_acordo)})`).join(' · ')}
+              </div>
+            )}
+          </div>
+        );
+      })()}
       {lista.length === 0 && (
         <div className="card" style={{ padding: 20, marginBottom: 20, color: 'var(--text-muted)' }}>Nenhuma resposta esperando a loja. 👍</div>
       )}

@@ -10,6 +10,7 @@
 // Secrets: META_WEBHOOK_VERIFY_TOKEN (obrigatorio) e META_APP_SECRET
 // (recomendado: confere a assinatura X-Hub-Signature-256 de cada chamada).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import QRCode from "npm:qrcode@1.5.4";
 
 const SUPABASE_URL = "https://fkwamdnstrbvgheosalz.supabase.co";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -156,14 +157,173 @@ async function responderCliente(tenantId: string, phoneId: string, para: string,
   }) });
 }
 
-async function tratarResposta(tenantId: string, phoneId: string, de: string, nomeContato: string, tipo: string, texto: string, msgId: string | null) {
+// ---------------- Acordo automatico (Fase 1, etapa 4 - 11/11/2026) ----------------
+// Cliente tocou "Pagar a vista" / "Parcelar" na oferta (modelo oferta_acordo_feirao) -> o robo calcula pelas regras
+// do Carlos (funcao cobranca_oferta no banco), manda o Pix da loja e registra em cobranca_acordos. O carne do acordo
+// nasce em cobranca_fechar_acordo (a vista/entrada: quando a loja confirma o Pix; sem entrada: na hora).
+const brl = (v: number) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const r2 = (v: number) => Math.round(v * 100) / 100;
+const dataBR = (d: Date) => d.toLocaleDateString("pt-BR", { timeZone: "America/Manaus" });
+
+function pixEMV(chave: string, valor: number, nome: string): string {
+  const f = (id: string, vv: string) => id + String(vv.length).padStart(2, "0") + vv;
+  const mai = f("00", "BR.GOV.BCB.PIX") + f("01", chave);
+  const amt = valor > 0 ? valor.toFixed(2) : "";
+  const p = f("00", "01") + f("26", mai) + f("52", "0000") + f("53", "986") + (amt ? f("54", amt) : "") + f("58", "BR") +
+    f("59", nome.normalize("NFD").replace(/[̀-ͯ]/g, "").substring(0, 25).replace(/[^A-Za-z0-9 ]/g, "")) +
+    f("60", "SAO PAULO") + f("62", f("05", "***")) + "6304";
+  let crc = 0xffff;
+  for (let i = 0; i < p.length; i++) {
+    crc ^= p.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+  }
+  return p + (crc & 0xffff).toString(16).toUpperCase().padStart(4, "0");
+}
+
+async function metaEnviar(tenantId: string, phoneId: string, para: string, corpo: any, textoTela: string) {
+  const r = await fetch(`https://graph.facebook.com/${META_V}/${phoneId}/messages`, {
+    method: "POST", headers: { Authorization: `Bearer ${META_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: para, ...corpo }), signal: AbortSignal.timeout(20000),
+  });
+  const d = await r.json().catch(() => ({}));
+  await db("whatsapp_mensagens", { method: "POST", body: JSON.stringify({
+    tenant_id: tenantId, phone: para, direcao: "out", tipo: corpo.type || "text", texto: textoTela.slice(0, 4000), enviado_por: "robo",
+    meta_message_id: d?.messages?.[0]?.id || null, status: r.ok ? "sent" : "failed",
+    erro: r.ok ? null : String(d?.error?.message || r.status).slice(0, 200),
+  }) });
+  return r.ok;
+}
+
+// Pix da loja: imagem do QR Code + o codigo copia e cola numa segunda mensagem (facil de copiar no celular).
+async function mandarPix(tenantId: string, phoneId: string, para: string, valor: number, legenda: string) {
+  const ss = await db(`store_settings?tenant_id=eq.${tenantId}&select=pix_key,name&limit=1`);
+  const chave = String(ss?.[0]?.pix_key || "").trim();
+  if (!chave) { await metaEnviar(tenantId, phoneId, para, { type: "text", text: { body: legenda + "\n\n(A loja vai te mandar a chave Pix por aqui.)" } }, legenda); return; }
+  const codigo = pixEMV(chave, valor, ss?.[0]?.name || "Loja");
+  try {
+    const dataUrl: string = await QRCode.toDataURL(codigo, { errorCorrectionLevel: "M", margin: 2, width: 480 });
+    const png = Uint8Array.from(atob(dataUrl.split(",")[1]), (c) => c.charCodeAt(0));
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", "image/png");
+    form.append("file", new Blob([png], { type: "image/png" }), "pix.png");
+    const up = await fetch(`https://graph.facebook.com/${META_V}/${phoneId}/media`, { method: "POST", headers: { Authorization: `Bearer ${META_TOKEN}` }, body: form });
+    const u = await up.json().catch(() => ({}));
+    if (u?.id) await metaEnviar(tenantId, phoneId, para, { type: "image", image: { id: u.id, caption: legenda } }, "[imagem Pix] " + legenda);
+    else await metaEnviar(tenantId, phoneId, para, { type: "text", text: { body: legenda } }, legenda);
+  } catch {
+    await metaEnviar(tenantId, phoneId, para, { type: "text", text: { body: legenda } }, legenda);
+  }
+  await metaEnviar(tenantId, phoneId, para, { type: "text", text: { body: codigo } }, codigo);
+}
+
+async function oferta(tenantId: string, customerId: string) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/cobranca_oferta`, {
+    method: "POST", headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ p_tenant: tenantId, p_customer: customerId }),
+  });
+  const o = await r.json();
+  const original = Number(o.original || 0), juros = Number(o.juros || 0), atualizado = r2(original + juros);
+  const nE = Math.max(1, Math.min(4, Math.floor(original / 100)));
+  const nS = Math.max(1, Math.min(4, Math.floor(atualizado / 100)));
+  return { ...o, original, juros, atualizado, vista: Number(o.vista || 0), nE, pE: Math.floor((original / nE) * 100) / 100,
+           nS, pS: Math.floor((atualizado / nS) * 100) / 100 };
+}
+
+async function atualizarAcordo(id: string, campos: Record<string, unknown>) {
+  await db(`cobranca_acordos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
+}
+
+// Devolve true quando a mensagem foi tratada como parte de um acordo.
+async function tratarAcordo(tenantId: string, phoneId: string, de: string, cliente: { id: string; name: string } | null,
+                            intencao: string | null, botaoId: string | null): Promise<boolean> {
+  let ac: any = null;
+  let op: string | null = null;
+  if (botaoId?.startsWith("acordo:")) {
+    const [, id, o] = botaoId.split(":");
+    const l = await db(`cobranca_acordos?id=eq.${id}&tenant_id=eq.${tenantId}&select=*&limit=1`);
+    ac = l?.[0]; op = o;
+    if (!ac) return false;
+    if (ac.status !== "escolhendo") {
+      await metaEnviar(tenantId, phoneId, de, { type: "text", text: { body: "Esse acordo já foi registrado. Qualquer dúvida, é só falar com a loja por aqui." } }, "acordo já registrado");
+      return true;
+    }
+  } else if ((intencao === "pagar_vista" || intencao === "parcelar") && cliente) {
+    const hoje = new Date().toISOString().slice(0, 10);
+    const l = await db(`cobranca_acordos?tenant_id=eq.${tenantId}&customer_id=eq.${cliente.id}&status=in.(ofertado,escolhendo)&validade=gte.${hoje}&select=*&order=created_at.desc&limit=1`);
+    ac = l?.[0]; op = intencao === "pagar_vista" ? "vista" : "parcelar";
+    if (!ac) return false; // sem oferta aberta: fica na lista da loja, como antes
+  } else return false;
+
+  const nome = (cliente?.name || "").split(" ")[0];
+  const o = await oferta(tenantId, ac.customer_id);
+  if (!o.qtd) {
+    await atualizarAcordo(ac.id, { status: "cancelado", obs: "sem parcelas vencidas na hora do aceite" });
+    await metaEnviar(tenantId, phoneId, de, { type: "text", text: { body: "Não encontramos nenhuma parcela vencida em aberto no seu nome. Se tiver dúvida, é só falar com a loja por aqui." } }, "sem débito");
+    return true;
+  }
+  const base = { parcelas_originais: o.ids, valor_original: o.original, valor_juros: o.juros, valor_vista: o.vista, aceito_em: new Date().toISOString() };
+  const amanha = new Date(Date.now() + 864e5);
+
+  if (op === "parcelar" && o.nE <= 1) op = "vista"; // divida pequena: so a vista (regra da parcela minima de R$ 100)
+  if (op === "vista") {
+    await atualizarAcordo(ac.id, { ...base, tipo: "vista", n_parcelas: 1, valor_parcela: o.vista, valor_acordo: o.vista, pix_valor: o.vista,
+      status: "aguardando_pagamento", expira_em: amanha.toISOString() });
+    const desc = o.atualizado > o.vista ? ` (em vez de ${brl(o.atualizado)})` : "";
+    await mandarPix(tenantId, phoneId, de, o.vista,
+      `Combinado${nome ? ", " + nome : ""}! Acordo do Feirão Limpa Nome feito: ${brl(o.vista)} à vista${desc}.\n\nPague pelo Pix (QR Code acima ou o código na próxima mensagem) até ${dataBR(amanha)}. Quando pagar, responda PAGUEI.`);
+    return true;
+  }
+  if (op === "parcelar") {
+    await atualizarAcordo(ac.id, { ...base, status: "escolhendo" });
+    const corpo = `Feirão Limpa Nome — para parcelar seu débito, escolha:\n\n✅ COM ENTRADA (sem juros): entrada de ${brl(o.pE)} hoje no Pix + ${o.nE - 1}x de ${brl(o.pE)} por mês. Total ${brl(o.original)}.\n\n` +
+      `📅 SEM ENTRADA (com juros): ${o.nS}x de ${brl(o.pS)}, a 1ª em 7 dias. Total ${brl(o.atualizado)}.`;
+    await metaEnviar(tenantId, phoneId, de, { type: "interactive", interactive: { type: "button", body: { text: corpo }, action: { buttons: [
+      { type: "reply", reply: { id: `acordo:${ac.id}:entrada`, title: "Com entrada" } },
+      { type: "reply", reply: { id: `acordo:${ac.id}:sem`, title: "Sem entrada" } },
+    ] } } }, corpo);
+    return true;
+  }
+  if (op === "entrada") {
+    await atualizarAcordo(ac.id, { ...base, tipo: "entrada", n_parcelas: o.nE, valor_parcela: o.pE, valor_acordo: o.original, pix_valor: o.pE,
+      status: "aguardando_pagamento", expira_em: amanha.toISOString() });
+    await mandarPix(tenantId, phoneId, de, o.pE,
+      `Combinado! Acordo do Feirão Limpa Nome: entrada de ${brl(o.pE)} pelo Pix (vale até ${dataBR(amanha)}). Depois, ${o.nE - 1}x de ${brl(o.pE)} por mês, sem juros.\n\nQuando pagar a entrada, responda PAGUEI.`);
+    return true;
+  }
+  if (op === "sem") {
+    await atualizarAcordo(ac.id, { ...base, tipo: "sem_entrada", n_parcelas: o.nS, valor_parcela: o.pS, valor_acordo: o.atualizado, pix_valor: o.pS,
+      status: "aguardando_pagamento" });
+    const f = await fetch(`${SUPABASE_URL}/rest/v1/rpc/cobranca_fechar_acordo`, {
+      method: "POST", headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_acordo: ac.id, p_por: "robo (sem entrada)" }),
+    });
+    if (!f.ok) {
+      console.error("acordo sem entrada falhou:", (await f.text()).slice(0, 300));
+      await metaEnviar(tenantId, phoneId, de, { type: "text", text: { body: "Recebemos sua escolha. A loja vai confirmar o acordo e te mandar os detalhes por aqui." } }, "acordo sem entrada: falha ao gerar carnê");
+      return true;
+    }
+    const primeira = new Date(Date.now() + 7 * 864e5);
+    await mandarPix(tenantId, phoneId, de, o.pS,
+      `Combinado! Seu acordo do Feirão Limpa Nome ficou em ${o.nS}x de ${brl(o.pS)}. A 1ª vence em ${dataBR(primeira)} e as outras todo mês no mesmo dia. Vamos te lembrar antes de cada vencimento.\n\nSe quiser já pagar a 1ª, use o Pix acima.`);
+    return true;
+  }
+  return false;
+}
+
+async function tratarResposta(tenantId: string, phoneId: string, de: string, nomeContato: string, tipo: string, texto: string, msgId: string | null, botaoId: string | null = null) {
   try {
     const tn = await db(`tenants?id=eq.${tenantId}&select=cobranca_nova,cobranca_resposta_auto,company_name&limit=1`);
     const t = tn?.[0];
     if (!t?.cobranca_nova) return;
+    if (botaoId?.startsWith("acordo:")) {
+      await tratarAcordo(tenantId, phoneId, de, await acharCliente(tenantId, de), null, botaoId);
+      return;
+    }
     let intencao = classificar(tipo, texto);
     if (!intencao) return;
     const cliente = await acharCliente(tenantId, de);
+    if ((intencao === "pagar_vista" || intencao === "parcelar") && await tratarAcordo(tenantId, phoneId, de, cliente, intencao, null)) return;
     if (intencao === "comprovante") {
       // Imagem/documento so vira "PAGUEI" se o cliente tem parcela vencida ou vencendo em ate 3 dias.
       if (!cliente) return;
@@ -275,7 +435,8 @@ serve(async (req) => {
             }),
           });
           if (tipo !== "reaction") {
-            await tratarResposta(tenantId, phoneId, String(m.from || "").replace(/\D/g, ""), nomes[m.from] || "", tipo, texto, m.id || null);
+            await tratarResposta(tenantId, phoneId, String(m.from || "").replace(/\D/g, ""), nomes[m.from] || "", tipo, texto, m.id || null,
+              m.interactive?.button_reply?.id || null);
             await avisarLoja(tenantId, String(m.from || "").replace(/\D/g, ""), nomes[m.from] || "", texto, m.id || null);
           }
         }

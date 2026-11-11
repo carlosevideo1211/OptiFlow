@@ -64,3 +64,9 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/vigia-cobranca/index.ts"
 # Chamada pelo pg_cron (x-cron-secret) de hora em hora: avisa o Carlos se o robo parar, o WhatsApp cair ou os erros subirem.
+
+[functions.cobranca-acordo]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/cobranca-acordo/index.ts"
+# Chamada so com x-cron-secret: simula ou manda a oferta do Feirao (modelo oferta_acordo_feirao) para um cliente.

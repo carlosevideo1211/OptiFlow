@@ -678,6 +678,9 @@ serve(async (req) => {
       // conferir (cobranca_respostas pendente). Entra no mesmo conjunto do "ja recebeu hoje", que todos os envios checam.
       const pausados = await supabaseFetch(`cobranca_respostas?tenant_id=eq.${tenant.id}&intencao=eq.paguei&status=eq.pendente&customer_id=not.is.null&select=customer_id`);
       if (Array.isArray(pausados)) pausados.forEach((p: any) => clientesComMensagemHoje.add(p.customer_id));
+      // Acordo aceito esperando o Pix (vale 1 dia): tambem nao cobra.
+      const emAcordo = await supabaseFetch(`cobranca_acordos?tenant_id=eq.${tenant.id}&status=eq.aguardando_pagamento&expira_em=gt.${new Date().toISOString()}&select=customer_id`);
+      if (Array.isArray(emAcordo)) emAcordo.forEach((p: any) => clientesComMensagemHoje.add(p.customer_id));
       const recebeuHoje = (customerId: string | null | undefined) => !!customerId && clientesComMensagemHoje.has(customerId);
       if (jaEnviouHoje >= LIMITE_DIARIO_POR_TENANT) {
         if (!resultado.tenants_limitados.includes(tenant.id)) resultado.tenants_limitados.push(tenant.id + ":limite_diario");
