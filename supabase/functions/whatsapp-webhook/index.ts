@@ -89,6 +89,118 @@ Abra para responder: ${SITE}/mensagens`;
   }
 }
 
+// ---------------- Cobranca nova: robo que entende respostas (11/11/2026) ----------------
+// So nas lojas com tenants.cobranca_nova. Classifica a resposta do cliente e grava em cobranca_respostas
+// (lista "Respostas da cobranca" na tela Crediario). Resposta automatica ao cliente so com
+// tenants.cobranca_resposta_auto. O que nao for entendido fica so na tela Mensagens, como antes.
+const META_TOKEN = Deno.env.get("META_WHATSAPP_TOKEN") || "";
+const META_V = Deno.env.get("META_GRAPH_VERSION") || "v21.0";
+
+type Intencao = "paguei" | "pagar_vista" | "parcelar" | "falar_loja" | "nao_consigo" | "parar";
+
+const normal = (t: string) => (t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+
+export function classificar(tipo: string, texto: string): Intencao | "comprovante" | null {
+  const t = normal(tipo === "image" || tipo === "document" ? texto.replace(/^\[(imagem|documento)\]/, "") : texto);
+  // Botoes do modelo oferta_acordo_feirao (e respostas 1/2/3).
+  if (t === "pagar a vista" || t === "1") return "pagar_vista";
+  if (t === "parcelar" || t === "2") return "parcelar";
+  if (t === "falar com a loja" || t === "3") return "falar_loja";
+  if (/^(parar|pare|stop|sair|cancelar|descadastrar)$/.test(t) ||
+      /(parar de receber|nao quero (mais )?receber|nao me mand|para de mandar|pare de mandar|nao mande mais|nao mandem mais)/.test(t)) return "parar";
+  if (/(nao (consigo|tenho como|posso|vou conseguir|da pra|da para) pag|sem dinheiro|nao tenho dinheiro|desempregad|estou sem condic|to sem condic|nao tenho condic)/.test(t)) return "nao_consigo";
+  if (/nao pag/.test(t)) return null;
+  if (/\b(paguei|ja pago|ta pago|esta pago|fiz o pix|fiz pix|fiz o pagamento|efetuei|transferi|comprovante|quitei|pago ja)\b/.test(t)) return "paguei";
+  if (tipo === "image" || tipo === "document") return "comprovante"; // possivel comprovante: confere se deve algo
+  return null;
+}
+
+async function acharCliente(tenantId: string, de: string): Promise<{ id: string; name: string } | null> {
+  const cs = await db(`customers?tenant_id=eq.${tenantId}&or=(phone.ilike.*${de.slice(-4)},whatsapp.ilike.*${de.slice(-4)})&select=id,name,phone,whatsapp&limit=50`);
+  const achados = Array.isArray(cs) ? cs.filter((c: any) => so8(c.whatsapp) === so8(de) || so8(c.phone) === so8(de)) : [];
+  if (achados.length <= 1) return achados[0] || null;
+  // Mesmo telefone em varios cadastros (familia, cadastro duplicado): fica com quem tem parcela em aberto,
+  // a mais antiga primeiro (e quem o robo cobrou).
+  const creds = await db(`crediario?tenant_id=eq.${tenantId}&status=eq.ativo&customer_id=in.(${achados.map((c: any) => c.id).join(",")})&select=id,customer_id`);
+  const credCli: Record<string, string> = {};
+  for (const c of Array.isArray(creds) ? creds : []) credCli[c.id] = c.customer_id;
+  if (Object.keys(credCli).length) {
+    const ab = await db(`crediario_parcelas?crediario_id=in.(${Object.keys(credCli).join(",")})&status=neq.pago&status=neq.cancelado&select=crediario_id&order=due_date.asc&limit=1`);
+    const id = Array.isArray(ab) && ab[0] ? credCli[ab[0].crediario_id] : null;
+    if (id) return achados.find((c: any) => c.id === id) || achados[0];
+  }
+  return achados[0];
+}
+
+const RESPOSTAS: Record<Intencao, (nome: string, loja: string) => string> = {
+  paguei: (n) => `Obrigado${n ? ", " + n : ""}! Recebemos seu aviso de pagamento. A loja vai conferir e dar a baixa. Enquanto isso, você não recebe cobrança.`,
+  parar: (_n, l) => `Pronto. Você não vai mais receber mensagens automáticas da ${l}. Se precisar, é só falar com a loja.`,
+  nao_consigo: (n) => `Entendemos${n ? ", " + n : ""}. Alguém da loja vai falar com você para combinar uma forma de pagamento que caiba no seu bolso.`,
+  falar_loja: (_n, l) => `Certo! Alguém da ${l} vai falar com você por aqui em breve.`,
+  pagar_vista: () => `Recebemos sua escolha: pagar à vista. A loja vai mandar o Pix com o valor do acordo por aqui em breve.`,
+  parcelar: () => `Recebemos sua escolha: parcelar. A loja vai mandar as condições e o Pix da entrada por aqui em breve.`,
+};
+
+async function responderCliente(tenantId: string, phoneId: string, para: string, texto: string) {
+  const r = await fetch(`https://graph.facebook.com/${META_V}/${phoneId}/messages`, {
+    method: "POST", headers: { Authorization: `Bearer ${META_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: para, type: "text", text: { body: texto } }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const d = await r.json().catch(() => ({}));
+  await db("whatsapp_mensagens", { method: "POST", body: JSON.stringify({
+    tenant_id: tenantId, phone: para, direcao: "out", tipo: "text", texto, enviado_por: "robo",
+    meta_message_id: d?.messages?.[0]?.id || null, status: r.ok ? "sent" : "failed",
+    erro: r.ok ? null : String(d?.error?.message || r.status).slice(0, 200),
+  }) });
+}
+
+async function tratarResposta(tenantId: string, phoneId: string, de: string, nomeContato: string, tipo: string, texto: string, msgId: string | null) {
+  try {
+    const tn = await db(`tenants?id=eq.${tenantId}&select=cobranca_nova,cobranca_resposta_auto,company_name&limit=1`);
+    const t = tn?.[0];
+    if (!t?.cobranca_nova) return;
+    let intencao = classificar(tipo, texto);
+    if (!intencao) return;
+    const cliente = await acharCliente(tenantId, de);
+    if (intencao === "comprovante") {
+      // Imagem/documento so vira "PAGUEI" se o cliente tem parcela vencida ou vencendo em ate 3 dias.
+      if (!cliente) return;
+      const ate = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10);
+      const creds = await db(`crediario?tenant_id=eq.${tenantId}&customer_id=eq.${cliente.id}&status=eq.ativo&select=id`);
+      const ids = (Array.isArray(creds) ? creds : []).map((c: any) => c.id);
+      if (!ids.length) return;
+      const ab = await db(`crediario_parcelas?crediario_id=in.(${ids.join(",")})&status=neq.pago&status=neq.cancelado&due_date=lte.${ate}&select=id&limit=1`);
+      if (!Array.isArray(ab) || !ab.length) return;
+      intencao = "paguei";
+    }
+    // Ja tem a mesma intencao esperando a loja? Nao duplica nem responde de novo.
+    const filtro = cliente ? `customer_id=eq.${cliente.id}` : `phone=eq.${de}`;
+    const ja = await db(`cobranca_respostas?tenant_id=eq.${tenantId}&${filtro}&intencao=eq.${intencao}&status=eq.pendente&select=id&limit=1`);
+    if (Array.isArray(ja) && ja.length) return;
+
+    const nome = (cliente?.name || nomeContato || "").split(" ")[0];
+    const resposta = t.cobranca_resposta_auto ? RESPOSTAS[intencao](nome, t.company_name || "loja") : null;
+    await db("cobranca_respostas?on_conflict=meta_message_id", {
+      method: "POST", headers: { Prefer: "resolution=ignore-duplicates" },
+      body: JSON.stringify({ tenant_id: tenantId, customer_id: cliente?.id || null, phone: de, nome: cliente?.name || nomeContato || null,
+        intencao, texto: (texto || "").slice(0, 500), meta_message_id: msgId, resposta_auto: resposta,
+        // PARAR ja fica resolvido: o cadastro e marcado para nao receber mais nada.
+        status: intencao === "parar" && cliente ? "resolvido" : "pendente",
+        resolvido_em: intencao === "parar" && cliente ? new Date().toISOString() : null,
+        resolvido_por: intencao === "parar" && cliente ? "robo" : null }),
+    });
+    if (intencao === "parar" && cliente) {
+      await db(`customers?id=eq.${cliente.id}`, { method: "PATCH",
+        body: JSON.stringify({ whatsapp_opt_out: true, whatsapp_opt_out_em: new Date().toISOString() }) });
+    }
+    if (resposta) await responderCliente(tenantId, phoneId, de, resposta);
+  } catch (e) {
+    console.error("cobranca nova - resposta:", String(e));
+  }
+}
+
 // Texto que aparece na tela para cada tipo de mensagem recebida.
 function textoDaMensagem(m: any): { tipo: string; texto: string } {
   const tipo = m.type || "text";
@@ -163,6 +275,7 @@ serve(async (req) => {
             }),
           });
           if (tipo !== "reaction") {
+            await tratarResposta(tenantId, phoneId, String(m.from || "").replace(/\D/g, ""), nomes[m.from] || "", tipo, texto, m.id || null);
             await avisarLoja(tenantId, String(m.from || "").replace(/\D/g, ""), nomes[m.from] || "", texto, m.id || null);
           }
         }

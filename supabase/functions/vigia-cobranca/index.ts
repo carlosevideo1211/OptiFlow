@@ -210,6 +210,19 @@ serve(async (req) => {
         `🟢 ${l.nome}: os erros de envio pararam.`);
     }
 
+    // 4. "PAGUEI" esperando a loja conferir ha mais de 2 dias (cobranca nova). Lembra 1x por dia.
+    const parados = (await db("rpc/vigia_paguei_parados", { method: "POST", body: "{}" })) || [];
+    const comParado = new Set<string>();
+    for (const p of parados) {
+      comParado.add(p.tenant_id);
+      checar(`paguei:${p.tenant_id}`, true, "parado",
+        `🟠 ${p.loja}: ${p.qtd} cliente(s) disseram "PAGUEI" há mais de 2 dias e a loja ainda não conferiu (${String(p.nomes).slice(0, 200)}). Veja em Crediário > Respostas da cobrança.`,
+        "");
+    }
+    for (const chave of Object.keys(estados)) {
+      if (chave.startsWith("paguei:") && !comParado.has(chave.slice(7))) checar(chave, false, "ok", "", `🟢 Os "PAGUEI" pendentes foram conferidos.`);
+    }
+
     let enviado: { canal: string; ok: boolean; erro?: string | null } | null = null;
     const texto = avisos.length ? `👁️ Vigia da cobrança (OptiFlow)\n\n${avisos.join("\n\n")}` : "";
     if (!simular) {
