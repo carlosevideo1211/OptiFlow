@@ -51,9 +51,11 @@ as $$
         'ok_2h', (select count(*) from whatsapp_triggers_log l where l.tenant_id = t.id and l.success
                     and l.sent_at > now() - interval '2 hours'),
         'falhas_2h', (select count(*) from whatsapp_triggers_log l where l.tenant_id = t.id and not l.success
-                        and l.sent_at > now() - interval '2 hours'),
+                        and l.sent_at > now() - interval '2 hours'
+                        and coalesce(l.error_message, '') not ilike '%"exists":false%'),  -- numero sem WhatsApp nao e falha do sistema
         'erro_exemplo', (select left(l.error_message, 120) from whatsapp_triggers_log l where l.tenant_id = t.id
-                           and not l.success and l.sent_at > now() - interval '2 hours' order by l.sent_at desc limit 1),
+                           and not l.success and l.sent_at > now() - interval '2 hours'
+                           and coalesce(l.error_message, '') not ilike '%"exists":false%' order by l.sent_at desc limit 1),
         'meta_falhas_2h', (select count(*) from whatsapp_mensagens m where m.tenant_id = t.id
                              and m.created_at > now() - interval '2 hours' and m.status in ('falhou', 'failed')
                              and coalesce(m.erro, '') !~ '^(131026|131049)')  -- numero sem WhatsApp / limite de marketing da Meta: nao e falha do sistema

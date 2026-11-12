@@ -681,6 +681,9 @@ serve(async (req) => {
       // Acordo aceito esperando o Pix (vale 1 dia): tambem nao cobra.
       const emAcordo = await supabaseFetch(`cobranca_acordos?tenant_id=eq.${tenant.id}&status=eq.aguardando_pagamento&expira_em=gt.${new Date().toISOString()}&select=customer_id`);
       if (Array.isArray(emAcordo)) emAcordo.forEach((p: any) => clientesComMensagemHoje.add(p.customer_id));
+      // 12/11/2026: numero sem WhatsApp (marcado no cadastro) - nao adianta tentar; volta sozinho quando o telefone e corrigido.
+      const semWhats = await supabaseFetch(`customers?tenant_id=eq.${tenant.id}&telefone_sem_whatsapp_em=not.is.null&select=id`);
+      if (Array.isArray(semWhats)) semWhats.forEach((c: any) => clientesComMensagemHoje.add(c.id));
       const recebeuHoje = (customerId: string | null | undefined) => !!customerId && clientesComMensagemHoje.has(customerId);
       if (jaEnviouHoje >= LIMITE_DIARIO_POR_TENANT) {
         if (!resultado.tenants_limitados.includes(tenant.id)) resultado.tenants_limitados.push(tenant.id + ":limite_diario");
