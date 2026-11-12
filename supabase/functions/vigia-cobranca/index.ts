@@ -76,7 +76,7 @@ async function mandarMeta(phoneId: string, texto: string): Promise<string | null
   const url = `https://graph.facebook.com/${META_V}/${phoneId}/messages`;
   const h = { Authorization: `Bearer ${META_TOKEN}`, "Content-Type": "application/json" };
   // Parametro de modelo nao aceita quebra de linha nem 4+ espacos seguidos.
-  const resumo = texto.replace(/^👁️ Vigia da cobrança \(OptiFlow\)\s*/, "").replace(/\s*\n+\s*/g, " | ").replace(/\s{4,}/g, " ").slice(0, 900);
+  const resumo = texto.replace(/^👁️ Vigia da cobrança \(OptiFlow\)\s*/, "").replace(/\*/g, "").replace(/\s*\n+\s*/g, " | ").replace(/\s{4,}/g, " ").slice(0, 900);
   try {
     const r = await fetch(url, { method: "POST", headers: h, signal: AbortSignal.timeout(20000), body: JSON.stringify({
       messaging_product: "whatsapp", to: NUMERO_AVISO, type: "template",
@@ -126,6 +126,17 @@ serve(async (req) => {
   const simular = new URL(req.url).searchParams.get("simular") === "1";
   try {
     const dados = await db("rpc/vigia_cobranca_dados", { method: "POST", body: "{}" });
+    // ?acao=avisar (POST {texto, completo?}) -> manda um aviso qualquer ao Carlos pelo mesmo caminho do vigia
+    // (WhatsApp oficial, modelo aviso_sistema; e-mail de reserva). Usado pelo check-up diario do servidor (11/11/2026),
+    // que pelo QR Code chegava como "Aguardando mensagem". "completo" (opcional) vai inteiro por e-mail.
+    if (new URL(req.url).searchParams.get("acao") === "avisar") {
+      const b = await req.json().catch(() => ({}));
+      const texto = String(b.texto || "").trim();
+      if (!texto) return new Response(JSON.stringify({ ok: false, erro: "sem texto" }), { status: 400 });
+      const r = await avisar(dados, texto);
+      if (b.completo && r.canal === "whatsapp_meta") await mandarEmail(String(b.completo));
+      return new Response(JSON.stringify(r), { headers: { "Content-Type": "application/json" } });
+    }
     // ?teste=1 -> manda so uma mensagem de teste para o numero do aviso (confere que o caminho do aviso funciona).
     if (new URL(req.url).searchParams.get("teste") === "1") {
       const r = await avisar(dados, "👁️ Vigia da cobrança (OptiFlow)\n\nMensagem de TESTE: o vigia está ligado. Você só vai receber mensagem daqui quando o robô parar, o WhatsApp de uma loja cair ou os erros de envio aumentarem.");

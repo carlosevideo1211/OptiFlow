@@ -18,6 +18,13 @@ export function useCobrancaNova(tenantId?: string | null): boolean {
 interface Mes { mes: string; base: number; pagas: number; base_outras: number; pagas_outras: number }
 interface Faixa { faixa: string; minha: boolean; qtd: number; valor: number }
 interface Rec { faixa: string; qtd: number; valor: number }
+interface Feirao {
+  ofertas: number; nao_entregues: number; esperando_escolha: number; esperando_pix: number; fechados: number;
+  fechados_tipo: Record<string, number>; valor_acordos: number; divida_negociada: number; recebido: number;
+  por_grupo: { grupo: string; ofertas: number; fechados: number; recebido: number }[];
+  retorno: { cobrados: number; pagaram: number; cobrados_outras: number; pagaram_outras: number };
+}
+const META_FEIRAO = { valor: 5000, acordos: 30 };
 interface Painel { hoje: string; outras_lojas: number; meses: Mes[]; recuperado: Rec[]; faixas: Faixa[] }
 
 const FAIXAS = ['1-30', '31-90', '91-365', '+1 ano'];
@@ -34,6 +41,7 @@ const nomeMes = (iso: string) => { const [y, m] = iso.split('-'); return `${MESE
 export default function PainelCobranca({ tenantId }: { tenantId: string }) {
   const [dados, setDados] = useState<Painel | null>(null);
   const [erro, setErro] = useState('');
+  const [feirao, setFeirao] = useState<Feirao | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -41,6 +49,7 @@ export default function PainelCobranca({ tenantId }: { tenantId: string }) {
       if (!vivo) return;
       if (error) setErro(error.message); else setDados(data as Painel);
     });
+    supabase.rpc('cobranca_painel_feirao', { p_tenant: tenantId }).then(({ data }) => { if (vivo && data) setFeirao(data as Feirao); });
     return () => { vivo = false; };
   }, [tenantId]);
 
@@ -99,6 +108,55 @@ export default function PainelCobranca({ tenantId }: { tenantId: string }) {
           </div>
         </Card>
       </div>
+
+      {feirao && (() => {
+        const ret = feirao.retorno; const pR = pct(ret.pagaram, ret.cobrados); const pRo = pct(ret.pagaram_outras, ret.cobrados_outras);
+        const barra = (v: number, meta: number, cor: string) => (
+          <div style={{ height: 10, background: 'rgba(255,255,255,.06)', borderRadius: 5, marginTop: 6 }}>
+            <div style={{ width: `${Math.min(100, (v / meta) * 100)}%`, height: '100%', background: cor, borderRadius: 5 }} />
+          </div>);
+        const TIPO: Record<string, string> = { vista: 'à vista', entrada: 'com entrada', sem_entrada: 'sem entrada' };
+        return (
+          <div className="card" style={{ padding: 20, marginBottom: 20, borderTop: '3px solid #10b981' }}>
+            <div style={{ fontWeight: 700, marginBottom: 12 }}>Feirão Limpa Nome (até 31/12)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 16, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Recebido pelos acordos</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#10b981' }}>{formatBRL(Number(feirao.recebido))}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>meta {formatBRL(META_FEIRAO.valor)}</div>
+                {barra(Number(feirao.recebido), META_FEIRAO.valor, '#10b981')}
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Acordos fechados</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#6366f1' }}>{feirao.fechados}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>meta {META_FEIRAO.acordos}{feirao.fechados ? ' · ' + Object.entries(feirao.fechados_tipo).map(([t, n]) => `${n} ${TIPO[t] || t}`).join(', ') : ''}</div>
+                {barra(feirao.fechados, META_FEIRAO.acordos, '#6366f1')}
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Ofertas enviadas</div>
+                <div style={{ fontSize: 24, fontWeight: 800 }}>{feirao.ofertas}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {feirao.esperando_escolha} esperando o cliente · {feirao.esperando_pix} esperando o Pix · {feirao.nao_entregues} não entregues (telefone)
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Dívida negociada nos acordos</div>
+                <div style={{ fontSize: 24, fontWeight: 800 }}>{formatBRL(Number(feirao.divida_negociada))}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>valor dos acordos: {formatBRL(Number(feirao.valor_acordos))}</div>
+              </div>
+            </div>
+            {feirao.por_grupo.length > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                Por grupo: {feirao.por_grupo.map(g => `${g.grupo}: ${g.ofertas} ofertas, ${g.fechados} acordos, ${formatBRL(Number(g.recebido))}`).join(' · ')}
+              </div>
+            )}
+            <div style={{ fontSize: 12, borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 10 }}>
+              <b>Retorno da cobrança de atraso (90 dias):</b> {pR ?? '-'}% dos {ret.cobrados} clientes cobrados (30+ dias de atraso) pagaram alguma
+              parcela depois da mensagem · outras óticas {pRo ?? '-'}% · meta 15% em fev/2027
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="card" style={{ padding: 20, marginBottom: 20 }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>Pagas até 5 dias após o vencimento, mês a mês</div>

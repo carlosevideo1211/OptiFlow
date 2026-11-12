@@ -27,7 +27,7 @@ const fmt = (v: number) => Number(v || 0).toLocaleString("pt-BR", { minimumFract
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o, null, 1), { status, headers: { "Content-Type": "application/json" } });
 
 // Calcula e (se enviar=true) manda a oferta para 1 cliente. Devolve o resumo ou { erro }.
-async function ofertar(tenant: string, customer: string, enviar: boolean): Promise<Record<string, unknown>> {
+async function ofertar(tenant: string, customer: string, enviar: boolean, grupo: string | null = null): Promise<Record<string, unknown>> {
   const [t] = await db(`tenants?id=eq.${tenant}&select=company_name,cobranca_nova&limit=1`);
   if (!t?.cobranca_nova) return { erro: "cobranca nova desligada nesta loja" };
   const [ss] = await db(`store_settings?tenant_id=eq.${tenant}&select=wa_phone_id,name&limit=1`);
@@ -60,7 +60,7 @@ async function ofertar(tenant: string, customer: string, enviar: boolean): Promi
   if (!r.ok) return { erro: `Meta: ${d?.error?.message || r.status}`, ...resumo };
   const [ac] = await db("cobranca_acordos", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({
     tenant_id: tenant, customer_id: customer, phone: para, status: "ofertado", validade: VALIDADE,
-    parcelas_originais: o.ids, valor_original: original, valor_juros: o.juros, valor_vista: o.vista }) });
+    parcelas_originais: o.ids, valor_original: original, valor_juros: o.juros, valor_vista: o.vista, grupo }) });
   const texto = `[oferta do ${FEIRAO}] Olá ${params[0]}, aqui é da ${params[1]}. Até ${params[2]} você pode quitar seu débito de R$ ${params[3]} por R$ ${params[4]} à vista no Pix, ou parcelar em até ${params[5]}x.`;
   await db("whatsapp_mensagens", { method: "POST", body: JSON.stringify({ tenant_id: tenant, phone: para, direcao: "out", tipo: "template",
     texto, enviado_por: "robo", meta_message_id: d?.messages?.[0]?.id || null, status: "sent" }) });
@@ -96,7 +96,7 @@ serve(async (req) => {
         const resultados: unknown[] = [];
         for (const c of cand || []) {
           if (modo === "enviar") {
-            const r = await ofertar(l.id, c.customer_id, true);
+            const r = await ofertar(l.id, c.customer_id, true, c.grupo);
             resultados.push({ cliente: c.nome, grupo: c.grupo, ...r });
             await new Promise((ok) => setTimeout(ok, 500 + Math.random() * 1000)); // espaco entre envios
           } else {

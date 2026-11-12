@@ -28,8 +28,11 @@ export function useRespostasPendentes(tenantId?: string | null, ativo?: boolean)
   const [n, setN] = useState(0);
   useEffect(() => {
     if (!tenantId || !ativo) return;
-    supabase.from('cobranca_respostas').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId).eq('status', 'pendente').then(({ count }) => setN(count || 0));
+    // Conta as respostas esperando a loja + os acordos do Feirao esperando o Pix (11/11/2026).
+    Promise.all([
+      supabase.from('cobranca_respostas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'pendente'),
+      supabase.from('cobranca_acordos').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'aguardando_pagamento'),
+    ]).then(([r, a]) => setN((r.count || 0) + (a.count || 0)));
   }, [tenantId, ativo]);
   return n;
 }
