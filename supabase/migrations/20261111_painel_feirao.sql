@@ -10,8 +10,8 @@ begin
   if not cobranca_pode(p_tenant) then raise exception 'sem acesso'; end if;
   with a as (select * from cobranca_acordos where tenant_id = p_tenant),
   rec as (  -- dinheiro que ja entrou pelos carnes dos acordos (a vista, entradas e parcelas pagas)
-    select a.id, a.grupo, coalesce(sum(coalesce(p.paid_amount, p.amount)) filter (where p.status = 'pago'), 0) recebido
-    from a left join crediario_parcelas p on p.crediario_id = a.crediario_novo_id group by 1, 2),
+    select a.id, a.grupo, a.tipo, coalesce(sum(coalesce(p.paid_amount, p.amount)) filter (where p.status = 'pago'), 0) recebido
+    from a left join crediario_parcelas p on p.crediario_id = a.crediario_novo_id group by 1, 2, 3),
   -- Retorno da cobranca de atraso: dos clientes que receberam a cobranca de atraso (30+ dias), quantos pagaram
   -- alguma parcela DEPOIS da mensagem. Ultimos 90 dias. Mesma conta para as outras oticas (somadas).
   cob as (
@@ -35,6 +35,10 @@ begin
     'valor_acordos', (select coalesce(sum(valor_acordo), 0) from a where status = 'fechado'),
     'divida_negociada', (select coalesce(sum(valor_original + coalesce(valor_juros, 0)), 0) from a where status = 'fechado'),
     'recebido', (select coalesce(sum(recebido), 0) from rec),
+    'recebido_vista', (select coalesce(sum(recebido), 0) from rec where tipo = 'vista'),
+    'recebido_parcelado', (select coalesce(sum(recebido), 0) from rec where tipo in ('entrada', 'sem_entrada')),
+    'valor_parcelado', (select coalesce(sum(valor_acordo), 0) from a where status = 'fechado' and tipo in ('entrada', 'sem_entrada')),
+    'sem_resposta_3d', (select count(*) from a where status = 'ofertado' and ofertado_em < now() - interval '3 days'),
     'por_grupo', (select coalesce(jsonb_agg(jsonb_build_object('grupo', g, 'ofertas', o, 'fechados', f, 'recebido', r) order by g), '[]'::jsonb)
                   from (select coalesce(a.grupo, 'Sem grupo') g, count(*) o, count(*) filter (where a.status = 'fechado') f,
                                coalesce(sum(rec.recebido), 0) r

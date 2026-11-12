@@ -70,3 +70,9 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/cobranca-acordo/index.ts"
 # Chamada so com x-cron-secret: simula ou manda a oferta do Feirao (modelo oferta_acordo_feirao) para um cliente.
+
+[functions.cobranca-relatorio]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/cobranca-relatorio/index.ts"
+# Chamada pelo pg_cron (x-cron-secret): relatorio mensal da cobranca (dia 6) e fechamento do Feirao (02/01/2027).
