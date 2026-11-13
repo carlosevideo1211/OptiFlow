@@ -10,6 +10,9 @@
 // CDN sob demanda - mesmo padrao que o carne ja usa hoje para desenhar o QR Code
 // do Pix (cdnjs.cloudflare.com), entao nao exige nenhuma instalacao nova no projeto.
 //
+// Opcao `excel`: mostra tambem o botao "Baixar Excel" (.xlsx), montado no app principal
+// com a biblioteca xlsx (planilhas definidas pela tela, ou as <table> do documento).
+//
 // Cada "pagina" do documento deve ser envolvida em <div class="print-page">...</div>.
 // Se nenhuma div com essa classe existir, o documento inteiro e tratado como
 // pagina unica automaticamente.
@@ -29,6 +32,68 @@ export interface AbrirDocumentoOpts {
   windowFeatures?: string;
   /** Se informado, mostra o botao "Enviar ao cliente no WhatsApp" (manda este PDF pelo WhatsApp da loja). */
   whatsapp?: { phone: string; customer_name: string; descricao: string };
+  /** Se informado, mostra o botao "Baixar Excel" (.xlsx). Sem `planilhas`, converte as <table> do documento. */
+  excel?: OpcoesExcel;
+}
+
+/** Celula da planilha: numero, texto, vazio, ou objeto com formula (f, sem "=") e/ou formato de numero (z). */
+export type CelulaExcel = string | number | null | undefined | { v?: string | number | null; f?: string; z?: string };
+export interface PlanilhaExcel {
+  /** Nome da aba (max 31 caracteres) */
+  nome: string;
+  /** Linhas x colunas, comecando em A1 */
+  linhas: CelulaExcel[][];
+  /** Celulas mescladas, indices a partir de 0: { s: {r, c}, e: {r, c} } */
+  mesclar?: { s: { r: number; c: number }; e: { r: number; c: number } }[];
+  /** Largura de cada coluna, em caracteres */
+  larguras?: number[];
+}
+export interface OpcoesExcel {
+  /** Nome do arquivo, ex: "Lentes_MF_FOTO_AR_estoque_13-11-2026.xlsx" */
+  filename: string;
+  /** Planilhas montadas pela tela. Se omitido, cada <table> do documento vira uma aba (numeros "1,5" ficam como texto). */
+  planilhas?: PlanilhaExcel[];
+}
+
+// O .xlsx e montado no app principal (a biblioteca xlsx ja esta no projeto e so e carregada
+// quando alguem clica), e a janela do documento so chama window.opener.__optiflowExcel[id]().
+const geradoresExcel: Record<string, () => Promise<void>> = {};
+(window as any).__optiflowExcel = geradoresExcel;
+
+async function baixarExcel(opcoes: OpcoesExcel, win: Window) {
+  const XLSX = await import('xlsx');
+  const wb = XLSX.utils.book_new();
+  const usados = new Set<string>();
+  const nomeAba = (n: string) => {
+    let base = (n || 'Planilha').replace(/[\\/?*[\]:]/g, ' ').slice(0, 31).trim() || 'Planilha', nome = base, i = 2;
+    while (usados.has(nome.toLowerCase())) nome = base.slice(0, 27) + ' (' + i++ + ')';
+    usados.add(nome.toLowerCase()); return nome;
+  };
+  if (opcoes.planilhas?.length) {
+    for (const p of opcoes.planilhas) {
+      const ws: any = {};
+      let maxC = 0;
+      p.linhas.forEach((linha, r) => linha.forEach((cel, c) => {
+        maxC = Math.max(maxC, c);
+        if (cel === null || cel === undefined || cel === '') return;
+        const obj = typeof cel === 'object' ? cel : { v: cel };
+        const v = obj.v ?? (obj.f ? 0 : null);
+        const out: any = { t: typeof v === 'number' || (v === null && obj.f) ? 'n' : 's', v: v ?? 0 };
+        if (obj.f) out.f = obj.f;
+        if (obj.z) out.z = obj.z;
+        ws[XLSX.utils.encode_cell({ r, c })] = out;
+      }));
+      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, p.linhas.length - 1), c: maxC } });
+      if (p.mesclar?.length) ws['!merges'] = p.mesclar;
+      if (p.larguras?.length) ws['!cols'] = p.larguras.map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, nomeAba(p.nome));
+    }
+  } else {
+    const tabelas = Array.from(win.document.querySelectorAll('#__pd_content table')) as HTMLTableElement[];
+    if (!tabelas.length) throw new Error('Este documento nao tem tabela para exportar.');
+    tabelas.forEach((t, i) => XLSX.utils.book_append_sheet(wb, XLSX.utils.table_to_sheet(t), nomeAba('Tabela ' + (i + 1))));
+  }
+  XLSX.writeFile(wb, opcoes.filename);
 }
 
 // Chamado pela janela do documento (window.opener) com o PDF em base64: envia pelo
@@ -52,6 +117,13 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
     return null;
   }
 
+  let excelId = '';
+  if (opts.excel) {
+    excelId = 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const excel = opts.excel;
+    geradoresExcel[excelId] = () => baixarExcel(excel, win);
+  }
+
   const toolbarCss = `
     *{box-sizing:border-box}
     html{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
@@ -65,6 +137,9 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
     #__pd_download{background:#22c55e;color:#fff}
     #__pd_download:hover{background:#16a34a}
     #__pd_download:disabled{opacity:.65;cursor:wait}
+    #__pd_excel{background:#166534;color:#fff}
+    #__pd_excel:hover{background:#14532d}
+    #__pd_excel:disabled{opacity:.65;cursor:wait}
     #__pd_whats{background:#25D366;color:#fff}
     #__pd_whats:hover{background:#1ebe5b}
     #__pd_whats:disabled{opacity:.65;cursor:wait}
@@ -81,6 +156,7 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
     <div id="__pd_toolbar">
       <button id="__pd_print" type="button">Imprimir</button>
       <button id="__pd_download" type="button">Baixar PDF</button>
+      ${excelId ? '<button id="__pd_excel" type="button">Baixar Excel</button>' : ''}
       ${opts.whatsapp ? '<button id="__pd_whats" type="button">Enviar ao cliente no WhatsApp</button>' : ''}
       <span id="__pd_status"></span>
     </div>
@@ -167,6 +243,15 @@ export function abrirDocumentoImprimivel(opts: AbrirDocumentoOpts): Window | nul
     document.getElementById('__pd_print').addEventListener('click', function(){ window.print(); });
     document.getElementById('__pd_download').addEventListener('click', __pd_baixarPdf);
     if (document.getElementById('__pd_whats')) document.getElementById('__pd_whats').addEventListener('click', __pd_enviarWhats);
+    if (document.getElementById('__pd_excel')) document.getElementById('__pd_excel').addEventListener('click', async function(){
+      var btn = this, status = document.getElementById('__pd_status');
+      var ger = window.opener && window.opener.__optiflowExcel && window.opener.__optiflowExcel['${excelId}'];
+      if (!ger) { alert('Abra este documento de novo pelo sistema para baixar o Excel.'); return; }
+      btn.disabled = true; status.textContent = 'Gerando Excel...';
+      try { await ger(); status.textContent = ''; }
+      catch (e) { console.error('Erro ao gerar Excel:', e); status.textContent = ''; alert('Nao foi possivel gerar o Excel agora. Tente novamente.'); }
+      finally { btn.disabled = false; }
+    });
     ${opts.extraScripts || ''}
   `;
 

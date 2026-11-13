@@ -9,7 +9,10 @@ import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import toast from 'react-hot-toast';
 import { toLocalDateStr } from './crediario/crediarioTypes';
-import { abrirDocumentoImprimivel } from '../utils/printDoc';
+import { abrirDocumentoImprimivel, type CelulaExcel, type OpcoesExcel, type PlanilhaExcel } from '../utils/printDoc';
+
+// Letra da coluna do Excel (0 -> A, 25 -> Z, 26 -> AA)
+const XLSX_COL = (c: number): string => (c >= 26 ? XLSX_COL(Math.floor(c / 26) - 1) : '') + String.fromCharCode(65 + (c % 26));
 
 interface ProdGrade { product_id: string; tipo: 'vs' | 'mf'; nome: string; }
 interface Cel { id?: string; esf: number; cil: number; adicao: number; olho: string; quantidade: number; conferir: boolean; }
@@ -176,6 +179,58 @@ export default function LentesGradePage() {
           <td style={{ ...th, textAlign: 'right' }}>{visao === 'cobertura' ? '' : somaLinha(ADDS.flatMap(a => ['R', 'L'].map(o => [e, 0, a, o] as [number, number, number, string])))}</td></tr>)}</tbody>
       </table></div>);
 
+  // Excel com o mesmo layout da tela (linhas ESF; colunas CIL ou ADIÇÃO com R e L; TOTAL com fórmula).
+  // Folha de contagem: casas em branco para preencher (o TOTAL soma sozinho o que for digitado).
+  const planilhaExcel = (emBranco: boolean): OpcoesExcel | undefined => {
+    if (!prod) return undefined;
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    const titulo = `${prod.nome.toUpperCase()} — ${emBranco ? 'CONTAGEM' : 'ESTOQUE'}`;
+    const GRAU = '+0.00;-0.00;0.00';
+    const col = (c: number) => XLSX_COL(c);
+    const qtd = (e: number, c: number, a: number, o: string): CelulaExcel => {
+      if (emBranco) return null;
+      const q = cels[chave(e, c, a, o)]?.quantidade;
+      return q === undefined || q === null ? null : q;
+    };
+    const linhas: CelulaExcel[][] = [];
+    const mesclar: NonNullable<PlanilhaExcel['mesclar']> = [];
+    let ultCol: number;
+    const totalF = (r: number, c1: number, c2: number) => ({ f: `SUMIF(${col(c1)}${r + 1}:${col(c2)}${r + 1},">0")` });
+    if (prod.tipo === 'mf') {
+      ultCol = 1 + ADDS.length * 2;
+      linhas.push([titulo], [`Data: ${hoje}`]);
+      const h1: CelulaExcel[] = ['ESF'], h2: CelulaExcel[] = [null];
+      ADDS.forEach((a, i) => { h1[1 + i * 2] = `Adição ${g(a, false)}`; h1[2 + i * 2] = null; h2.push('R', 'L');
+        mesclar.push({ s: { r: 2, c: 1 + i * 2 }, e: { r: 2, c: 2 + i * 2 } }); });
+      h1[ultCol] = 'TOTAL'; h2[ultCol] = null;
+      mesclar.push({ s: { r: 2, c: 0 }, e: { r: 3, c: 0 } }, { s: { r: 2, c: ultCol }, e: { r: 3, c: ultCol } });
+      linhas.push(h1, h2);
+      faixa(0, 3).forEach(e => {
+        const r = linhas.length;
+        linhas.push([{ v: e, z: GRAU }, ...ADDS.flatMap(a => [qtd(e, 0, a, 'R'), qtd(e, 0, a, 'L')]), totalF(r, 1, ultCol - 1)]);
+      });
+    } else {
+      ultCol = 1 + CILS.length;
+      linhas.push([titulo], [`Data: ${hoje}`]);
+      const bloco = (sub: string, esfs: number[]) => {
+        linhas.push([]);
+        mesclar.push({ s: { r: linhas.length, c: 0 }, e: { r: linhas.length, c: ultCol } });
+        linhas.push([sub]);
+        linhas.push(['ESF \\ CIL', ...CILS.map(c => g(c)), 'TOTAL']);
+        esfs.forEach(e => { const r = linhas.length; linhas.push([{ v: e, z: GRAU }, ...CILS.map(c => qtd(e, c, 0, '')), totalF(r, 1, ultCol - 1)]); });
+      };
+      bloco('Esférico positivo (0,00 a +6,00)', faixa(0, 6));
+      bloco('Esférico negativo (−0,25 a −6,00)', faixa(-0.25, -6));
+    }
+    mesclar.push({ s: { r: 0, c: 0 }, e: { r: 0, c: ultCol } }, { s: { r: 1, c: 0 }, e: { r: 1, c: ultCol } });
+    const nomeArq = prod.nome.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').toUpperCase();
+    return {
+      filename: `Lentes_${nomeArq}_${emBranco ? 'contagem' : 'estoque'}_${hoje.replace(/\//g, '-')}.xlsx`,
+      planilhas: [{ nome: emBranco ? 'Contagem' : 'Estoque', linhas, mesclar,
+        larguras: [10, ...Array(ultCol - 1).fill(prod.tipo === 'mf' ? 6 : 7), 8] }],
+    };
+  };
+
   // Impressão igual às folhas da loja (com as quantidades atuais ou em branco para contagem)
   const imprimir = (emBranco: boolean) => {
     if (!prod) return;
@@ -194,6 +249,7 @@ export default function LentesGradePage() {
         <tbody>${faixa(0, 3).map(e => `<tr><th>${g(e)}</th>${ADDS.map(a => cel(e, 0, a, 'R') + cel(e, 0, a, 'L')).join('')}</tr>`).join('')}</tbody></table></div>`;
     }
     abrirDocumentoImprimivel({ title: titulo, filename: `${prod.nome.replace(/\s+/g, '_')}${emBranco ? '_contagem' : ''}.pdf`,
+      excel: planilhaExcel(emBranco),
       css: `body{font-family:Arial,sans-serif;color:#000} table{border-collapse:collapse;width:100%;margin:0 auto}
         th,td{border:1px solid #000;text-align:center;font-size:${prod.tipo === 'vs' ? 12 : 11}px;height:${prod.tipo === 'vs' ? 24 : 30}px;padding:1px 3px}
         thead th{background:#eee;font-weight:bold} tbody th{background:#f6f6f6;width:60px}`,

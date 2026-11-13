@@ -841,3 +841,14 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   dias (registro na parcela mais antiga); avisos de vencimento continuam 3 (1 dia antes, no dia, +5 dias).
 - Para auditar o que saiu de verdade pelo Evolution: Postgres do container evolution-postgres-1 no VPS
   (tabelas "Message"/"Instance", instancia optiflow-<tenant_id>, key->>'fromMe').
+
+## Sessao 13/11/2026 - Baixar Excel nas impressoes de Lentes por grau
+- printDoc.ts (abrirDocumentoImprimivel) ganhou a opcao `excel: { filename, planilhas? }`: mostra o botao verde-escuro
+  "Baixar Excel" ao lado do "Baixar PDF". O .xlsx e montado no app principal (import dinamico de 'xlsx'); a janela do
+  documento chama window.opener.__optiflowExcel[id](). Com `planilhas` a tela define linhas/celulas (numero, texto ou
+  { f: formula, z: formato }), mesclas e larguras; sem `planilhas`, cada <table> do documento vira uma aba
+  (numeros com virgula ficam como texto). Pronto para outras impressoes, mas so ligado em Lentes por grau.
+- LentesGradePage.tsx (planilhaExcel): "Imprimir" e "Folha de contagem" baixam Lentes_<LENTE>_estoque|contagem_<dd-mm-aaaa>.xlsx
+  com o layout da tela: titulo "<LENTE> — ESTOQUE|CONTAGEM" + data; MF = linhas ESF, colunas Adicao com R/L mescladas;
+  VS = dois blocos (esferico positivo/negativo) com colunas CIL; ESF como numero (formato +0,00); TOTAL = SUMIF(>0).
+  Contagem sai com as casas em branco (o TOTAL soma o que for digitado). Testado no Excel: totais iguais a tela (MF 963, VS 1357).
