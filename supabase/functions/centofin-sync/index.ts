@@ -53,6 +53,8 @@ async function todas(caminho: string): Promise<any[]> {
 
 // Itens (o que mais vende) so das oticas do Carlos: por decisao dele (21/10/2026), so a Castanho.
 const LOJAS_COM_ITENS = new Set(["2ca58112-4498-4dfa-b6d1-550630d5c4a4"]);
+// Custo da armação que sai de brinde em cada óculos (promoção da loja). Castanho: R$ 50 (Carlos, 13/11/2026).
+const ARMACAO_BRINDE: Record<string, number> = { "2ca58112-4498-4dfa-b6d1-550630d5c4a4": 50 };
 
 const CATEGORIAS: Record<string, string> = {
   armacao: "Armação", armacoes: "Armação", lente: "Lentes", lentes: "Lentes", lente_de_grau: "Lentes", lentes_de_grau: "Lentes", oculos_sol: "Óculos de sol",
@@ -61,8 +63,10 @@ const CATEGORIAS: Record<string, string> = {
 };
 function categoria(cat: string, descricao: string): string {
   const k = String(cat || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
-  if (k) return CATEGORIAS[k] || (cat.charAt(0).toUpperCase() + cat.slice(1));
   const d = String(descricao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // lente cadastrada na categoria "Arma\u00e7\u00e3o" por engano (ex.: "vs poly", "VS poly foto blue" na Castanho)
+  if ((k === "armacao" || k === "armacoes") && /^(vs|mf|bf)\b|lente|poly|foto|blu/.test(d)) return "Lentes";
+  if (k) return CATEGORIAS[k] || (cat.charAt(0).toUpperCase() + cat.slice(1));
   if (/contato/.test(d)) return "Lente de contato";
   if (/lente|mult|bifoc|antirref|visao simples|policarb|poly|foto|blue|blu\b|transition|cr ?39|\bvs\b|\bmf\b|\bar\b/.test(d)) return "Lentes";
   if (/arma[cç]|aro /.test(d)) return "Armação";
@@ -114,6 +118,23 @@ async function montarItens(tenant: string, itensDesde: string) {
   for (const i of itensO) {
     const o: any = O.get(i.os_id);
     if (o) add(`os:${i.id}`, "os", o.os_number, o.created_at, i.descricao, i.product_id, i.quantidade, i.valor_total, "");
+  }
+  // Armação brinde (promoção da loja: a armação sai grátis e só a lente é cobrada; custo fixo informado pelo Carlos
+  // em 13/11/2026). A armação não aparece na venda, então cada venda/OS com lente cobrada e sem armação cobrada
+  // ganha uma "Armação (brinde)" com valor 0 e o custo da armação — o lucro do Centofin passa a contar esse custo.
+  const brinde = ARMACAO_BRINDE[tenant];
+  if (brinde) {
+    const grupos = new Map<string, any[]>();
+    for (const it of itens) grupos.set(`${it.origem}:${it.numero}`, [...(grupos.get(`${it.origem}:${it.numero}`) || []), it]);
+    for (const [k, g] of grupos) {
+      const temLente = g.some((x) => x.categoria === "Lentes" && x.valor > 0);
+      const temArmacao = g.some((x) => x.categoria === "Armação" && x.valor > 0);
+      if (temLente && !temArmacao) {
+        itens.push({ ext_id: `arm:${k}`, origem: g[0].origem, numero: g[0].numero, data: g[0].data,
+          descricao: "Armação (brinde da promoção)", produto: "Armação (brinde)", categoria: "Armação",
+          quantidade: 1, valor: 0, custo: brinde, forma: g[0].forma });
+      }
+    }
   }
   return itens;
 }
