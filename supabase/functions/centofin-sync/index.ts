@@ -1,13 +1,15 @@
 // Integracao OptiFlow -> Centofin (MEI / Empresas), mao unica.
 // Chamada pelo pg_cron a cada 15 min (header x-cron-secret). Para cada loja com
 // store_settings.centofin_ativo e centofin_chave, manda ao Centofin tudo desde
-// centofin_desde (padrao: dia 1 do mes atual):
+// centofin_desde (padrao: dia 1 do MES ANTERIOR, para correcoes depois da virada do mes chegarem):
 //   - lancamentos: financial_transactions PAGAS sem parcela (vendas, entradas, despesas)
 //     + cada parcela de carne PAGA no periodo (entrada "Parcela n/N - Cliente");
 //   - parcelas: os carnes criados no periodo, com vencimento e baixa;
 //   - itens: o que foi vendido (itens das vendas e das OS que nao viraram venda), com categoria e
 //     custo do produto, para o relatorio "o que mais vende" do Centofin. Janela de 40 dias a cada envio
 //     e de 12 meses uma vez por dia (8h UTC) ou no primeiro envio com itens; ?itens_desde=AAAA-MM-DD forca.
+//   - crediario_resumo: quanto devem por tempo de atraso e quanto a cobranca recuperou no mes (etapa 2 do escritorio);
+//   - os: as OS do periodo com o laboratorio (para conferir a fatura do laboratorio).
 // O Centofin grava pelo id (reenviar nao duplica) e apaga o que sumiu daqui.
 // Teste sem enviar: ?simular=1&tenant=<id>  |  so uma loja: ?tenant=<id>
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -24,6 +26,15 @@ function diaManaus(ts: string | null): string {
 }
 function inicioDoMesManaus(): string {
   return diaManaus(new Date().toISOString()).slice(0, 8) + "01";
+}
+// Padrão do período: dia 1 do MÊS ANTERIOR (13/11/2026). Com só o mês atual, o que se corrigia no OptiFlow depois da
+// virada do mês (carnê refeito, estorno) ficava errado para sempre no Centofin (ex.: parcela contada 2x em out/26).
+function inicioDoMesAnteriorManaus(): string {
+  const [a, m] = inicioDoMesManaus().split("-").map(Number);
+  return m === 1 ? `${a - 1}-12-01` : `${a}-${String(m - 1).padStart(2, "0")}-01`;
+}
+function diasEntre(de: string, ate: string): number {
+  return Math.round((Date.parse(ate + "T12:00:00Z") - Date.parse(de + "T12:00:00Z")) / 864e5);
 }
 
 async function todas(caminho: string): Promise<any[]> {
@@ -174,6 +185,54 @@ async function montar(tenant: string, desde: string) {
   return { desde, lancamentos, parcelas };
 }
 
+// Resumo do crediário para o escritório (Centofin): quanto os clientes devem por tempo de atraso (inclusive mais de
+// 1 ano, que não vai como parcela) e quanto a cobrança recuperou no mês. Mesmas regras do painel "Resultado da
+// cobrança" do OptiFlow (cobranca_painel): carnê/parcela cancelados fora; recuperado = pago no mês com +30 dias de atraso.
+async function montarResumoCrediario(tenant: string) {
+  const hoje = diaManaus(new Date().toISOString());
+  const iniMes = hoje.slice(0, 8) + "01", iniAnt = inicioDoMesAnteriorManaus();
+  const linhas = await todas(
+    `crediario_parcelas?select=amount,paid_amount,due_date,paid_at,status,crediario(status)` +
+      `&tenant_id=eq.${tenant}&status=neq.cancelado&or=(status.neq.pago,paid_at.gte.${iniAnt}T04:00:00Z)`,
+  );
+  const faixa = (d: number) => d <= 30 ? "1-30" : d <= 90 ? "31-90" : d <= 365 ? "91-365" : "+1 ano";
+  const soma = () => ({ qtd: 0, valor: 0 });
+  const r: any = {
+    hoje, a_vencer: soma(), atrasado: soma(),
+    faixas: { "1-30": soma(), "31-90": soma(), "91-365": soma(), "+1 ano": soma() } as Record<string, any>,
+    recebido_mes: soma(), recuperado_mes: soma(), recuperado_mes_anterior: soma(),
+  };
+  const add = (o: any, v: number) => { o.qtd++; o.valor = Math.round((o.valor + v) * 100) / 100; };
+  for (const p of linhas) {
+    if ((p.crediario && p.crediario.status === "cancelado") || !p.due_date) continue;
+    if (p.status !== "pago") {
+      const v = Number(p.amount || 0);
+      if (p.due_date >= hoje) add(r.a_vencer, v);
+      else { add(r.atrasado, v); add(r.faixas[faixa(diasEntre(p.due_date, hoje))], v); }
+      continue;
+    }
+    if (!p.paid_at) continue;
+    const pago = diaManaus(p.paid_at), v = Number(p.paid_amount ?? p.amount ?? 0);
+    const atraso = diasEntre(p.due_date, pago);
+    if (pago >= iniMes) { add(r.recebido_mes, v); if (atraso > 30) add(r.recuperado_mes, v); }
+    else if (pago >= iniAnt && atraso > 30) add(r.recuperado_mes_anterior, v);
+  }
+  return r;
+}
+
+// OS do período com o laboratório (para conferir a fatura do laboratório no Centofin). Sem nome de cliente.
+async function montarOS(tenant: string, desde: string) {
+  const oss = await todas(
+    `service_orders?select=id,os_number,created_at,status,lab_name,total,delivery_date` +
+      `&tenant_id=eq.${tenant}&created_at=gte.${desde}T04:00:00Z`,
+  );
+  return oss.filter((o: any) => o.status !== "cancelada" && o.status !== "orcamento").map((o: any) => ({
+    ext_id: o.id, numero: String(o.os_number ?? ""), data: diaManaus(o.created_at),
+    laboratorio: String(o.lab_name || "").trim(), valor: Number(o.total || 0), status: o.status || "",
+    entrega: o.delivery_date || "",
+  }));
+}
+
 serve(async (req) => {
   const segredo = req.headers.get("x-cron-secret") || "";
   if (!CRON_SECRET || segredo !== CRON_SECRET) {
@@ -191,10 +250,14 @@ serve(async (req) => {
   if (simular && soTenant && !lojas.length) lojas = [{ tenant_id: soTenant }];  // ver o que iria, antes de ligar
   const resultado: any[] = [];
   for (const loja of lojas) {
-    const desde = loja.centofin_desde || inicioDoMesManaus();
+    const desde = loja.centofin_desde || inicioDoMesAnteriorManaus();
     let status = "";
     try {
-      const dados = { ...(await montar(loja.tenant_id, desde)), itens_desde: "", itens: [] as any[] };
+      const dados = {
+        ...(await montar(loja.tenant_id, desde)), itens_desde: "", itens: [] as any[],
+        crediario_resumo: await montarResumoCrediario(loja.tenant_id),
+        os_desde: desde, os: await montarOS(loja.tenant_id, desde),
+      };
       const completo = agora.getUTCHours() === 8 && agora.getUTCMinutes() < 15 ||
         !String(loja.centofin_ultimo_status || "").includes('"itens"');
       if (LOJAS_COM_ITENS.has(loja.tenant_id)) {
@@ -204,7 +267,8 @@ serve(async (req) => {
       if (simular) {
         resultado.push({ tenant: loja.tenant_id, desde, lancamentos: dados.lancamentos.length,
           parcelas: dados.parcelas.length, itens: dados.itens.length, itens_desde: dados.itens_desde,
-          itens_valor: dados.itens.reduce((a: number, i: any) => a + i.valor, 0), total_entradas: dados.lancamentos.filter((l) => l.tipo === "entrada")
+          itens_valor: dados.itens.reduce((a: number, i: any) => a + i.valor, 0), os: dados.os.length,
+          crediario_resumo: dados.crediario_resumo, total_entradas: dados.lancamentos.filter((l) => l.tipo === "entrada")
             .reduce((a, l) => a + l.valor, 0) });
         continue;
       }
