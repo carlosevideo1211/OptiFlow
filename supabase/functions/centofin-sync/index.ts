@@ -220,6 +220,51 @@ async function montarResumoCrediario(tenant: string) {
   return r;
 }
 
+// Lentes de grau com o custo do PAR, para a reposição pela foto no Centofin (o Centofin acha o produto de cada envelope).
+async function montarLentesProdutos(tenant: string) {
+  const prods = await todas(`products?select=id,name,category,cost_price&tenant_id=eq.${tenant}&active=eq.true`);
+  const grade = new Map((await todas(`lentes_grade_produto?select=product_id,tipo&tenant_id=eq.${tenant}`))
+    .map((g: any) => [g.product_id, g.tipo]));
+  return prods.filter((p: any) => p.category === "Lente de Grau" || grade.has(p.id))
+    .map((p: any) => ({ id: p.id, nome: p.name, tipo: grade.get(p.id) || "", custo: Number(p.cost_price || 0) }));
+}
+
+// Reposição confirmada no Centofin: entra no estoque por grau (como a "Entrada" da tela Lentes por grau).
+// Idempotente pelo texto do movimento ("Reposição do laboratório #id"): reaplicar não soma duas vezes.
+async function aplicarEntradas(tenant: string, entradas: any[]): Promise<number[]> {
+  const ok = new Set<number>();
+  const falhou = new Set<number>();
+  for (const e of entradas) {
+    const obs = `Reposição do laboratório #${e.reposicao} (foto no Centofin)`;
+    const filtro = `tenant_id=eq.${tenant}&product_id=eq.${e.produto_id}&esf=eq.${e.esf}&cil=eq.${e.cil}` +
+      `&adicao=eq.${e.adicao}&olho=eq.${encodeURIComponent(e.olho || "")}`;
+    try {
+      const ja = await todas(`lentes_grade_mov?select=id&${filtro}&obs=eq.${encodeURIComponent(obs)}`);
+      if (!ja.length) {
+        const atual = await todas(`lentes_grade?select=quantidade&${filtro}`);
+        const nova = Number(atual[0]?.quantidade || 0) + Number(e.qtd || 0);
+        const cel = { tenant_id: tenant, product_id: e.produto_id, esf: e.esf, cil: e.cil, adicao: e.adicao,
+          olho: e.olho || "", quantidade: nova, updated_at: new Date().toISOString() };
+        const r1 = await fetch(`${SUPABASE_URL}/rest/v1/lentes_grade?on_conflict=tenant_id,product_id,esf,cil,adicao,olho`, {
+          method: "POST", body: JSON.stringify(cel),
+          headers: { ...H, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+        });
+        if (!r1.ok) throw new Error(`lentes_grade ${r1.status}`);
+        const r2 = await fetch(`${SUPABASE_URL}/rest/v1/lentes_grade_mov`, {
+          method: "POST", headers: { ...H, "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify({ tenant_id: tenant, product_id: e.produto_id, esf: e.esf, cil: e.cil, adicao: e.adicao,
+            olho: e.olho || "", delta: Number(e.qtd || 0), motivo: "entrada", obs }),
+        });
+        if (!r2.ok) throw new Error(`lentes_grade_mov ${r2.status}`);
+      }
+      ok.add(e.reposicao);
+    } catch (_) {
+      falhou.add(e.reposicao);
+    }
+  }
+  return [...ok].filter((i) => !falhou.has(i));
+}
+
 // OS do período com o laboratório (para conferir a fatura do laboratório no Centofin). Sem nome de cliente.
 async function montarOS(tenant: string, desde: string) {
   const oss = await todas(
@@ -263,6 +308,7 @@ serve(async (req) => {
       if (LOJAS_COM_ITENS.has(loja.tenant_id)) {
         dados.itens_desde = url.searchParams.get("itens_desde") || (completo ? diasAtras(365) : diasAtras(40));
         dados.itens = await montarItens(loja.tenant_id, dados.itens_desde);
+        (dados as any).lentes_produtos = await montarLentesProdutos(loja.tenant_id);
       }
       if (simular) {
         resultado.push({ tenant: loja.tenant_id, desde, lancamentos: dados.lancamentos.length,
@@ -280,6 +326,20 @@ serve(async (req) => {
       });
       const txt = await r.text();
       status = r.ok ? `ok: ${txt.slice(0, 300)}` : `erro ${r.status}: ${txt.slice(0, 300)}`;
+      // Reposições confirmadas no Centofin (foto dos envelopes): põe no estoque por grau e avisa
+      let resp: any = null;
+      try { resp = r.ok ? JSON.parse(txt) : null; } catch (_) { resp = null; }
+      const entradas = Array.isArray(resp?.estoque_entradas) ? resp.estoque_entradas : [];
+      if (entradas.length && LOJAS_COM_ITENS.has(loja.tenant_id)) {
+        const feitas = await aplicarEntradas(loja.tenant_id, entradas);
+        if (feitas.length) {
+          await fetch(`${(loja.centofin_url || "https://mei.centofin.com.br").replace(/\/$/, "")}/api/integracao/optiflow/estoque-ok`, {
+            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${loja.centofin_chave}` },
+            body: JSON.stringify({ ids: feitas }), signal: AbortSignal.timeout(15000),
+          });
+        }
+        status = `${status.slice(0, 260)} | reposicao: ${feitas.length}/${new Set(entradas.map((e: any) => e.reposicao)).size}`;
+      }
     } catch (e) {
       status = `erro: ${String(e).slice(0, 300)}`;
     }
