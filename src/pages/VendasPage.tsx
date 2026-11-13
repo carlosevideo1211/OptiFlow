@@ -507,12 +507,15 @@ export default function VendasPage() {
     let parcelasPlanejadas: { amount: number; due_date: string }[] = [];
     if (payment === 'crediario') {
       if (!selectedCustomer) { toast.error('Para vender no crediário, selecione o cliente na lista (o carnê precisa estar ligado ao cadastro do cliente).', { duration: 8000 }); return; }
-      // Cobranca nova (11/11/2026, so lojas com o interruptor ligado): sem telefone valido o robo nao consegue cobrar.
+      // Cobranca nova: sem telefone valido / sem WhatsApp o robo nao consegue cobrar. 13/11/2026 (pedido do Carlos):
+      // NUNCA bloquear a venda por isso (idosos sem WhatsApp nao conseguiam comprar) - so avisa e segue.
       if (cobrancaNova) {
-        const cli = customers.find(c => c.id === selectedCustomer);
-        if (!telefoneValido((cli as any)?.whatsapp) && !telefoneValido((cli as any)?.phone)) {
-          toast.error('Venda no crediário só com o celular do cliente: cadastre um celular válido (com DDD) no cadastro do cliente antes de finalizar. A venda ainda não foi salva.', { duration: 10000 });
-          return;
+        // A lista de clientes desta tela so tem id e nome: busca o telefone na hora (antes faltava e TODA venda travava).
+        const { data: cli } = await supabase.from('customers').select('phone,whatsapp,telefone_sem_whatsapp_em')
+          .eq('id', selectedCustomer).eq('tenant_id', tenantId).maybeSingle() as { data: any };
+        if (cli && ((!telefoneValido(cli?.whatsapp) && !telefoneValido(cli?.phone)) || cli?.telefone_sem_whatsapp_em)) {
+          toast('⚠️ Este cliente não tem WhatsApp: ele não vai receber lembretes. Cobre pelo telefone ou no balcão.',
+            { duration: 9000, style: { background: '#facc15', color: '#000', fontWeight: 600 } });
         }
       }
       if (!installments || installments < 1) { toast.error('Informe o número de parcelas do crediário.'); return; }
