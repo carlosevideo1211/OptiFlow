@@ -21,7 +21,7 @@ export function computeTier(parcelas: ParcelaRanking[]): Tier {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
 
   const vencidas = parcelas.filter(p => {
-    if (p.status === 'pago') return false;
+    if (p.status === 'pago' || p.status === 'cancelado') return false; // cancelada (acordo/renegociacao) nao e divida
     if (!p.due_date) return false;
     return new Date(p.due_date + 'T00:00:00') < hoje;
   });
@@ -32,7 +32,9 @@ export function computeTier(parcelas: ParcelaRanking[]): Tier {
     if (!p.due_date || !p.paid_at) return false;
     return new Date(p.paid_at) > new Date(p.due_date + 'T00:00:00');
   }).length;
-  if (comAtraso > 0) return 'prata';
+  // Parcela cancelada ja vencida = divida que precisou de acordo/renegociacao: conta como historico de atraso (17/11/2026).
+  const renegociadaEmAtraso = parcelas.some(p => p.status === 'cancelado' && p.due_date && new Date(p.due_date + 'T00:00:00') < hoje);
+  if (comAtraso > 0 || renegociadaEmAtraso) return 'prata';
   if (pagas.length > 0) return 'ouro';
   return null;
 }

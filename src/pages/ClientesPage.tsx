@@ -180,7 +180,7 @@ export default function ClientesPage() {
     );
     const tier = computeTier(parcelas);
     const hoje = new Date(); hoje.setHours(0,0,0,0);
-    const emAberto = parcelas.filter((p: any) => p.status !== 'pago' && p.due_date && new Date(p.due_date+'T00:00:00') < hoje);
+    const emAberto = parcelas.filter((p: any) => p.status !== 'pago' && p.status !== 'cancelado' && p.due_date && new Date(p.due_date+'T00:00:00') < hoje);
     const valorEmAtraso = emAberto.reduce((s: number, p: any) => s + (p.amount||0), 0);
     return { tier, valorEmAtraso, qtdEmAtraso: emAberto.length };
   }, [viewHist.cr]);
@@ -203,7 +203,7 @@ export default function ClientesPage() {
       supabase.from('sales').select('sale_number,total,subtotal,discount,payment_method,installments,created_at,status,entrada,sale_items(description,quantity,unit_price,total)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('service_orders').select('os_number,status,total,discount,created_at,delivery_date,frame_brand,frame_model,lens_type,lens_brand,od_esf,od_cil,od_eixo,od_adicao,od_dnp,oe_esf,oe_cil,oe_eixo,oe_adicao,oe_dnp,entrada,notes,sales(id,sale_items(description,quantity,unit_price,total))').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
       supabase.from('consultations').select('id,date,professional_name,notes,rx_re_esf,rx_re_cil,rx_re_eixo,rx_re_dnp,rx_le_esf,rx_le_cil,rx_le_eixo,rx_le_dnp,rx_adicao').eq('tenant_id',tenantId).eq('customer_id',c.id).order('date',{ascending:false}).limit(15),
-      supabase.from('crediario').select('total_amount,installments,status,created_at,crediario_parcelas(id,installment_number,due_date,amount,paid_amount,status)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
+      supabase.from('crediario').select('total_amount,installments,status,created_at,notes,crediario_parcelas(id,installment_number,due_date,amount,paid_amount,status)').eq('tenant_id',tenantId).eq('customer_id',c.id).order('created_at',{ascending:false}).limit(15),
     ]).then(async ([v,o,co,cr])=>{
       const crData = cr.data || [];
       // Historico de pagamentos (baixas_log) - adicionado 22/07/2026, pedido da Larissa (Otica Evangelista Castanho)

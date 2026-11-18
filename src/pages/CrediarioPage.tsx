@@ -128,7 +128,8 @@ export default function CrediarioPage() {
     const resumoCreds: CrediarioResumo[] = [];
     (creds || []).forEach((cr: any) => {
       const nP = cr.installments || 1;
-      const parcelasCr = cr.parcelas || [];
+      // Parcela cancelada (entrou num acordo/renegociacao) nao e divida nem aparece na lista - 17/11/2026.
+      const parcelasCr = (cr.parcelas || []).filter((p: any) => p.status !== 'cancelado');
       // So datas validas entram na conta do "Arquivo (5+ anos)": um ano digitado
       // errado (ex.: 0026) fazia o carne inteiro sumir da relacao de parcelas.
       const vencimentos = parcelasCr.map((p: any) => p.due_date).filter((d: any) => dataVencimentoValida(d)).sort();
