@@ -793,7 +793,7 @@ export default function ClientesPage() {
                 {viewHist.cr.length===0?<p style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>Nenhum crediário encontrado</p>:<div>{viewHist.cr.slice().sort((a:any,b:any)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime()).map((cr:any,i:number)=>{
             const parcelas = cr.crediario_parcelas || [];
             const isRenego = cr.notes?.startsWith('Renegociacao:');
-            const abertas = parcelas.filter((p:any)=>p.status!=='pago');
+            const abertas = parcelas.filter((p:any)=>p.status!=='pago'&&p.status!=='cancelado'); // cancelada (acordo/renegociacao) nao e divida - 17/11/2026
             const totalAberto = abertas.reduce((s:number,p:any)=>s+(p.amount||0),0);
             const hoje = new Date();
             return <div key={i} style={{marginBottom:16,padding:14,background:isRenego?'rgba(99,102,241,.06)':'var(--bg3)',borderRadius:10,border:isRenego?'1px solid rgba(99,102,241,.3)':'1px solid var(--border)',borderLeft:isRenego?'4px solid #6366f1':'4px solid #888'}}>
@@ -812,8 +812,9 @@ export default function ClientesPage() {
                 <thead><tr style={{borderBottom:'1px solid var(--border)'}}><th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Parc.</th><th style={{padding:'3px 6px',textAlign:'left',color:'var(--text-muted)'}}>Vencimento</th><th style={{padding:'3px 6px',textAlign:'right',color:'var(--text-muted)'}}>Valor</th><th style={{padding:'3px 6px',textAlign:'center',color:'var(--text-muted)'}}>Status</th></tr></thead>
                 <tbody>{parcelas.sort((a:any,b:any)=>a.installment_number-b.installment_number).map((p:any,j:number)=>{
                   const venc=new Date(p.due_date+'T00:00:00');
-                  const atrasada=p.status!=='pago'&&venc<hoje;
-                  return <tr key={j} style={{borderBottom:'1px solid rgba(255,255,255,0.05)',background:atrasada?'rgba(248,113,113,.05)':'transparent'}}><td style={{padding:'3px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{cr.installments}</td><td style={{padding:'3px 6px',color:atrasada?'#f87171':'var(--text-muted)'}}>{venc.toLocaleDateString('pt-BR')}{atrasada?' ⚠️':''}</td><td style={{padding:'3px 6px',textAlign:'right'}}>{Number(p.paid_amount||p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'3px 6px',textAlign:'center'}}><span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(251,191,36,.15)',color:p.status==='pago'?'#22c55e':atrasada?'#f87171':'#fbbf24'}}>{p.status==='pago'?'Pago':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
+                  const cancelada=p.status==='cancelado';
+                  const atrasada=p.status!=='pago'&&!cancelada&&venc<hoje;
+                  return <tr key={j} style={{borderBottom:'1px solid rgba(255,255,255,0.05)',background:atrasada?'rgba(248,113,113,.05)':'transparent'}}><td style={{padding:'3px 6px',textAlign:'center',fontWeight:600}}>{p.installment_number}/{cr.installments}</td><td style={{padding:'3px 6px',color:atrasada?'#f87171':'var(--text-muted)'}}>{venc.toLocaleDateString('pt-BR')}{atrasada?' ⚠️':''}</td><td style={{padding:'3px 6px',textAlign:'right'}}>{Number(p.paid_amount||p.amount||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td><td style={{padding:'3px 6px',textAlign:'center'}}><span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:p.status==='pago'?'rgba(34,197,94,.15)':cancelada?'rgba(107,114,128,.15)':atrasada?'rgba(248,113,113,.15)':'rgba(251,191,36,.15)',color:p.status==='pago'?'#22c55e':cancelada?'#9ca3af':atrasada?'#f87171':'#fbbf24'}}>{p.status==='pago'?'Pago':cancelada?'Cancelada (acordo)':atrasada?'Atrasada':'Aberta'}</span></td></tr>;
                 })}</tbody>
               </table>}
               {(() => {

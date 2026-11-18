@@ -317,6 +317,16 @@ export default function CrediarioPage() {
     if (!payForm.operator_name.trim()) { toast.error('Informe o nome do operador'); return; }
     if (!payForm.operator_pass.trim()) { toast.error('Informe a senha do operador'); return; }
     if (!payForm.payment_method) { toast.error('Selecione a forma de pagamento'); return; }
+    // 17/11/2026 (caso Cristiany): a lista podia estar aberta desde antes de um acordo do Feirao fechar - a parcela ja
+    // estava cancelada (coberta pelo acordo) e mesmo assim recebeu baixa. Confere a situacao atual no banco antes.
+    const { data: atual } = await supabase.from('crediario_parcelas').select('status').eq('id', p.id).eq('tenant_id', tenantId).maybeSingle();
+    if (atual && (atual.status === 'cancelado' || atual.status === 'pago')) {
+      toast.error(atual.status === 'cancelado'
+        ? 'Esta parcela foi cancelada (entrou num acordo/renegociação). Não precisa dar baixa: confira o carnê do acordo. A tela vai ser atualizada.'
+        : 'Esta parcela já foi paga. A tela vai ser atualizada.', { duration: 10000 });
+      load();
+      return;
+    }
     const { data: funcs } = await supabase.from('funcionarios').select('id,name,access_password').eq('tenant_id', tenantId).ilike('name', payForm.operator_name.trim());
     if (!funcs || funcs.length === 0) { toast.error('Funcionario nao encontrado'); return; }
     const hashedOp = await hashPassword(payForm.operator_pass.trim());
