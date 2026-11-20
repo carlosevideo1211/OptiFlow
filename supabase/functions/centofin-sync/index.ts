@@ -175,6 +175,22 @@ async function montar(tenant: string, desde: string) {
       categoria: saida ? (f.category || "Outros") : "Vendas", forma: f.payment_method || "",
     });
   }
+  // Envios do estoque do LABORATÓRIO para a própria loja (20/11/2026): cada envio vira a despesa "Reposição de lentes"
+  // (Fornecedores), como fazia a antiga reposição pela foto no WhatsApp. Envio desfeito some daqui e o Centofin apaga.
+  // Só a loja Castanho (a loja da mesma conta do laboratório); os envios para a Solar não entram aqui.
+  try {
+    const envios = await todas(`lab_envios?select=id,numero,pecas,valor,created_at&tenant_id=eq.${tenant}` +
+      `&loja=eq.castanho&desfeito=eq.false&created_at=gte.${desdeUTC}`);
+    for (const e of envios) {
+      const valor = Number(e.valor || 0);
+      if (valor <= 0) continue;
+      lancamentos.push({
+        ext_id: `labenv:${e.id}`, tipo: "saida", valor, data: diaManaus(e.created_at),
+        descricao: `Reposição de lentes do laboratório (envio nº ${e.numero}, ${e.pecas} lentes)`,
+        categoria: "Fornecedores", forma: "",
+      });
+    }
+  } catch (_) { /* tabela do laboratório ainda não existe nesta base */ }
   for (const p of pagas) {
     if (p.status === "cancelado" || !p.paid_at) continue;
     const valor = Number(p.paid_amount ?? p.amount ?? 0);

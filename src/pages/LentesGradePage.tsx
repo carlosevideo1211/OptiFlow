@@ -10,6 +10,7 @@ import { fetchAllRows } from '../lib/fetchAll';
 import toast from 'react-hot-toast';
 import { toLocalDateStr } from './crediario/crediarioTypes';
 import { abrirDocumentoImprimivel, type CelulaExcel, type OpcoesExcel, type PlanilhaExcel } from '../utils/printDoc';
+import LaboratorioLentes from './LaboratorioLentes';
 
 // Letra da coluna do Excel (0 -> A, 25 -> Z, 26 -> AA)
 const XLSX_COL = (c: number): string => (c >= 26 ? XLSX_COL(Math.floor(c / 26) - 1) : '') + String.fromCharCode(65 + (c % 26));
@@ -44,8 +45,12 @@ async function buscarVendas(de: string, ate: string): Promise<Vendida[]> {
 }
 
 export default function LentesGradePage() {
-  const { tenantId } = useAuth();
+  const { tenantId, user } = useAuth();
   const location = useLocation();
+  // Estoque do laboratório (só o dono): botão Loja | Laboratório no título
+  const podeLab = ['master', 'system_admin'].includes((user as any)?.role);
+  const [onde, setOnde] = useState<'loja' | 'lab'>(() => { try { return podeLab && localStorage.getItem('lentes_onde') === 'lab' ? 'lab' : 'loja'; } catch { return 'loja'; } });
+  useEffect(() => { try { localStorage.setItem('lentes_onde', onde); } catch { /* sem localStorage */ } }, [onde]);
   // Vindo do botao "Ver por grau" da tela Estoque: abre direto naquela lente.
   const produtoPedido = (location.state as any)?.produtoId as string | undefined;
   const [aba, setAba] = useState<'estoque' | 'vendidas' | 'giro' | 'movimentos'>('estoque');
@@ -267,9 +272,24 @@ export default function LentesGradePage() {
         background: atual === k ? '#6366f1' : 'transparent', color: atual === k ? '#fff' : 'var(--text-muted)' }}>{t}</button>)}
     </div>);
 
+  const local = (
+    podeLab ? <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginLeft: 14, verticalAlign: 'middle' }}>
+      {([['loja', '🏪 Loja'], ['lab', '🔬 Laboratório']] as const).map(([k, t]) => <button key={k} onClick={() => setOnde(k)}
+        style={{ padding: '6px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+          background: onde === k ? (k === 'lab' ? '#0e7490' : '#6366f1') : 'transparent', color: onde === k ? '#fff' : 'var(--text-muted)' }}>{t}</button>)}
+    </div> : null);
+  if (onde === 'lab') return (
+    <div style={{ padding: 20 }}>
+      <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 4px' }}>👓 Lentes por grau{local}</h1>
+      <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Estoque do <b>Laboratório Evangelista</b>, separado do estoque da loja. Envios para as lojas com o valor de cada par, relatório do mês e lista de compra.
+      </div>
+      <LaboratorioLentes />
+    </div>);
+
   return (
     <div style={{ padding: 20 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 4px' }}>👓 Lentes por grau</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 4px' }}>👓 Lentes por grau{local}</h1>
       <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
         Estoque de cada grau, as lentes que mais saem e as que estão paradas.{' '}
         {inicio ? <>Baixa automática pelas OS <b style={{ color: '#22c55e' }}>ligada</b> desde {new Date(inicio).toLocaleString('pt-BR')}.</>
