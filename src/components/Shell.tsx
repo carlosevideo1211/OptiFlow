@@ -141,6 +141,32 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const [visualNovo, setVisualNovo] = useState<boolean>(() => {
     try { return localStorage.getItem('optiflow_visual_novo') === '1'; } catch { return false; }
   });
+  // Logo da loja/clinica no topo do menu (21/11/2026). Sem logo, continua a marca OptiFlow.
+  // A logo fica guardada como imagem inteira no banco: por isso carrega uma vez so, fora do loadData de 60 s.
+  const [marca, setMarca] = useState<{ nome: string; logo: string } | null>(null);
+  useEffect(() => {
+    if (!tenantId) { setMarca(null); return; }
+    const chave = 'optiflow_marca_' + tenantId;
+    try { const salva = localStorage.getItem(chave); setMarca(salva ? JSON.parse(salva) : null); } catch { setMarca(null); }
+    let ativo = true;
+    const carregar = async () => {
+      const [t, c, l] = await Promise.all([
+        supabase.from('tenants').select('modulo_otica_ativo').eq('id', tenantId).maybeSingle(),
+        supabase.from('clinic_settings').select('clinic_name,logo_url').eq('tenant_id', tenantId).maybeSingle(),
+        supabase.from('store_settings').select('name,logo_url').eq('tenant_id', tenantId).maybeSingle(),
+      ]);
+      if (!ativo || t.error || c.error || l.error) return;
+      const daLoja = l.data?.logo_url ? { nome: l.data.name || '', logo: l.data.logo_url as string } : null;
+      const daClinica = c.data?.logo_url ? { nome: c.data.clinic_name || '', logo: c.data.logo_url as string } : null;
+      // Otica usa os dados da loja; consultorio usa os da clinica (e os da loja se a clinica nao tiver logo).
+      const nova = t.data?.modulo_otica_ativo === false ? (daClinica || daLoja) : daLoja;
+      setMarca(nova);
+      try { if (nova) localStorage.setItem(chave, JSON.stringify(nova)); else localStorage.removeItem(chave); } catch { /* logo grande demais para guardar */ }
+    };
+    carregar();
+    window.addEventListener('optiflow:marca-alterada', carregar);
+    return () => { ativo = false; window.removeEventListener('optiflow:marca-alterada', carregar); };
+  }, [tenantId]);
   const podeVer = (item: NavItem) =>
     (!item.soMaster || userRole === 'master') &&
     (item.requiresModule !== 'cobranca' || temCobranca) &&
@@ -268,16 +294,33 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <aside style={{
         position:'fixed', top:0, left:0,
         bottom:0, width: sidebarW,
-        background:'var(--bg-sidebar)',
+        // No celular o menu abre por cima da tela: precisa de fundo solido (segue a cor do tema).
+        background: isMobile ? 'var(--bg2)' : 'var(--bg-sidebar)',
         borderRight:'1px solid var(--border)',
         display:'flex', flexDirection:'column',
         zIndex:999, transition: isMobile ? 'transform .25s ease' : 'width .2s',
         transform: isMobile && !mobileOpen ? 'translateX(-100%)' : 'none',
       }}>
         {/* Logo */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent: effCollapsed ? 'center' : 'space-between',
+        <div style={{ display:'flex', flexDirection: effCollapsed && marca ? 'column' : 'row', alignItems:'center', justifyContent: effCollapsed ? 'center' : 'space-between',
           padding: effCollapsed ? '16px 0' : '16px 14px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
-          {!effCollapsed && (
+          {!effCollapsed && marca && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, flex:1, minWidth:0, marginRight:8 }}>
+              <img src={marca.logo} alt={marca.nome || 'Logo'} style={{ width:38, height:38, objectFit:'contain', borderRadius:7, flexShrink:0 }}/>
+              <div style={{ minWidth:0 }}>
+                <div title={marca.nome} style={{ fontWeight:700, fontSize:13, lineHeight:1.2, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflowWrap:'anywhere' }}>
+                  {marca.nome}
+                </div>
+                <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:2, whiteSpace:'nowrap' }}>
+                  por Opti<span style={{ color:'#06b6d4' }}>Flow</span>
+                </div>
+              </div>
+            </div>
+          )}
+          {effCollapsed && marca && (
+            <img src={marca.logo} alt={marca.nome || 'Logo'} style={{ width:32, height:32, objectFit:'contain', borderRadius:6, marginBottom:6 }}/>
+          )}
+          {!effCollapsed && !marca && (
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
                 <rect width="32" height="32" rx="10" fill="url(#lg1)"/>
@@ -292,7 +335,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </span>
             </div>
           )}
-          {effCollapsed && (
+          {effCollapsed && !marca && (
             <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
               <rect width="32" height="32" rx="10" fill="url(#lg2)"/>
               <ellipse cx="16" cy="16" rx="10" ry="6" stroke="white" strokeWidth="1.8" fill="none"/>

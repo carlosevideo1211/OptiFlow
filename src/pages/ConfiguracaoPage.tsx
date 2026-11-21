@@ -74,6 +74,7 @@ export default function ConfiguracaoPage() {
         : await supabase.from('store_settings').insert([form]);
       if (error) throw error;
       toast.success('Configurações salvas!');
+      window.dispatchEvent(new Event('optiflow:marca-alterada')); // atualiza a logo do menu na hora
     } catch (err: any) { toast.error(err.message||'Erro ao salvar'); }
     finally { setSaving(false); }
   };

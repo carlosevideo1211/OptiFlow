@@ -97,6 +97,7 @@ export default function DadosClinica() {
         : await supabase.from('clinic_settings').insert([payload]);
       if (error) throw error;
       toast.success('Dados da clínica salvos!');
+      window.dispatchEvent(new Event('optiflow:marca-alterada')); // atualiza a logo do menu na hora
     } catch (err: any) {
       toast.error(err.message || 'Erro ao salvar');
     } finally {
