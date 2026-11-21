@@ -13,6 +13,9 @@ export default function RegisterPage() {
     name: '', email: '', password: '', confirm: '',
     company: '', phone: '', city: '', state: 'AM'
   });
+  // Define o menu da conta nova: Otica = menu curto; Consultorio = so as telas de consulta.
+  const [tipo, setTipo] = useState<'' | 'otica' | 'consultorio'>('');
+  const nomeNegocio = tipo === 'consultorio' ? 'do consultório' : 'da ótica';
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -24,8 +27,9 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
+    if (!tipo) { toast.error('Escolha se é Ótica ou Consultório'); return; }
       if (!form.name.trim()) { toast.error('Nome obrigatorio'); return; }
-    if (!form.company.trim()) { toast.error('Nome da optica obrigatorio'); return; }
+    if (!form.company.trim()) { toast.error(`Preencha o nome ${nomeNegocio}`); return; }
     if (form.password.length < 6) { toast.error('Senha minimo 6 caracteres'); return; }
     if (form.password !== form.confirm) { toast.error('Senhas nao conferem'); return; }
     setLoading(true);
@@ -43,7 +47,7 @@ export default function RegisterPage() {
       }
 
       // 1. Criar usuario no Supabase Auth
-      await signUp(form.email, form.password, form.name, form.company);
+      await signUp(form.email, form.password, form.name, form.company, tipo);
 
       // 2. Aguardar trigger criar tenant+store_settings+user_profiles
       await new Promise(r => setTimeout(r, 2500));
@@ -115,6 +119,23 @@ export default function RegisterPage() {
         <p style={{ color: 'var(--text2)', marginBottom: 32, fontSize: 14 }}>14 dias de acesso completo, sem cartao de credito</p>
 
         <form onSubmit={handleSubmit}>
+          {/* Tipo do negocio: define o menu da conta */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={lbl}>O seu negócio é *</label>
+            <div role="radiogroup" aria-label="O seu negócio é" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {([['otica', '👓 Ótica', 'Vendas, pedidos, estoque e crediário'], ['consultorio', '🩺 Consultório', 'Só consultas e agenda']] as const).map(([k, titulo, desc]) => (
+                <button key={k} type="button" role="radio" aria-checked={tipo === k} onClick={() => setTipo(k)} style={{
+                  padding: '11px 12px', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+                  border: '1.5px solid ' + (tipo === k ? '#6366f1' : 'rgba(255,255,255,.12)'),
+                  background: tipo === k ? 'rgba(99,102,241,.18)' : 'rgba(255,255,255,.04)', color: 'var(--text)'
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{titulo}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Dados do responsavel */}
           <div style={{ marginBottom: 12, padding: '12px 16px', borderRadius: 8, background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', marginBottom: 10, textTransform: 'uppercase' }}>
@@ -148,12 +169,12 @@ export default function RegisterPage() {
           {/* Dados da optica */}
           <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 8, background: 'rgba(6,182,212,.08)', border: '1px solid rgba(6,182,212,.2)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', marginBottom: 10, textTransform: 'uppercase' }}>
-              <Store size={12} style={{ marginRight: 4 }}/> Dados da Optica
+              <Store size={12} style={{ marginRight: 4 }}/> Dados {tipo === 'consultorio' ? 'do Consultório' : 'da Ótica'}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ gridColumn: '1/-1' }}>
-                <label style={lbl}>Nome da optica *</label>
-                <input style={inp} placeholder="Ex: Otica Central" value={form.company} onChange={e => set('company', e.target.value)} required/>
+                <label style={lbl}>Nome {tipo === 'consultorio' ? 'do consultório' : 'da ótica'} *</label>
+                <input style={inp} placeholder={tipo === 'consultorio' ? 'Ex: Clínica Central' : 'Ex: Ótica Central'} value={form.company} onChange={e => set('company', e.target.value)} required/>
               </div>
               <div>
                 <label style={lbl}>Telefone</label>

@@ -47,10 +47,28 @@ async function buscarVendas(de: string, ate: string): Promise<Vendida[]> {
 export default function LentesGradePage() {
   const { tenantId, user } = useAuth();
   const location = useLocation();
-  // Estoque do laboratório (só o dono): botão Loja | Laboratório no título
-  const podeLab = ['master', 'system_admin'].includes((user as any)?.role);
-  const [onde, setOnde] = useState<'loja' | 'lab'>(() => { try { return podeLab && localStorage.getItem('lentes_onde') === 'lab' ? 'lab' : 'loja'; } catch { return 'loja'; } });
-  useEffect(() => { try { localStorage.setItem('lentes_onde', onde); } catch { /* sem localStorage */ } }, [onde]);
+  // Estoque do laboratório: botão Loja | Laboratório no título, só para o dono
+  // de uma conta que tem lentes cadastradas no laboratório (lab_produto).
+  const donoDaConta = ['master', 'system_admin'].includes((user as any)?.role);
+  const [podeLab, setPodeLab] = useState(false);
+  const [onde, setOnde] = useState<'loja' | 'lab'>('loja');
+  useEffect(() => {
+    setPodeLab(false);
+    setOnde('loja');
+    if (!tenantId || !donoDaConta) return;
+    let cancelado = false;
+    supabase.from('lab_produto').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+      .then(({ count }) => {
+        if (cancelado || !count) return;
+        setPodeLab(true);
+        try { if (localStorage.getItem('lentes_onde') === 'lab') setOnde('lab'); } catch { /* sem localStorage */ }
+      });
+    return () => { cancelado = true; };
+  }, [tenantId, donoDaConta]);
+  const escolherOnde = (k: 'loja' | 'lab') => {
+    setOnde(k);
+    try { localStorage.setItem('lentes_onde', k); } catch { /* sem localStorage */ }
+  };
   // Vindo do botao "Ver por grau" da tela Estoque: abre direto naquela lente.
   const produtoPedido = (location.state as any)?.produtoId as string | undefined;
   const [aba, setAba] = useState<'estoque' | 'vendidas' | 'giro' | 'movimentos'>('estoque');
@@ -274,7 +292,7 @@ export default function LentesGradePage() {
 
   const local = (
     podeLab ? <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginLeft: 14, verticalAlign: 'middle' }}>
-      {([['loja', '🏪 Loja'], ['lab', '🔬 Laboratório']] as const).map(([k, t]) => <button key={k} onClick={() => setOnde(k)}
+      {([['loja', '🏪 Loja'], ['lab', '🔬 Laboratório']] as const).map(([k, t]) => <button key={k} onClick={() => escolherOnde(k)}
         style={{ padding: '6px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
           background: onde === k ? (k === 'lab' ? '#0e7490' : '#6366f1') : 'transparent', color: onde === k ? '#fff' : 'var(--text-muted)' }}>{t}</button>)}
     </div> : null);
