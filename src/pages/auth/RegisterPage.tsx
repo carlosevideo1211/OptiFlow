@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { sendEmail, emailBoasVindas } from '../../lib/email';
+import { sugerirEmail } from '../../lib/sugerirEmail';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, Store, User, Mail, Lock, Phone } from 'lucide-react';
 
@@ -16,6 +17,9 @@ export default function RegisterPage() {
   // Define o menu da conta nova: Otica = menu curto; Consultorio = so as telas de consulta.
   const [tipo, setTipo] = useState<'' | 'otica' | 'consultorio'>('');
   const nomeNegocio = tipo === 'consultorio' ? 'do consultório' : 'da ótica';
+  // E-mail com final parecido com um conhecido (ex.: @gmai.com): pergunta antes de criar a conta.
+  const [emailConferido, setEmailConferido] = useState('');
+  const sugestaoEmail = form.email.trim() !== emailConferido ? sugerirEmail(form.email) : null;
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -30,6 +34,7 @@ export default function RegisterPage() {
     if (!tipo) { toast.error('Escolha se é Ótica ou Consultório'); return; }
       if (!form.name.trim()) { toast.error('Nome obrigatorio'); return; }
     if (!form.company.trim()) { toast.error(`Preencha o nome ${nomeNegocio}`); return; }
+    if (sugestaoEmail) { toast.error('Confira o seu e-mail antes de continuar'); return; }
     if (form.password.length < 6) { toast.error('Senha minimo 6 caracteres'); return; }
     if (form.password !== form.confirm) { toast.error('Senhas nao conferem'); return; }
     setLoading(true);
@@ -150,6 +155,15 @@ export default function RegisterPage() {
                 <label style={lbl}>E-mail *</label>
                 <input style={inp} type="email" placeholder="seu@email.com" value={form.email} onChange={e => set('email', e.target.value)} required/>
               </div>
+              {sugestaoEmail && (
+                <div role="alert" style={{ gridColumn: '1/-1', padding: '10px 12px', borderRadius: 8, background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.45)', fontSize: 13, color: 'var(--text)' }}>
+                  <div style={{ marginBottom: 8, overflowWrap: 'anywhere' }}>Você quis dizer <b>{sugestaoEmail}</b>?</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={() => set('email', sugestaoEmail)} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: '#f59e0b', color: '#111', fontWeight: 700, cursor: 'pointer' }}>Sim, corrigir</button>
+                    <button type="button" onClick={() => setEmailConferido(form.email.trim())} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,.2)', background: 'transparent', color: 'var(--text)', cursor: 'pointer' }}>Não, está certo</button>
+                  </div>
+                </div>
+              )}
               <div>
                 <label style={lbl}>Senha *</label>
                 <div style={{ position: 'relative' }}>
