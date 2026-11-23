@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { ComprovanteAcoes, useComprovantes } from './ComprovantesCobranca';
 
 interface Resposta {
   id: string; customer_id: string | null; phone: string; nome: string | null; intencao: string;
@@ -54,6 +55,8 @@ export default function RespostasCobranca({ tenantId, onVerCliente }: { tenantId
   const [acordos, setAcordos] = useState<Acordo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [fechando, setFechando] = useState<string | null>(null);
+  const comp = useComprovantes(tenantId);
+  const usuario = user?.name || user?.email || 'loja';
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -149,6 +152,9 @@ export default function RespostasCobranca({ tenantId, onVerCliente }: { tenantId
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <ComprovanteAcoes comp={comp} podeAnexar usuario={usuario} estilo={btn} cliente={{
+                      nome: a.customers?.name || 'Cliente', customer_id: a.customer_id, phone: a.phone, acordo_id: a.id,
+                      desde: a.aceito_em || a.ofertado_em || '1970-01-01', valorEsperado: a.pix_valor }} />
                     {a.customers?.name && <button style={btn('#94a3b8')} onClick={() => onVerCliente(a.customers!.name)}>Ver parcelas</button>}
                     <button style={btn('#22c55e')} disabled={fechando === a.id} onClick={() => pagamentoRecebido(a)}>{fechando === a.id ? 'Fechando...' : 'Pagamento recebido'}</button>
                     <button style={btn('#f87171')} onClick={() => cancelarAcordo(a)}>Cancelar acordo</button>
@@ -191,6 +197,9 @@ export default function RespostasCobranca({ tenantId, onVerCliente }: { tenantId
                     {r.texto && <div style={{ fontSize: 13, marginTop: 2 }}>“{r.texto}”</div>}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <ComprovanteAcoes comp={comp} podeAnexar={g.intencao === 'paguei'} usuario={usuario} estilo={btn} cliente={{
+                      nome: r.nome || fone(r.phone), customer_id: r.customer_id, phone: r.phone,
+                      desde: new Date(new Date(r.created_at).getTime() - 864e5).toISOString() }} />
                     {r.nome && <button style={btn('#94a3b8')} onClick={() => onVerCliente(r.nome!)}>Ver parcelas</button>}
                     <button style={btn('#0ea5e9')} onClick={() => navigate('/mensagens')}>Mensagens</button>
                     {g.intencao === 'paguei' ? (<>
