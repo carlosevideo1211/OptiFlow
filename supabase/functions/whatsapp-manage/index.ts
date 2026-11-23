@@ -464,6 +464,104 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    // ---------- PEDIR A META OS MODELOS DO "CHAMAR DE VOLTA" (23/11/2026) ----------
+    // So o dono da loja. Pode repetir: modelo que ja existe nao e pedido de novo.
+    if (action === "criar_modelos_retomada") {
+      if (profile.role !== "master") return json({ ok: false, error: "Só o dono da conta." }, 403);
+      if (!usaMeta) return json({ ok: false, error: "Disponível só no WhatsApp oficial." }, 400);
+      const [tn] = await supabaseFetch(`tenants?id=eq.${tenant.id}&select=cobranca_nova`);
+      if (!tn?.cobranca_nova) return json({ ok: false, error: "Cobrança nova não está ligada nesta loja." }, 400);
+      const waba = Deno.env.get("META_WABA_ID") || "2124840844909179";
+      const auth = { Authorization: `Bearer ${META_WHATSAPP_TOKEN}` };
+      const lista = await fetch(`${META_GRAPH_BASE}/${waba}/message_templates?fields=name,status,category&limit=200`, { headers: auth });
+      const ld = await lista.json().catch(() => ({}));
+      if (!lista.ok) return json({ ok: false, error: ld?.error?.message || `HTTP ${lista.status}` }, 502);
+      const existentes: any[] = ld?.data || [];
+      const rodape = { type: "FOOTER", text: "Responda PARAR para não receber mais mensagens." };
+      const modelos = [
+        { name: "retomar_atendimento_loja", components: [
+          { type: "BODY", text: "Olá {{1}}, aqui é da {{2}}.\nVocê pediu atendimento sobre a sua conta e queremos continuar. Toque no botão abaixo para a loja falar com você por aqui.",
+            example: { body_text: [["Maria", "Ótica Evangelista"]] } },
+          rodape, { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Falar com a loja" }] },
+        ] },
+        { name: "lembrete_pix_acordo", components: [
+          { type: "BODY", text: "Olá {{1}}, aqui é da {{2}}.\nSeu acordo com pagamento de R$ {{3}} ainda aparece como não pago. Se já pagou, envie o comprovante por aqui. Se precisar de ajuda, toque em Falar com a loja.",
+            example: { body_text: [["Maria", "Ótica Evangelista", "150,00"]] } },
+          rodape, { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Já paguei" }, { type: "QUICK_REPLY", text: "Falar com a loja" }] },
+        ] },
+      ];
+      const resultados: unknown[] = [];
+      for (const m of modelos) {
+        const ja = existentes.find((t) => t.name === m.name);
+        if (ja) { resultados.push({ name: m.name, ja_existia: true, status: ja.status, category: ja.category }); continue; }
+        const r = await fetch(`${META_GRAPH_BASE}/${waba}/message_templates`, {
+          method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: m.name, language: "pt_BR", category: "UTILITY", allow_category_change: true, components: m.components }),
+        });
+        const d = await r.json().catch(() => ({}));
+        resultados.push({ name: m.name, ok: r.ok, status: d?.status || null, category: d?.category || null, erro: r.ok ? null : (d?.error?.error_user_msg || d?.error?.message || `HTTP ${r.status}`) });
+      }
+      return json({ ok: true, resultados });
+    }
+
+    // ---------- CHAMAR DE VOLTA (Respostas da cobranca, 23/11/2026) ----------
+    // Depois de 24h a Meta so aceita modelo aprovado. A loja clica para UM cliente por vez, a partir de uma resposta ou
+    // acordo pendente desta loja (o numero vem do banco, nunca da tela). Nao envia para quem pediu PARAR e nao repete
+    // para o mesmo numero em menos de 3 dias.
+    if (action === "send_retomada") {
+      if (!usaMeta) return json({ ok: false, error: "Disponível só no WhatsApp oficial." }, 400);
+      const cred = await credenciaisMeta(tenant.id);
+      if (!cred) return json({ ok: false, error: "WhatsApp Business API não configurado nesta ótica" }, 400);
+      const idValido = (v: unknown) => /^[0-9a-f-]{36}$/i.test(String(v || ""));
+      let fone = "", clienteId: string | null = null, nomeCli = "", modelo = "", params: string[] = [], textoTela = "";
+      const primeiro = (n: string) => (n || "").trim().split(/\s+/)[0] || "cliente";
+      if (idValido(body.acordo_id)) {
+        const [a] = await supabaseFetch(`cobranca_acordos?id=eq.${body.acordo_id}&tenant_id=eq.${tenant.id}&status=eq.aguardando_pagamento&select=phone,customer_id,pix_valor,customers(name)`);
+        if (!a?.phone) return json({ ok: false, error: "Acordo não está mais esperando pagamento." }, 400);
+        fone = a.phone; clienteId = a.customer_id; nomeCli = a.customers?.name || "";
+        const valor = Number(a.pix_valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        modelo = "lembrete_pix_acordo";
+        params = [primeiro(nomeCli), tenant.company_name || "nossa loja", valor];
+        textoTela = `[retomada] Lembrete do acordo de R$ ${valor}, aguardando o pagamento.`;
+      } else if (idValido(body.resposta_id)) {
+        const [r] = await supabaseFetch(`cobranca_respostas?id=eq.${body.resposta_id}&tenant_id=eq.${tenant.id}&status=eq.pendente&intencao=neq.parar&select=phone,customer_id,nome`);
+        if (!r?.phone) return json({ ok: false, error: "Essa resposta já foi resolvida." }, 400);
+        fone = r.phone; clienteId = r.customer_id; nomeCli = r.nome || "";
+        modelo = "retomar_atendimento_loja";
+        params = [primeiro(nomeCli), tenant.company_name || "nossa loja"];
+        textoTela = "[retomada] Convite para continuar o atendimento com a loja.";
+      } else return json({ ok: false, error: "Cliente não informado." }, 400);
+
+      const digitos = String(fone).replace(/\D/g, "");
+      const para = digitos.startsWith("55") ? digitos : `55${digitos}`;
+      const f8 = para.slice(-8);
+      const clientes = await supabaseFetch(clienteId
+        ? `customers?id=eq.${clienteId}&tenant_id=eq.${tenant.id}&select=phone,whatsapp,whatsapp_opt_out`
+        : `customers?tenant_id=eq.${tenant.id}&or=(phone.ilike.*${f8.slice(-4)},whatsapp.ilike.*${f8.slice(-4)})&select=phone,whatsapp,whatsapp_opt_out&limit=50`);
+      const mesmos = (Array.isArray(clientes) ? clientes : []).filter((c: any) => clienteId || [c.phone, c.whatsapp].some((t) => String(t || "").replace(/\D/g, "").slice(-8) === f8));
+      if (mesmos.some((c: any) => c.whatsapp_opt_out)) return json({ ok: false, error: "Este cliente pediu para não receber mensagens. Fale por ligação ou no balcão." }, 400);
+      const tresDias = new Date(Date.now() - 3 * 864e5).toISOString();
+      const ja = await supabaseFetch(`whatsapp_mensagens?tenant_id=eq.${tenant.id}&phone=eq.${para}&direcao=eq.out&texto=like.${encodeURIComponent("[retomada]*")}&status=neq.failed&created_at=gte.${tresDias}&select=id&limit=1`);
+      if (Array.isArray(ja) && ja.length) return json({ ok: false, error: "Este cliente já foi chamado nos últimos 3 dias. Aguarde a resposta ou ligue." }, 400);
+
+      const res = await fetch(`${META_GRAPH_BASE}/${cred.phoneId}/messages`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cred.token}` },
+        body: JSON.stringify({ messaging_product: "whatsapp", to: para, type: "template", template: {
+          name: modelo, language: { code: "pt_BR" },
+          components: [{ type: "body", parameters: params.map((text) => ({ type: "text", text })) }],
+        } }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok && d?.error?.code === 132001) return json({ ok: false, error: "A mensagem ainda está em análise na Meta. Por enquanto, ligue para o cliente." }, 400);
+      const erro = res.ok ? null : String(d?.error?.message || `HTTP ${res.status}`).slice(0, 200);
+      await supabaseFetch("whatsapp_mensagens", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({
+        tenant_id: tenant.id, phone: para, direcao: "out", tipo: "template", texto: textoTela, meta_message_id: d?.messages?.[0]?.id || null,
+        status: res.ok ? "sent" : "failed", erro, enviado_por: profile.full_name || null, lida: true,
+      }) });
+      if (erro) return json({ ok: false, error: erro }, 400);
+      return json({ ok: true });
+    }
+
     // ---------- COMPROVANTE EM PDF (recibo de parcela / termo de quitacao) ----------
     // O PDF e gerado na janela do documento (mesmo do "Baixar PDF") e chega aqui em base64.
     // Evolution: vai como documento com legenda. Meta: tenta o documento direto (vale ate 24h
