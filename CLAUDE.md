@@ -852,3 +852,13 @@ MRR (Ativos) corrigido de R$ 550,00 para R$ 770,00.
   com o layout da tela: titulo "<LENTE> — ESTOQUE|CONTAGEM" + data; MF = linhas ESF, colunas Adicao com R/L mescladas;
   VS = dois blocos (esferico positivo/negativo) com colunas CIL; ESF como numero (formato +0,00); TOTAL = SUMIF(>0).
   Contagem sai com as casas em branco (o TOTAL soma o que for digitado). Testado no Excel: totais iguais a tela (MF 963, VS 1357).
+
+## Sessao 24/11/2026 - Botao "Contestar comprovante" (Respostas da cobranca)
+- Caso real: Rosileia (Castanho) mandou o comprovante de um Pix da irma Mariane, que ja tinha sido usado para dar baixa
+  na parcela da propria Mariane (so entrou 1 Pix).
+- src/pages/crediario/ContestarComprovante.tsx (BotaoContestar), ligado em RespostasCobranca.tsx so no grupo
+  "Disseram que pagaram", ao lado de Ver/Anexar comprovante (fora de "Ja dei baixa"/"Nao pagou", pedido do Carlos).
+  Janela com motivo (Pix de outra pessoa / nao caiu na conta / valor menor / outro) e mensagem editavel que cita a
+  parcela em aberto MAIS ANTIGA do cliente (crediario_parcelas com crediario!inner(customer_id)). "Enviar e voltar a
+  cobranca" manda por whatsapp-manage send_reply e marca a resposta como nao_pago; se o envio falhar, pergunta se marca
+  mesmo assim. Testado na tela sem enviar.

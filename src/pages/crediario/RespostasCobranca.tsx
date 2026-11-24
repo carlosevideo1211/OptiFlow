@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { ComprovanteAcoes, useComprovantes } from './ComprovantesCobranca';
 import { BotaoConversa } from './ConversaCobranca';
+import { BotaoContestar } from './ContestarComprovante';
 
 interface Resposta {
   id: string; customer_id: string | null; phone: string; nome: string | null; intencao: string;
@@ -15,7 +16,7 @@ interface Resposta {
 
 const GRUPOS: { intencao: string; titulo: string; cor: string; ajuda: string }[] = [
   { intencao: 'paguei', titulo: 'Disseram que pagaram (conferir)', cor: '#22c55e',
-    ajuda: 'O robô parou de cobrar esses clientes. Confira o Pix/dinheiro, dê baixa na parcela e marque "Já dei baixa". Se não pagou, marque "Não pagou" para a cobrança voltar.' },
+    ajuda: 'O robô parou de cobrar esses clientes. Confira o Pix/dinheiro, dê baixa na parcela e marque "Já dei baixa". Se não pagou, marque "Não pagou" para a cobrança voltar, ou "Contestar" para também avisar o cliente no WhatsApp (comprovante de outra pessoa, Pix que não caiu...).' },
   { intencao: 'pagar_vista', titulo: 'Querem pagar à vista', cor: '#6366f1', ajuda: 'Clique em Conversar para responder com o valor do acordo e o Pix.' },
   { intencao: 'parcelar', titulo: 'Querem parcelar', cor: '#8b5cf6', ajuda: 'Clique em Conversar: as condições já vêm prontas (entrada = 1 parcela, até 4x).' },
   { intencao: 'nao_consigo', titulo: 'Dizem que não conseguem pagar', cor: '#f59e0b', ajuda: 'Ligar ou responder para combinar uma forma que caiba no bolso.' },
@@ -236,6 +237,8 @@ export default function RespostasCobranca({ tenantId, onVerCliente }: { tenantId
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <ComprovanteAcoes comp={comp} podeAnexar={g.intencao === 'paguei'} usuario={usuario} estilo={btn} cliente={clienteResposta(r)} />
+                    {g.intencao === 'paguei' && <BotaoContestar tenantId={tenantId} estilo={btn} cliente={{ nome: r.nome || fone(r.phone), phone: r.phone, customer_id: r.customer_id }}
+                      onContestado={() => marcar(r, 'nao_pago')} />}
                     {r.nome && <button style={btn('#94a3b8')} onClick={() => onVerCliente(r.nome!)}>Ver parcelas</button>}
                     <BotaoConversa tenantId={tenantId} estilo={btn} cliente={{ nome: r.nome || fone(r.phone), phone: r.phone, customer_id: r.customer_id, resposta_id: r.id, intencao: r.intencao }} />
                     {g.intencao === 'paguei' ? (<>
